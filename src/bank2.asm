@@ -1,5 +1,6 @@
     processor 6502
     include "colors.inc"            ; NC_xx colour bytes for this TV (tools/gen_colors.py)
+    include "banks.inc"             ; BK_* bank selectors by role (docs/agents/banks.md)
 ; ==============================================================================
 ; Bank2 stub — selects bank0, jumps to GameStart
 ; ==============================================================================
@@ -179,7 +180,7 @@ OBJ_CELL = 12                    ; type 14 = the power cell (KEY block rows 12-1
 
     ; --- 5-byte stub ---
     lda #0
-    sta $1FF4                       ; select bank0
+    sta BK_GENERAL                       ; select bank0
     jmp $F005                       ; GameStart in bank0
 
     ; --- #22 EnterRoomB2 ($F010) -----------------------------------------------
@@ -867,7 +868,7 @@ EnemyOffTable:
     include "generated/spill_F307.asm"
     .ds $F450 - *, 0            ; C7: the only cross-bank call in the room load
 ERBlocksPad:
-    sta $1FF7                   ; bank3 B3RoomBlocks MUST start at $F453 (the
+    sta BK_EXTRAS                   ; bank3 B3RoomBlocks MUST start at $F453 (the
                                 ;   fetch at +3 comes from bank3) — guard:
                                 ;   verify_build.check_bank3_entry
     .ds $F453 - *, 0            ; data slot START (never fetched in bank2)
@@ -1342,7 +1343,7 @@ MinerRef:
                                  ;   $FB84 2026-10-13, then $FBC0 2026-10-14:
                                  ;   model2 asym data +49B pushed the window —
                                  ;   growth past this pin fails the build)
-    sta $1FF6
+    sta BK_ROOMS
     jmp $F010                    ; EnterRoomB2 — this half fetched after bank0's sta
     .ds $FBD6 - *, 0            ; TitleSequenceFold twin (kernel.asm same
                                  ;   address — jmp operand fetched here after
@@ -1379,7 +1380,7 @@ MinerRef:
 ; ------------------------------------------------------------------------------
     .ds $FBF8 - *, 0
 ReturnPad:
-    sta $1FF4                   ; the `rts` at $FBFB is served by bank0
+    sta BK_GENERAL                   ; the `rts` at $FBFB is served by bank0
     rts                         ; (dead byte here: kept, zero cost to change)
 
 ; ------------------------------------------------------------------------------
@@ -1418,7 +1419,7 @@ SetRoomExits:
     .ds $FC23 - *, 0
     jmp LoadLevelB2             ; $FC23
 LF_TailSwap:
-    sta $1FF4                   ; $FC26 — bank0 serves the `jmp LF_B0Tail`
+    sta BK_GENERAL                   ; $FC26 — bank0 serves the `jmp LF_B0Tail`
                                 ; $FC29-: bank0's jmp operand is fetched from bank0; these bytes never
                                 ; run in bank2, so the slot-1 type tables below sit right here
 
@@ -1461,7 +1462,7 @@ ObjSpriteOffTable:
 
     .ds $FC49 - *, 0
 MothExitPad:
-    sta $1FF4
+    sta BK_GENERAL
 
 ; ==============================================================================
 ; Room-exit handlers — MOVED from bank0 (C3, 2026-10-20; were $F4DB-$F535 = 90 B).
@@ -1825,7 +1826,7 @@ EBLCellCheck:
     .ds $FE96 - *, 0            ; S5.4 LHT tramp — byte-identical w/ kernel.asm
                                 ; (shifted +$10 with kernel's tables)
 LaserHitTest:
-    sta $1FF6                   ; dead in bank2 (entry arrives at $FE89)
+    sta BK_ROOMS                   ; dead in bank2 (entry arrives at $FE89)
     jmp LaserHitTestBody        ; == $FF00 — operand guard vs bank0 literal
 
 ; ------------------------------------------------------------------------------
@@ -1853,13 +1854,13 @@ LaserHitTest:
     include "generated/spill_FE9C.asm"
     .ds $FEF0 - *, 0
 UE_MothTramp:
-    sta $1FF6
+    sta BK_ROOMS
     jmp MothRoutine
     .ds $FEF6 - *, 0
 FoldIndirect:
-    sta $1FF6
+    sta BK_ROOMS
     lda (FetchPtr),Y
-    sta $1FF4
+    sta BK_GENERAL
     rts
 
 ; ------------------------------------------------------------------------------

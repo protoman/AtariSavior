@@ -1,5 +1,6 @@
     processor 6502
     include "colors.inc"            ; NC_xx colour bytes for this TV (tools/gen_colors.py)
+    include "banks.inc"             ; BK_* bank selectors by role (docs/agents/banks.md)
 
 ; ==============================================================================
 ; savior kernel — HERO-style fixed-time rendering kernel
@@ -513,7 +514,7 @@ COLOR_HOT_R     = COLOR_BLINK_R
     ; After bank3's stub selects us, CPU arrives here.
     ; We jump over the pad into the real init code.
     lda #0
-    sta $1FF4                       ; ensure bank0 selected (idempotent)
+    sta BK_GENERAL                       ; ensure bank0 selected (idempotent)
     jmp GameStart                   ; jump over pad to init code
                                     ; (NOT deletable: $F008 = GameStart is a
                                     ;  hardcoded cross-bank entry — bank1
@@ -840,7 +841,7 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     cmp #$FF
     beq .TitleKernel
 GoKernel6:
-    sta $1FFA
+    sta BK_CAVE
 .TitleKernel:
     lda #1
     sta VDELP0
@@ -2779,7 +2780,7 @@ ObjSpriteOffTable:
 
     .ds $F8C0 - *, 0
 CallPad_RaftBody:
-    sta $1FF5                    ; select bank1 (last byte fetched from bank0)
+    sta BK_HUD                    ; select bank1 (last byte fetched from bank0)
     jmp $FDE3                    ; bank1 RaftBody — returns via bank1's ReturnPad
 
 ; PlayerSpriteA/B, PlayerWalkA/B + PlayerColTable MOVED to the $FE00
@@ -3567,7 +3568,7 @@ CEH_KeyDisp:
 ; → sta $1FF4 / rts. Saves ~1660c per room change (folds → direct reads).
 ; A preserved through sta $1FF6; body returns X = EnemyCount.
 EnterRoom:
-    sta $1FF6
+    sta BK_ROOMS
     jmp $F010                    ; EnterRoomB2 — fetched from bank2 twin
 
 ; ------------------------------------------------------------------------------
@@ -3582,16 +3583,16 @@ EnterRoom:
     .ds $FBD9 - *, 0
 CallPad_ExitDown:
 ExitRoomDown:
-    sta $1FF6                   ; C3: body = bank2 $FC4F cluster
+    sta BK_ROOMS                   ; C3: body = bank2 $FC4F cluster
 CallPad_ExitUp:
 ExitRoomUp:
-    sta $1FF6
+    sta BK_ROOMS
 CallPad_ExitLeft:
 ExitRoomLeft:
-    sta $1FF6
+    sta BK_ROOMS
 CallPad_ExitRight:
 ExitRoomRight:
-    sta $1FF6
+    sta BK_ROOMS
 
 ; ------------------------------------------------------------------------------
 ; StageSlot1 pad (2026-10-22): the Phase 5 slot-1 stager was evicted from the
@@ -3604,7 +3605,7 @@ ExitRoomRight:
 ; ------------------------------------------------------------------------------
 CallPad_StageSlot1:
 StageSlot1:
-    sta $1FF6
+    sta BK_ROOMS
 
 ; UEEpilogue - end of one enemy pass: another pass (clock + 1) or done.
 ; 2026-10-28 (flicker): extra passes are GOVERNED by the overscan timer. A pass starts
@@ -3627,7 +3628,7 @@ UEEpilogue:
                                  ;   TitlePlayerFold retired with the intro
                                  ;   movie (merged title, 2026-10-19)
 ReturnPad:
-    sta $1FF4
+    sta BK_GENERAL
     rts
 
 ; 2026-10-20 (chunk 4): the corridor pads are SPLIT across the banks, exactly
@@ -3654,31 +3655,31 @@ ReturnPad:
 ; Guard: verify_build.check_callpads pins each A and asserts the ROM bytes of
 ; BOTH halves (bank0 sta / target-bank jmp operand == its .lst label).
 CallPad_UpdateBombSound:
-    sta $1FF5
+    sta BK_HUD
 CallPad_UpdateJetSound:
-    sta $1FF5
+    sta BK_HUD
 CallPad_BombSndDrop:
-    sta $1FF5
+    sta BK_HUD
 CallPad_BombSndExplode:
-    sta $1FF5
+    sta BK_HUD
 CallPad_SaveKey:
-    sta $1FF8                   ; $FC08: SaveKey service (bank4 `jmp SkService` at
+    sta BK_SAVE                   ; $FC08: SaveKey service (bank4 `jmp SkService` at
                                 ;   $FC0B). In: A = op 0 BOOT / 1 RESUME /
                                 ;   2 CHECKPOINT / 3 GAMEOVER; out: C=0 done.
                                 ;   Nests 4 stack bytes below the caller's jsr.
 CallPad_AddScore:
-    sta $1FF5
+    sta BK_HUD
 CallPad_IsRoomDark:
-    sta $1FF5
+    sta BK_HUD
 CallPad_SetRoomDark:
-    sta $1FF5
+    sta BK_HUD
 CallPad_UpdateLaserSound:
-    sta $1FF5
+    sta BK_HUD
 CallPad_BuildColupF:
-    sta $1FF7                   ; C7: body lives in bank3 now ($F9D9 cluster —
+    sta BK_EXTRAS                   ; C7: body lives in bank3 now ($F9D9 cluster —
                                 ;   it walks the shape/extras stream there)
 CallPad_BombMarkWalls:
-    sta $1FF5                   ; S5.2: body lives in bank1 ($FB10)
+    sta BK_HUD                   ; S5.2: body lives in bank1 ($FB10)
     .byte 0,0,0                 ; $FC1D-$FC1F: CallPad_SelectObject retired by
                                 ;   A1 (SelectActiveObject is back in bank0, so
                                 ;   the VBL jsrs it directly). The 3 dead bytes
@@ -3699,7 +3700,7 @@ CallPad_BombMarkWalls:
 ; ------------------------------------------------------------------------------
 CallPad_LoadLevel:
 LoadLevel:
-    sta $1FF6                   ; C2: body = bank2 $F640 LoadLevelB2
+    sta BK_ROOMS                   ; C2: body = bank2 $F640 LoadLevelB2
     .byte 0,0,0                 ; $FC23-$FC25 — bank2's `jmp LoadLevelB2`
 
     .byte 0,0,0                 ; $FC26-$FC28 — bank2 runs `sta $1FF4` there
@@ -3731,7 +3732,7 @@ PickupSnd:
     rts
     .ds $FC49 - *, 0             ; pin (main growth past $FC49 = build error)
 MothExitPad:
-    sta $1FF4                   ; select bank0 (executed from bank2's copy)
+    sta BK_GENERAL                   ; select bank0 (executed from bank2's copy)
     jmp UE_Next                 ; resume dispatch loop (bank0 half)
 
     .ds $FC4F - *, 0            ; bank0↔bank1 CallPad slot (refactor_v4)
@@ -3746,11 +3747,11 @@ MothExitPad:
 ; Guard: verify_build.check_callpads runs this A / A+3 contract byte-for-byte
 ; (the $FBF8-$FC48 corridor above stays fully byte-identical).
 CallPad_TitleSelect:
-    sta $1FF5
+    sta BK_HUD
 CallPad_TitleBand:
-    sta $1FF5
+    sta BK_HUD
 CallPad_MusicTick:
-    sta $1FF5
+    sta BK_HUD
 ; Room-change frame (2026-11, bank5 TransBody). Every gameplay frame ends with
 ; `jmp CallPad_Transition`: bank5 checks LevelConnSpare b7 (a pending room
 ; change set by the bank2 exit handlers); not pending -> its `sta $1FF4` at
@@ -3759,12 +3760,12 @@ CallPad_MusicTick:
 ; itself, padded), then the same exit. CallPad_TransRet is where EnterRoom's
 ; rts lands (bank5 pushes $FC5D) and goes back to bank5 to pad the frame.
 CallPad_Transition:
-    sta $1FF9                   ; $FC58 -> bank5 `jmp TransBody` at $FC5B
+    sta BK_TRANS                   ; $FC58 -> bank5 `jmp TransBody` at $FC5B
     jmp StartFrame              ; $FC5B: reached after bank5's `sta $1FF4`
 CallPad_TransRet:
-    sta $1FF9                   ; $FC5E -> bank5 `jmp TransFinish` at $FC61
+    sta BK_TRANS                   ; $FC5E -> bank5 `jmp TransFinish` at $FC61
 CallPad_TransSaved:
-    sta $1FF9                   ; $FC61 -> bank5 `jmp TransAfterSave` at $FC64
+    sta BK_TRANS                   ; $FC61 -> bank5 `jmp TransAfterSave` at $FC64
 
 ; ==============================================================================
 ; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.
@@ -3774,13 +3775,13 @@ MenuMain = $F540                   ; bank1's HUD entry (not code in bank0)
     org $FC68
 ToMenuStub:
     lda #1
-    sta $1FF5                     ; select bank1 (HUD)
+    sta BK_HUD                     ; select bank1 (HUD)
     jmp MenuMain                 ; next fetch from bank1: jmp $F540
 
     org $FC70
 ToGameStub:
     lda #0
-    sta $1FF4                     ; select bank0 (game)
+    sta BK_GENERAL                     ; select bank0 (game)
     jmp Overscan                 ; return to bank0 after HUD band
 
 ; Flip dir bit for enemy X (right↔left).
@@ -4195,7 +4196,7 @@ TailHook:
     jmp StartFrame
     .ds $FDD8 - *, 0            ; pin: bank2's blast-tramp mirror is at $FDD8
 BombEnemyBlast:
-    sta $1FF6
+    sta BK_ROOMS
     jmp $FD87                   ; BombEnemyBlastBody (bank2.lst — after
                                 ;   .HOVfeature; NOT in the TitleJetColors
                                 ;   span)
@@ -4470,7 +4471,7 @@ UEPass:
     .ds $FE96 - *, 0            ; S5.4 LHT entry tramp (byte-identical w/ bank2,
                                 ; guard: check_moth_tramp — shifted +$10)
 LaserHitTest:
-    sta $1FF6                   ; select bank2
+    sta BK_ROOMS                   ; select bank2
     jmp $FF00                   ; bank2 LaserHitTestBody (dead in bank0; guard
                                 ;   pins operands == bank2.lst label)
 
@@ -4547,19 +4548,19 @@ M1OffTab:                       ; MetaA b0 -> M1 x-offset.
 
     .ds $FEE7 - *, 0            ; bank0↔bank1 CallPad (leaf_move_plan Step 0)
 CallPad_MothYDerive:
-    sta $1FF5
+    sta BK_HUD
     jmp $F038
 
     .ds $FEF0 - *, 0            ; fill tramp..moth gap (drift-proof)
 UE_MothTramp:
-    sta $1FF6                   ; select bank2
+    sta BK_ROOMS                   ; select bank2
     jmp $F110                   ; bank2 MothRoutine (dead in bank0; guard pins
                                 ;   bank0/bank2 operands == bank2.lst label)
     .ds $FEF6 - *, 0            ; pin address (main size drift must not move it)
 FoldIndirect:
-    sta $1FF6
+    sta BK_ROOMS
     lda (FetchPtr),Y
-    sta $1FF4
+    sta BK_GENERAL
     rts
 
 ; Pad to fineAdjustTable
@@ -4804,7 +4805,7 @@ MinerMore:
 ; ------------------------------------------------------------------------------
 TallyEntry = $F44F              ; bank1 TallyEntry — operand must match label
 TallyTramp:
-    sta $1FF5
+    sta BK_HUD
     jmp TallyEntry
 
 ; ------------------------------------------------------------------------------
@@ -4815,7 +4816,7 @@ TallyTramp:
 ; ------------------------------------------------------------------------------
     .ds $FFEC - *, 0
 HotOverlapFlag:
-    sta $1FF7                   ; select bank3 (record stream lives there)
+    sta BK_EXTRAS                   ; select bank3 (record stream lives there)
     jmp $F8F8                   ; bank3 HotOverlapBody (synced by verify_build)
     .ds $FFF2 - *, 0            ; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
 

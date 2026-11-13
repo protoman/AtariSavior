@@ -1,12 +1,13 @@
     processor 6502
     seg code
     include "colors.inc"            ; TV_CAVE_LINES (frame length of this TV standard)
+    include "banks.inc"             ; BK_* bank selectors by role (docs/agents/banks.md)
     org $F000
 ; Power-up stub (every bank has it: F4 powers up in an undefined bank): `lda #0 /
 ; sta $1FF4` selects bank0, whose $F005 is `jmp GameStart`. Guard: verify_build
 ; check_boot_banks (all 8 banks).
     lda #0
-    sta $1FF4
+    sta BK_GENERAL
 ; ==============================================================================
 ; Bank5 — free 4K window in the F4 (32K, 8 banks) layout.
 ; ==============================================================================
@@ -284,16 +285,16 @@ DemoScript:
     .byte   0                  ; end: restart the demo
 
     .ds $FBD0 - *, 0
-    sta $1FF6                   ; twin of bank0's EnterRoom tramp (bank2 has the jmp)
+    sta BK_ROOMS                   ; twin of bank0's EnterRoom tramp (bank2 has the jmp)
     .ds $FBF8 - *, 0
 ReturnPad:
-    sta $1FF4                   ; the every-bank ReturnPad contract (bank0 rts at $FBFB)
+    sta BK_GENERAL                   ; the every-bank ReturnPad contract (bank0 rts at $FBFB)
     .ds $FC08 - *, 0
-    sta $1FF8                   ; twin of CallPad_SaveKey (bank4 serves the jmp at $FC0B)
+    sta BK_SAVE                   ; twin of CallPad_SaveKey (bank4 serves the jmp at $FC0B)
     .ds $FC20 - *, 0
-    sta $1FF6                   ; twin of LoadLevel (bank2 serves the jmp at $FC23)
+    sta BK_ROOMS                   ; twin of LoadLevel (bank2 serves the jmp at $FC23)
     .ds $FC58 - *, 0
-    sta $1FF4                   ; bank0 $FC5B = jmp StartFrame
+    sta BK_GENERAL                   ; bank0 $FC5B = jmp StartFrame
     jmp TransBody               ; $FC5B: fetched after bank0's `sta $1FF9` at $FC58
     .ds $FC61 - *, 0
     jmp TransFinish             ; $FC61: after bank0's second pad at $FC5E

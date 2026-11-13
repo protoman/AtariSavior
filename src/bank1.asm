@@ -1,5 +1,6 @@
     processor 6502
     include "colors.inc"            ; NC_xx colour bytes for this TV (tools/gen_colors.py)
+    include "banks.inc"             ; BK_* bank selectors by role (docs/agents/banks.md)
 ; ==============================================================================
 ; bank1 — HUD rendering + 6-digit score (F6 bankswitch, $F000-$FFFF)
 ; ==============================================================================
@@ -55,7 +56,7 @@ VDELP1  = $26
     ; (a bank-select-less `jmp $F008` = BRK loop into zero fill).
     ; Guard: verify_build.check_boot_banks + tools/test_boot_banks.py.
     lda #0
-    sta $1FF4                       ; select bank0 (hotspot: the DATA is ignored)
+    sta BK_GENERAL                       ; select bank0 (hotspot: the DATA is ignored)
 
     ; --- ColOff/ColMask (plan 5.1b, 2026-10-20) ---
     ; The cell punch reads PF cells directly: PF0Buf/Y with ColOff,X (row
@@ -2091,7 +2092,7 @@ BMWCellSolid:
 ; ========================================================================
     .ds $FBF8 - *, 0
 ReturnPad:
-    sta $1FF4                   ; the `rts` at $FBFB is served by bank0
+    sta BK_GENERAL                   ; the `rts` at $FBFB is served by bank0
     .ds $FBFF - *, 0
     jmp UpdateBombSound
     jmp UpdateJetSound
@@ -2126,12 +2127,12 @@ ReturnPad:
 ; ========================================================================
     .ds $FC68 - *, 0
     lda #1
-    sta $1FF5
+    sta BK_HUD
     jmp $F540
 
     .ds $FC70 - *, 0
     lda #0
-    sta $1FF4
+    sta BK_GENERAL
     jmp $F18F           ; Overscan in bank0 (must match bank0 ToGameStub;
                         ; verify_build --sync-overscan patches this from
                         ; bank0.lst after every bank0 build)
@@ -2550,7 +2551,7 @@ RaftBody:
     jmp ReturnPad
 
     .ds $FEE7 - *, 0
-    sta $1FF5
+    sta BK_HUD
     jmp $F038
 
 ; ========================================================================
@@ -2668,7 +2669,7 @@ SetupScorePointers:
 
     .ds $FFE6 - *, 0
 TallyTramp_b1:
-    sta $1FF5
+    sta BK_HUD
     jmp TallyEntry
 
 ; ========================================================================

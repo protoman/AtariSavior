@@ -1,5 +1,6 @@
     processor 6502
     include "colors.inc"            ; NC_xx colour bytes for this TV (tools/gen_colors.py)
+    include "banks.inc"             ; BK_* bank selectors by role (docs/agents/banks.md)
     seg code
     org $F000
 ; ==============================================================================
@@ -179,7 +180,7 @@ PLAYER_MIN_Y = 0
 
     ; --- 5-byte stub: select bank0, then the fetch at $F005 is bank0's ---
     lda #0
-    sta $1FF4                       ; select bank0
+    sta BK_GENERAL                       ; select bank0
 
 ; ------------------------------------------------------------------------------
 ; DATA WINDOW 1 — $F010-$F44F (1 088 B): the per-level async EXTRAS streams +
@@ -208,7 +209,7 @@ B3RoomBlocks:
     ; `jmp ShapeStep7`; it expands the shape into PF0Buf/PF1Buf/PF2Buf, stages
     ; RoomMetaB (hot flag) and ends with `sta $1FF7` at +6, so the next fetch
     ; (+9) is B3Meta below. FetchPtr/X/Y/A are scratch across the hop.
-    sta $1FFB
+    sta BK_PROLOGUE
     .byte 0,0,0                     ; bank7: jmp ShapeStep7
     .byte 0,0,0                     ; bank7: sta $1FF7
 B3Meta:
@@ -866,7 +867,7 @@ BCFDarkRun:
     bne .BCFdarkLoop
 .BCFdarkDone:
     jmp B3StageBand            ; A3: local (PhaseBlink/pack live here now)
-    sta $1FF7                   ; chunk A2: StageBandTab lives in bank3
+    sta BK_EXTRAS                   ; chunk A2: StageBandTab lives in bank3
 BCFDarkMask:
     .byte $10, $20, $40, $80    ; rooms 0-3 → EnemyRamD bits 4-7
     .byte $10, $20, $40, $80    ; rooms 4-7 → lsr×2 = LaserState bits 2-5
@@ -1010,7 +1011,7 @@ HcrClock:
 ; ------------------------------------------------------------------------------
     .ds $FBF8 - *, 0
 ReturnPad:
-    sta $1FF4
+    sta BK_GENERAL
     rts
 
 ; ------------------------------------------------------------------------------

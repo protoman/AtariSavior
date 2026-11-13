@@ -1,12 +1,13 @@
     processor 6502
     seg code
+    include "banks.inc"             ; BK_* bank selectors by role (docs/agents/banks.md)
     org $F000
 ; The power-up pad every bank carries: `lda #0 / sta $1FF4` selects bank0, whose
 ; $F005 is `jmp GameStart`. The restart ops (game over, last stage cleared) jump
 ; here: the run restarts at the title and never returns to the caller.
 Restart:
     lda #0
-    sta $1FF4
+    sta BK_GENERAL
 ; ==============================================================================
 ; Bank4 — SaveKey service (docs/savekey_design.md, user 2026-10-28).
 ; ==============================================================================
@@ -481,7 +482,7 @@ SkTitle:
 ; ------------------------------------------------------------------------------
     .ds $FBF8 - *, 0
 ReturnPad:
-    sta $1FF4
+    sta BK_GENERAL
     .ds $FC0B - *, 0
     jmp SkService
 

@@ -20,9 +20,10 @@
 
 ; power-up stub (mandatory in EVERY bank: F4 powers up in an undefined bank)
     lda #0
-    sta $1FF4                       ; select bank0 - the fetch at $F005 is its jmp GameStart
+    sta BK_GENERAL                       ; select bank0 - the fetch at $F005 is its jmp GameStart
 
     include "colors.inc"
+    include "banks.inc"             ; BK_* bank selectors by role (docs/agents/banks.md)
     include "generated/bank6_equs.inc"
     include "generated/cave_zp.inc"
     include "generated/cave_small.inc"
@@ -35,7 +36,7 @@
 ; for it): `sta $1FFB` selects bank7, whose bytes at Kernel6Entry+3 are `jmp Prologue7`; it ends
 ; with `sta $1FFA` at Kernel6Entry+6, so the next fetch (+9) is bank6's `Kernel6Back`.
 Kernel6Entry:
-    sta $1FFB
+    sta BK_PROLOGUE
     .byte 0,0,0                     ; bank7: jmp Prologue7
     .byte 0,0,0                     ; bank7: sta $1FFA
 Kernel6Back:

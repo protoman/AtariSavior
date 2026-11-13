@@ -12,9 +12,10 @@
 ; Hotspot for this bank: $1FFB.
 ; ==============================================================================
     lda #0
-    sta $1FF4                       ; select bank0 — the fetch at $F005 is its
+    sta BK_GENERAL                       ; select bank0 — the fetch at $F005 is its
 
     include "colors.inc"
+    include "banks.inc"             ; BK_* bank selectors by role (docs/agents/banks.md)
     include "generated/bank6_equs.inc"
     include "generated/cave_zp.inc"
     include "generated/cave_luts.inc"
@@ -27,7 +28,7 @@ Kernel6Entry = Kernel6Pad + 3
     org Kernel6Entry + 3
     jmp Prologue7
     org Kernel6Entry + 6
-    sta $1FFA
+    sta BK_CAVE
     org $F100
 Prologue7:
     include "bank6_prologue.inc"
@@ -48,7 +49,7 @@ TILE_ROWS = 4
     org $F453 + 3
     jmp ShapeStep7
     org $F453 + 6
-    sta $1FF7
+    sta BK_EXTRAS
     org $F460
 ShapeStep7:
     lda RoomPF0Lo
