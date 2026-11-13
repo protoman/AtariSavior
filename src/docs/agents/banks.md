@@ -14,7 +14,7 @@ The current map is measured; the target map is a plan whose sizes are ESTIMATES 
 2. **Every bank has the boot stub**, whatever it holds (see "Boot code" below).
 3. **A routine only reads data that is in its own bank** (the F4 switch swaps the whole 4 KB window).
    Anything that reads level or model data runs in the bank that holds that data, or hops to it with the
-   pinned-address hop (the shape step in bank7 is the working example, `docs/agents/level_data_and_generator.md`).
+   pinned-address hop (the shape step in bank7 today is the working example, `docs/agents/level_data_and_generator.md`).
 4. **No new feature goes into a full bank** (bank0 is full and byte-frozen): extend the code zone instead.
 
 ## Boot code (every bank, no exceptions)
@@ -59,7 +59,7 @@ demo in 5, cave kernel in 6, prologue and shapes in 7). Nobody consolidated afte
 | 32 levels, 529 rooms (planned) | 3,393 B + index | 2,155 B | ~126 shapes |
 
 32 levels overflow the current windows (rooms at level 22-26, extras earlier). The fix is not "more ROM", it is
-moving level data to the last banks.
+moving level data to the last three banks.
 
 ## Target layout (plan)
 
@@ -71,23 +71,26 @@ Code in the first banks, in the order the user gave; models after the code; leve
 | 1 | **Cave code** | the generated cave kernel (now bank6) plus its VBL prologue (now bank7) | ~3.5 KB |
 | 2 | **Gameplay code** | enemy movement (moth walk, UpdateEnemies helpers), laser clamp/hit, bomb blast, stage slot staging, exit scan/pending, raft, bomb wall marks, strip blast | ~4.0 KB |
 | 3 | **Gameplay code (cont.) + HUD code** | phase/hcrunch/hot/dark/colour walkers (now bank3), HUD bars and score, title and level select (now bank1) | ~3.1 KB |
-| 4 | **Other code** | save-to-cartridge (I2C), version header, blank transition frame, attract-mode script. The spare room here is the CODE growth buffer | ~1.2 KB (+2.8 KB spare) |
-| 5 | **Room models** | the shape blocks, row pool and shape table (now bank7 window), headroom up to the 128-shape cap | ~1-3 KB |
-| 6 | **Levels A** | levels 1-N: boot stub, level-data service, room tables, extras | see below |
-| 7 | **Levels B** | levels N+1-32 (the same layout and the same service at the same addresses) | see below |
+| 4 | **Other code + room models** | save-to-cartridge (I2C), version header, blank transition frame, attract-mode script (~1.2 KB), then the shape blocks, row pool and shape table (now the bank7 window, ~0.9 KB used today, cap 128 shapes ~1-1.3 KB). The ~1.5 KB left is code growth buffer | ~2.5 KB (+1.5 KB spare) |
+| 5 | **Levels A** | levels 1-N: boot stub, level-data service, room tables, extras | see below |
+| 6 | **Levels B** | levels N+1-M (same layout and same service addresses as bank5) | see below |
+| 7 | **Levels C** | levels M+1-32 (same again) | see below |
 
-Sizes of code zones are estimates (sum ~15.8 KB of code into 5 banks); the survey fixes the real assignment.
+(Other code and the room models share bank4, which frees a third level bank: user rule 2026-11-13.)
+
+Sizes of code zones are estimates (sum ~15.8 KB of code into banks 0-4, with models); the survey fixes the real assignment.
 
 ### The level banks
 
-- Each level bank holds the boot stub, a small **level-data service** at FIXED addresses (identical in both
-  level banks), then data. The room loader chooses the bank by `Level` (levels 1-N: bank6, the rest: bank7)
-  and hops to the service, the way `EnterRoomB2` hops to the shape step today.
+- Each level bank (5, 6, 7) holds the boot stub, a small **level-data service** at FIXED addresses (identical in
+  all three level banks), then data. The room loader chooses the bank by `Level` (a three-way split of the
+  levels) and hops to the service, the way `EnterRoomB2` hops to the shape step today.
 - The service does everything that touches level data: copy the room record (shape index, position, enemy count,
   the enemy records), find the extras record, and hop on to the model bank for the shape step, which ends in
-  the usual return pad. Code that needs level data later reads the RAM copy, not ROM.
-- Budget: rooms 3.4 KB + extras 2.2 KB + index 0.2 KB = ~5.8 KB for 32 levels, plus two service copies
-  (target <= 0.8 KB each): fits in 8 KB with ~0.6 KB left. The converter fills bank6 first, then bank7.
+  the usual return pad (the model bank is bank4 now, one hop). Code that needs level data later reads the RAM copy, not ROM.
+- Budget: rooms 3.4 KB + extras 2.2 KB + index 0.2 KB = ~5.8 KB for 32 levels, plus three service copies
+  (target <= 0.8 KB each = 2.4 KB): fits in 12 KB with ~3.8 KB left for more or bigger levels. The
+  converter fills bank5 first, then bank6, then bank7.
 - Today's readers of level data that must move behind the service or switch to RAM copies:
   `EnterRoomB2`, `ExitScanB2`/`ExitDirB2` (room positions), `LoadLevelB2` (level start), `MothRoutine` and
   the spawn-X reads through `FoldIndirect` (enemy table), `LaserWallClamp`/`LaserHitTestBody`,
@@ -119,7 +122,7 @@ ROM layout and fill it**, taking pieces from the old one.
    free: the extras base table already holds 16-bit pointers, so a level's stream can sit in any window) and give
    the room tables a second home, so 32 levels fit. Gate: 20-level stage byte-for-byte equal in behaviour,
    `test_level_bank`, playbot 20/20.
-3. **Models into their own bank** of the new ROM.
+3. **Models next to the other code** (bank4) in the new ROM.
 4. **Fill the new ROM in zone order** (general, cave, gameplay, HUD, other, models, levels). Every piece
    brings its own `sta $1FF4+n` pads, the pinned addresses checked by `verify_build`, the `bank*.lst` readers
    in tools and tests, the frozen test banks (`tools/freeze_test_banks.sh`) and the PAL/PAL60 variants.
@@ -134,3 +137,4 @@ ROM layout and fill it**, taking pieces from the old one.
 - Whether the cave kernel (generated, `tools/cave_kernel_gen.py`) can move to bank1 without its pinned hops.
 - Frame cost of the extra hop on every room load (the load runs in the blank transition frame today).
 - Which pinned addresses (`$F453`, `$FC49`...) have to follow their routine and which stay put.
+- Where the split points between level banks fall (by bytes, so each level lives wholly in one bank).
