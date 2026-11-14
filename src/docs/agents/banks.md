@@ -217,6 +217,28 @@ banks 0-4 (20 KB) with ~4.8 KB spare.
 2. *Frame cost:* count fold reads per frame in the heaviest rooms (`test_frame_all_rooms` gate, 280 lines).
 3. *Spare-bit check:* `LevelRoomN` readers all mask `#$3F` (readers are bank2-only; grep proves it).
 
+## Bank0 budget survey (2026-11-14, user rule: keep >= 200 B free in bank0)
+
+Measured: bank0 holds 4,050 B in 4,096 B (~46 B free). Level pads with the bit-test select would cost ~18 B each x 11
+= ~200 B more, so the v2 sketch above (pads pick the bank) does NOT fit bank0. Corrected design:
+
+- **Bank0 pads stay exactly as they are** (`sta BK_ROOMS`, 3 B). Bank2 becomes the **router/gameplay bank**: the
+  `jmp body` it serves at pad+3 becomes `jmp Router_i`, a ~10 B stub in bank2 (`bit LevelRoomN` / `bmi` / `bvs` /
+  `sta BK_L5|L6|L7`, flags only) and each level bank serves `jmp body_i` at the byte after its `sta`. Bank0 growth: 0 B.
+  Cost: ~15 cycles per pad entry; `FoldIndirect` (7+ per frame) gets ~20 cycles more each - this is gate 2 (frame cost).
+- **Stubs live in the gameplay bank (2)**, so bank2 no longer holds level data; its data windows become code room.
+- **Reaching the 200 B reserve needs ~155 B moved out of bank0.** Candidates, with what the survey found:
+  - `SelectActiveObject` (308 B) and `LaserInput` (173 B): single callers but tightly bound to bank0 (they call
+    `SetObjectXPos`, `FoldIndirect`, `CallPad_*`, `LaserHitTest`; `SelectActiveObject` was moved out and REVERTED in
+    A1 2026-10-20 for cycle cost). NOT clean candidates.
+  - `TallyWork` (54 B, `TallyEntry` 66 B already trampolined) calls `CallPad_AddScore`, `PickupSnd`, `StartFrame`: needs
+    return pads, ~20 B kept in bank0. Net ~35 B.
+  - Other single-caller routines (`DropStep` 47, `CEH_KeyDisp` 44, `RefreshEnemyY` 59, `DeriveEnemyY` 63, `StepDown` 57,
+    `Slot1Hook` 96, `PHMOverlay` 63, `OvShutBand` 51) are UNVERIFIED: each needs a caller/cycle/pinned-address check.
+  - Conclusion: ~155 B is probably reachable by moving 3-4 of the small ones, but it is not yet proven. If it is not
+    found, the reserve rule (user) stands and the plan changes, not the reserve.
+- **New build guard:** the new ROM's `verify_build` fails if bank0 has < 200 B of padding.
+
 ## Lesson: survey the READERS before planning where data lives
 
 2026-11-14: the plan said "levels last, banks 5-7" without tracing which code reads the level data. Data can only be
