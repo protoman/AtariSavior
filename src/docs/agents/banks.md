@@ -341,3 +341,8 @@ Every future "move X to bank N" step starts with a reader/caller survey of X.
   bank1; the pads of bank0 use `BK_GAMEPLAY`; pinned addresses kept: RaftBody `$FDE3`, BombMarkWalls `$FB10`, ReturnPad `$FBF8`).
   **Finding:** the stage band and the colour build do NOT go to bank 3 yet: `BuildColupF -> B3StageBand -> jsr PhaseBlink`, and
   `PhaseBlink` walks the extras streams, so they stay with the extras walkers (bank 5) unless PhaseBlink is reworked.
+- **2026-11-14 (newrom): banks 4-7 placed, all 8 banks assemble.** Bank 4 = the old bank4 + the overlay cluster (hop `jmp PHMOverlay` at
+  `$F9BF`, `HotOverlapFlag` twin at `$FFEC`, shape window cap `$F9BF`); bank 5 = extras walkers + data (old bank3, unchanged);
+  bank 6 / 7 = room bank A / B (old bank2 assembled with `ROOMS_B = 0 / 1`). Bank0 of the new ROM has 316 B free (227 contiguous).
+  The new ROM boots and `tools/playbot.py --rom-dir newrom` finishes levels 1-3. Left: the switch-over (build.sh -> newrom,
+  verify_build / tests / frozen banks follow the role map), then more rooms per level.
