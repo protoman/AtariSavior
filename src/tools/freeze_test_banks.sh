@@ -71,7 +71,11 @@ dasm kernel.asm -f3 -obank0.bin -lbank0.lst -s/tmp/opencode/frozen_symbols.asm
 python3 "$DIR/tools/verify_build.py" --sync-overscan "$DIR"
 dasm bank1.asm -f3 -obank1.bin -lbank1.lst
 dasm bank3.asm -f3 -obank3.bin -lbank3.lst
-for i in 0 1 2 3; do
+# banks plan (2026-11-14): the room models live in bank4 and room bank B (bank5) is bank2's code with the
+# other levels' data - both depend on the staged test stage, so they are rebuilt here too.
+dasm bank4.asm -f3 -I. -Igenerated -obank4.bin -lbank4.lst
+dasm bank5.asm -f3 -I. -Igenerated -obank5.bin -lbank5.lst
+for i in 0 1 2 3 4 5; do
     SIZE=$(wc -c < "bank${i}.bin")
     [ "$SIZE" -lt 4096 ] && printf '\0%.0s' $(seq 1 $((4096 - SIZE))) >> "bank${i}.bin"
 done
@@ -90,7 +94,7 @@ cp bank0.lst bank1.lst bank2.lst bank3.lst bank4.lst bank5.lst bank6.lst bank7.l
 echo "freeze: refreshing src/tests/generated/ from the staged conversion ..."
 for f in "$DIR"/generated/level_[0-9][0-9][0-9]_*.asm \
          "$DIR"/generated/levels.asm "$DIR"/generated/levels_data.asm \
-         "$DIR"/generated/levels_index.asm "$DIR"/generated/levels_equ.asm \
+         "$DIR"/generated/levels_index.asm "$DIR"/generated/levels_index_B.asm "$DIR"/generated/levels_equ.asm \
          "$DIR"/generated/models_data.asm "$DIR"/generated/levels_extras.asm \
          "$DIR"/generated/spill_*.asm; do
     [ -f "$f" ] && cp "$f" "$DIR/tests/generated/$(basename "$f")"

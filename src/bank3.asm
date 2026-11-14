@@ -475,6 +475,8 @@ ERLoadDone:
 ; bank0's HotOverlapFlag pad ($FFEC -> bank2 $FFEF image) and exited through
 ; ReturnPad.
 ; ------------------------------------------------------------------------------
+    .ds $F5A0 - *, 0                ; EXTRAS WINDOW 2 (banks plan: 32 levels need more than window 1)
+    include "generated/spill_bank3_2.asm"
     .ds $F8B7 - *, 0
 
 ; C11 (2026-10-21): the "no record stream" sentinel. RoomRectsLo/Hi point here
@@ -1009,6 +1011,8 @@ HcrClock:
 ; the `sta $1FF4` switches to bank0 and the `rts` at $FBFB is fetched from
 ; bank0 (bank0's copy must keep `sta $1FF4 / rts`).
 ; ------------------------------------------------------------------------------
+    .ds $FB76 - *, 0                ; EXTRAS WINDOW 3
+    include "generated/spill_bank3_3.asm"
     .ds $FBF8 - *, 0
 ReturnPad:
     sta BK_GENERAL
@@ -1021,6 +1025,8 @@ ReturnPad:
 ; ------------------------------------------------------------------------------
     .ds $FC1A - *, 0                ; CallPad_BuildColupF's +3 ($FC17 sta $1FF7)
     jmp BuildColupF
+    .ds $FC1D - *, 0                ; EXTRAS WINDOW 4
+    include "generated/spill_bank3_4.asm"
 
 
 ; ------------------------------------------------------------------------------
@@ -1250,6 +1256,8 @@ M1OffTab:                           ; Phase 5: MetaA b0 → M1 x-offset (left/ri
 ; player bumped (sweep) instead of gating a per-shape wall record, so the
 ; $FE9C window is fill again.
 ; ------------------------------------------------------------------------------
+    .ds $FD71 - *, 0                ; EXTRAS WINDOW 5
+    include "generated/spill_bank3_5.asm"
     .ds $FEC0 - *, 0
 ColOff:     .byte 0,0,0,0, 4,4,4,4,4,4,4,4, 8,8,8,8,8,8,8,8
                                 ; N=4 stride 4 (PF1/PF2 rows at +4/+8)
