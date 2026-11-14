@@ -2080,7 +2080,7 @@ _SPILL_SLOTS = [
 # library below what the generator can use. Both halves are checked here; the
 # `.ds` pads that open them live in bank3.asm.
 _BANK3_EXTRAS_SLOT = (0xF010, 0xF450)   # async extras + base table (sized)
-_BANK3_SHAPES_SLOT = (0xF4C0, 0xFFFA)   # NOW IN BANK7 (2026-11-10)   # shape blocks + row pool + address table
+_BANK3_SHAPES_SLOT = (0xF4C0, 0xFBF8)   # NOW IN BANK4 (the models' bank, 2026-11-14; bank7 until then): shape blocks + row pool + address table, below bank4's ReturnPad $FBF8
 _BANK3_SLOTS = (
     ("spill_bank3.asm", "extras", _BANK3_EXTRAS_SLOT),
     ("spill_bank3_shapes.asm", "shapes", _BANK3_SHAPES_SLOT),

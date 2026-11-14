@@ -12,7 +12,8 @@ BKI_EXTRAS    = 3       ; level extras half: phase/hcrunch/hot/dark walkers + th
 BKI_SAVE      = 4       ; save-to-cartridge (I2C)
 BKI_TRANS     = 5       ; version header, blank transition frame, attract script
 BKI_CAVE      = 6       ; the generated gameplay cave kernel
-BKI_PROLOGUE  = 7       ; cave kernel start-up code + the room-model (shape) window
+BKI_PROLOGUE  = 7       ; cave kernel start-up code
+BKI_MODELS    = 4       ; room models: the shape step + the shape blocks / row pool (shares bank4, plan phase 3)
 
 BK_GENERAL    = $1FF4 + BKI_GENERAL
 BK_HUD        = $1FF4 + BKI_HUD
@@ -22,3 +23,4 @@ BK_SAVE       = $1FF4 + BKI_SAVE
 BK_TRANS      = $1FF4 + BKI_TRANS
 BK_CAVE       = $1FF4 + BKI_CAVE
 BK_PROLOGUE   = $1FF4 + BKI_PROLOGUE
+BK_MODELS     = $1FF4 + BKI_MODELS

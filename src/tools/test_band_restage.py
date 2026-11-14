@@ -86,7 +86,7 @@ if {"RoomMetaA", "RoomMetaB"} - ZMETA.keys():
 
 # C3 (2026-10-20): the row dictionary — the shape block stores 3 indices and
 # the loader expands them through these three SoA columns into PF0Buf.
-POOL = parse_labels(SRC / "bank7.lst",
+POOL = parse_labels(SRC / "bank4.lst",
                     {"RowPoolPF0", "RowPoolPF1", "RowPoolPF2"})
 POOL.update(parse_labels(SRC / "bank3.lst", {"RoomNoStream"}))
 if {"RowPoolPF0", "RowPoolPF1", "RowPoolPF2", "RoomNoStream"} - POOL.keys():
@@ -134,7 +134,7 @@ def main() -> int:
     shape_count = int(re.search(r"^LEVEL_SHAPE_COUNT = (\d+)$",
                                 idx_text, re.M).group(1))
     model_blocks = parse_labels(
-        SRC / "bank7.lst", {f"M{mid}Shape" for mid in range(shape_count)})
+        SRC / "bank4.lst", {f"M{mid}Shape" for mid in range(shape_count)})
     for n, syms, level in levels:
         table = syms[f"LEVEL{n}_RoomShapes"]
         enemy_data = syms[f"LEVEL{n}_EnemyDataTable"]
@@ -194,7 +194,7 @@ def main() -> int:
                     "must have no record stream)")
             # C13 (N=4): the shape block is EXACTLY the 4 row-pool
             # indices at block + 0..3 (band 0-3); band 1's b7 = hot.
-            blocks = _CM.BANK7           # shape blocks + row pool (bank7)
+            blocks = _CM.BANK4           # shape blocks + row pool (bank4)
             ext = _CM.BANK3              # extras streams stay in bank3
             idx = blocks[shape - 0xF000:shape - 0xF000 + 4]
             hot = bool(MODELS[int(model)].get("mid_band_type"))

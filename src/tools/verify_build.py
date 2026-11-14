@@ -1443,25 +1443,26 @@ def check_shape_blocks(src: Path) -> None:
     # 2026-11-10: the shape step (table, pool, hot flag) moved to BANK7's
     # ShapeStep7; bank3's B3RoomBlocks hops there and resumes at B3Meta.
     bank3_p = src / "bank3.asm"
-    bank7_p = src / "bank7.asm"
+    SB = banksym.bank_index("MODELS")       # the bank that holds the shape step + shape window
+    bank7_p = src / f"bank{SB}.asm"
     if bank3_p.exists() and bank7_p.exists():
         loader = bank3_p.read_text(errors="replace")
         shape7 = bank7_p.read_text(errors="replace")
         if not re.search(r"lda\s+RowPoolPF0,X", shape7, re.M):
-            err("bank7.asm ShapeStep7 does not read RowPoolPF0,X — the "
+            err(f"bank{SB}.asm ShapeStep7 does not read RowPoolPF0,X — the "
                 "row-pool expansion is missing (C3)")
         if re.search(r"cpy\s+#9\b", shape7 + loader):
             err("the retired 9-byte PF copy (cpy #9) is back — C3 replaces it "
                 "with per-band pool lookups")
         if "LEVEL_ShapeTable" not in shape7:
-            err("bank7.asm ShapeStep7 does not read LEVEL_ShapeTable — the "
+            err(f"bank{SB}.asm ShapeStep7 does not read LEVEL_ShapeTable — the "
                 "shape index must resolve in bank7 (2026-11-10)")
-        if not re.search(r"sta\s+(\$1FFB|BK_PROLOGUE)", loader):
-            err("bank3.asm B3RoomBlocks does not hop to bank7 (sta $1FFB)")
+        if not re.search(r"sta\s+(\$1FF8|BK_MODELS)", loader):
+            err("bank3.asm B3RoomBlocks does not hop to the models bank (sta BK_MODELS)")
         # C11 (2026-10-21): the hot flag rides band 1's index byte and the
         # overscan hot test must read the PF buffers, not a record stream.
         if not re.search(r"and\s+#\$80\s*\n\s*lsr\b", shape7):
-            err("bank7.asm ShapeStep7 does not derive the hot flag from "
+            err(f"bank{SB}.asm ShapeStep7 does not derive the hot flag from "
                 "band 1's index b7 (and #$80 / lsr -> MetaB b6) - C11")
         if not re.search(r"lda\s+RoomM1Hot", loader):
             err("bank3.asm has no RoomM1Hot reader — the hot-band M1 block "
@@ -1491,17 +1492,17 @@ def check_shape_blocks(src: Path) -> None:
             if name not in labels:
                 err(f"bank3.lst has no {name} - the extras window did not "
                     "assemble into bank3 ($F010)")
-    lst7 = src / "bank7.lst"
+    lst7 = src / f"bank{SB}.lst"
     if lst7.exists():
         labels, _ = parse_lst(lst7.read_text(errors="replace").splitlines())
         for name in ("RowPoolPF0", "RowPoolPF1", "RowPoolPF2",
                      "LEVEL_ShapeTable", "ShapeStep7"):
             if name not in labels:
-                err(f"bank7.lst has no {name} - the shape window did not "
+                err(f"bank{SB}.lst has no {name} - the shape window did not "
                     "assemble into bank7")
-        if "M0Shape" in labels and not 0xF4C0 <= labels["M0Shape"] < 0xFFFA:
-            err(f"bank7.lst: M0Shape at ${labels['M0Shape']:04X} is outside "
-                "the $F4C0-$FFF9 shape window")
+        if "M0Shape" in labels and not 0xF4C0 <= labels["M0Shape"] < 0xFBF8:
+            err(f"bank{SB}.lst: M0Shape at ${labels['M0Shape']:04X} is outside "
+                "the $F4C0-$FBF7 shape window")
 
 
 def check_bank3_entry(src: Path) -> None:

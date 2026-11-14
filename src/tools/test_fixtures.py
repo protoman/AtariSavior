@@ -73,7 +73,7 @@ def check(banks, labels) -> None:
     for label in ("M0Shape", "M2Shape", "M4Shape", "RoomNoStream"):
         if label not in labels:
             raise SystemExit(f"test_fixtures: label {label} missing in "
-                             "bank7.lst/bank3.lst — re-freeze or retire the fixture")
+                             "bank4.lst/bank3.lst — re-freeze or retire the fixture")
 
 
 if __name__ == "__main__":
@@ -82,7 +82,7 @@ if __name__ == "__main__":
     root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(root / "tools"))
     from test_cell_map import parse_labels  # noqa: PLC0415
-    lab = parse_labels(root / "tests" / "frozen" / "bank7.lst",
+    lab = parse_labels(root / "tests" / "frozen" / "bank4.lst",
                        {"M0Shape", "M2Shape", "M4Shape"})
     lab.update(parse_labels(root / "tests" / "frozen" / "bank3.lst", {"RoomNoStream"}))
     check(None, lab)

@@ -88,8 +88,8 @@ Consequences that are easy to get wrong:
   table) with its walkers `B3RoomBlocks`/`ExtrasLoad`, `PhaseBlink`/
   `BuildColupF`/`BCFDarkRun`, `HotOverlapBody`/`HOVFeatEntry`,
   `B3StageBand`, `PhHcrEntry`/`CrPfx`/`HcrClock`.
-- **Shape step in bank7 (2026-11-10).** The shape blocks + row pool + `LEVEL_ShapeTable`
-  live in bank7's window `$F4C0-$FFF9` (~2.8 KB, `_BANK3_SHAPES_SLOT` in
+- **Shape step in bank4 (bank7 until 2026-11-14, see `docs/agents/banks.md`).** The shape blocks + row pool + `LEVEL_ShapeTable`
+  live in bank4's window `$F4C0-$FBF7` (~2.3 KB, `_BANK3_SHAPES_SLOT` in
   `convert_level.py`; the name is historical). `bank3.B3RoomBlocks` (PINNED at
   `$F453`) does `sta $1FFB`; bank7's bytes at `$F456` are `jmp ShapeStep7`, which
   expands the 4 row-pool indices into PF0/1/2Buf, stages `RoomMetaB` = hot flag,

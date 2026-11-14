@@ -48,14 +48,14 @@ NAMES = {"B3RoomBlocks", "PF0Buf", "RoomRectsLo", "RoomRectsHi",
          "LevExtrasLo", "LevExtrasHi", "RoomM1Hot", "RoomNoStream"}
 NAMES7 = {"LEVEL_ShapeTable", "RowPoolPF0", "RowPoolPF1", "RowPoolPF2"}
 LAB = parse_labels(FROZEN / "bank3.lst", NAMES)
-LAB.update(parse_labels(FROZEN / "bank7.lst", NAMES7))
+LAB.update(parse_labels(FROZEN / "bank4.lst", NAMES7))
 NAMES = NAMES | NAMES7
 missing = NAMES - LAB.keys()
 if missing:
     sys.exit(f"bank3.lst labels missing: {sorted(missing)}")
 
 BANK3 = bytearray((FROZEN / "bank3.bin").read_bytes())
-BANK7 = bytearray((FROZEN / "bank7.bin").read_bytes())   # shapes (2026-11-10)
+BANK7 = bytearray((FROZEN / "bank4.bin").read_bytes())   # shapes (2026-11-10)
 
 # --- test-owned staging area inside bank3's $F010 data window tail ----------
 SHAPE_A = 0xF400          # non-async shape (cold: no hot cells)
@@ -111,7 +111,7 @@ def shape_block(pf12: bytes, hot: bool = False) -> bytes:
 
 _POOL: list[tuple[int, int, int]] = []
 
-put7(SHAPE_A, shape_block(PF_A))       # bank7 free area $F400-$F44F
+put7(SHAPE_A, shape_block(PF_A))       # bank4 free area $F400-$F44F
 put7(SHAPE_AH, shape_block(PF_A, hot=True))
 put7(SHAPE_B, shape_block(PF_B))
 
@@ -151,7 +151,7 @@ def run_room(room: int, ordinal: int = 0) -> bytearray:
     """Drive B3RoomBlocks; stop when the ReturnPad rts reaches the sentinel
     and return the ZP image."""
     _CM.BANK3 = bytearray(BANK3)          # fresh private copy per case
-    _CM.BANK7 = bytearray(BANK7)
+    _CM.BANK4 = bytearray(BANK7)
     mem = _CM.Mem()
     mem.bank = 3                          # B3RoomBlocks lives in bank3
     r = mem.ram

@@ -209,7 +209,7 @@ B3RoomBlocks:
     ; `jmp ShapeStep7`; it expands the shape into PF0Buf/PF1Buf/PF2Buf, stages
     ; RoomMetaB (hot flag) and ends with `sta $1FF7` at +6, so the next fetch
     ; (+9) is B3Meta below. FetchPtr/X/Y/A are scratch across the hop.
-    sta BK_PROLOGUE
+    sta BK_MODELS
     .byte 0,0,0                     ; bank7: jmp ShapeStep7
     .byte 0,0,0                     ; bank7: sta $1FF7
 B3Meta:

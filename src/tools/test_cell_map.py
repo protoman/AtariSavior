@@ -104,9 +104,9 @@ blk = {"LEVEL1_AsyncExtras", "RoomNoStream", "RoomMetaB", "RoomM1Hot"}
 blk7 = {"M5Shape", "M0Shape", "M0Rows"}
 L2 = parse_labels(FROZEN / "bank2.lst", need2 | blk)
 L3 = parse_labels(FROZEN / "bank3.lst", blk)
-L7 = parse_labels(FROZEN / "bank7.lst", blk7)
+L7 = parse_labels(FROZEN / "bank4.lst", blk7)
 if not blk7 <= L7.keys():
-    sys.exit(f"bank7 labels missing: {sorted(blk7 - L7.keys())}")
+    sys.exit(f"bank4 labels missing: {sorted(blk7 - L7.keys())}")
 if not need2 <= L2.keys():
     sys.exit(f"bank2 labels missing: {sorted(need2 - L2.keys())}")
 if not blk <= L3.keys():

@@ -54,7 +54,7 @@ BANKS = [bytearray(open(FROZEN / f"bank{i}.bin", "rb").read()) for i in range(8)
 _EX = None
 _M0RR = None
 for _l in ((FROZEN / "bank3.lst").read_text(errors="replace").splitlines()
-           + (FROZEN / "bank7.lst").read_text(errors="replace").splitlines()):
+           + (FROZEN / "bank4.lst").read_text(errors="replace").splitlines()):
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(LEVEL1_AsyncExtras|"
                   r"M0Shape)\s*$", _l)
     if _m:
@@ -65,7 +65,7 @@ for _l in ((FROZEN / "bank3.lst").read_text(errors="replace").splitlines()
 assert _EX is not None and _M0RR is not None, "bank3 level labels missing"
 BANKS[3][_EX + 1 - 0xF000] = 0
 BANKS[3][_EX + 2 - 0xF000] = 0
-BANKS[7][_M0RR - 0xF000] = 0                  # hot count = 0 (shapes live in bank7)
+BANKS[4][_M0RR - 0xF000] = 0                  # hot count = 0 (shapes live in bank4)
 
 # labels from bank0.lst (addresses move every commit)
 LABELS = {}

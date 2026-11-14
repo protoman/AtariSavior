@@ -42,10 +42,10 @@ numbers are approximate. The ROM is NOT full: about 14 KB is free, but in the wr
 | 1 | ~3.5 KB | ~0.6 KB | HUD (score, bars), title and level select, raft body, bomb wall marks, strip blast |
 | 2 | ~3.5 KB | ~0.6 KB | level ROOM half: room readers/exits/laser/moth/blast code plus the room tables (windows `_SPILL_SLOTS`, 2,019 B) |
 | 3 | ~2.3 KB | ~1.7 KB | level EXTRAS half: extras walkers (phase, hcrunch, hot, dark, colours) plus the extras data (window `$F010-$F44F`, 1,088 B) |
-| 4 | ~0.7 KB | ~3.4 KB | save-to-cartridge (I2C SaveKey) only |
+| 4 | ~1.6 KB | ~2.4 KB | save-to-cartridge (I2C SaveKey) + the room models: shape step, shape blocks, row pool (window `$F4C0-$FBF7`; moved here from bank7 on 2026-11-14, role `BK_MODELS`) |
 | 5 | ~0.5 KB | ~3.6 KB | version header, blank room-transition frame, attract-mode script |
 | 6 | ~2.3 KB | ~1.8 KB | the generated gameplay cave kernel |
-| 7 | ~2.0 KB | ~2.0 KB | cave kernel start-up code plus the room-model (shape) window `$F4C0-$FFF9` (2,874 B, ~850 B used) |
+| 7 | ~1.2 KB | ~2.9 KB | cave kernel start-up code only (the shape window moved to bank4) |
 
 Why it looks like this: banks 0-3 were full, so every new feature got a NEW bank (save in 4, transition and
 demo in 5, cave kernel in 6, prologue and shapes in 7). Nobody consolidated afterwards, which is why bank4
@@ -115,6 +115,7 @@ ROM layout and fill it**, taking pieces from the old one.
 
 ## How to get there (phases; each one builds, passes `verify_build` and the battery, and is committed alone)
 
+0. **Done:** bank selectors by role (`banks.inc`, `BK_*`; the old ROM stayed byte-identical), the empty `newrom/` skeleton, and the room models moved to bank4 (`BK_MODELS`, 2026-11-14; playbot 20/20, tests green).
 1. **Survey (no code).** For every routine: bank, size, callers, the data it reads, pinned addresses. Fill the
    assignment table in this file. Output: the final bank map and the real zone sizes.
 2. **New empty ROM skeleton** (see "Method"): 8 boot-stub banks, a build script, `check_boot_banks` green.

@@ -99,7 +99,7 @@ L2 = {}
 # C7 (2026-10-20): the stage/band walker and the shape blocks + extras
 # streams live in bank3 again; bank2 keeps the room/enemy tables.
 L3 = parse_labels(FROZEN / "bank3.lst", {"B3StageBand", "LEVEL1_AsyncExtras"})
-L3.update(parse_labels(FROZEN / "bank7.lst", {"M0Rows", "M3Rows"}))   # shapes: bank7
+L3.update(parse_labels(FROZEN / "bank4.lst", {"M0Rows", "M3Rows"}))   # shapes: bank4
 L2.update({k: L3[k] for k in ("M0Rows", "M3Rows",
                               "LEVEL1_AsyncExtras")})
 L2.update(parse_equ(FROZEN / "bank2.lst",

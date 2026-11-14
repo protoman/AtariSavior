@@ -27,3 +27,11 @@ def expand(text: str) -> str:
 def read_asm(path) -> str:
     """The source of `path` with the role selectors expanded to hotspot addresses."""
     return expand(Path(path).read_text(errors="replace"))
+
+
+def bank_index(role: str) -> int:
+    """Physical bank (0-7) of a role, e.g. bank_index("MODELS") -> 4 (banks.inc BKI_MODELS)."""
+    for m in re.finditer(r"^BKI_(\w+)\s*=\s*(\d+)", _INC.read_text(), re.M):
+        if m.group(1) == role:
+            return int(m.group(2))
+    raise KeyError(role)
