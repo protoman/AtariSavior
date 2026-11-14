@@ -13,7 +13,7 @@ BKI_OVERLAY   = 4       ; asym-patch collision overlay cluster (placed when bank
 BKI_EXTRAS    = 5       ; extras walkers + extras data of all 32 levels
 BKI_ROOMS     = 6       ; room bank A: room code + room data
 BKI_ROOMS_B   = 7       ; room bank B: same code, the levels past LEVEL_SPLIT
-BKI_PROLOGUE  = 1       ; cave kernel start-up code (same bank as the cave once bank 1 is filled)
+BKI_PROLOGUE  = 3       ; cave kernel start-up code (does not fit in the cave bank: 2 KB tables + 1.7 KB code)
 
 BK_GENERAL    = $1FF4 + BKI_GENERAL
 BK_CAVE       = $1FF4 + BKI_CAVE

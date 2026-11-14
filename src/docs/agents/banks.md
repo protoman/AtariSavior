@@ -329,3 +329,10 @@ Every future "move X to bank N" step starts with a reader/caller survey of X.
 - Frame cost of the extra hop on every room load (the load runs in the blank transition frame today).
 - Which pinned addresses (`$F453`, `$FC49`...) have to follow their routine and which stay put.
 - Where the split points between level banks fall (by bytes, so each level lives wholly in one bank).
+
+- **2026-11-14 (restart in `newrom/`): bank 0 and bank 1 filled.** The reorg is done by FILLING `newrom/` in plan order (the
+  original ROM is not touched; `tools/build_newrom.sh`, role map in `newrom/banks.inc`). Bank 0 = `kernel.asm` without the
+  overlay cluster (316 B free, 227 in one run at `$FAED`); `OverlayTramp` hops with `sta BK_OVERLAY`, the cluster is placed
+  when its bank is filled. Bank 1 = the cave kernel (old bank6, generated into `newrom/generated`). **Finding:** cave + prologue
+  do NOT share a bank (8 table pages = 2 KB pinned to `$F8-$FF` + ~1.7 KB of kernel code; the plan's ~3.5 KB was wrong), so
+  the prologue (~0.6 KB with its tables) goes to the gameplay code bank 3 (`BKI_PROLOGUE = 3`).
