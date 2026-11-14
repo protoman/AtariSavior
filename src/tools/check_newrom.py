@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import verify_build as V  # noqa: E402
 
-ZONES = ["general", "cave", "gameplay", "gameplay+HUD", "other+models", "levels A", "levels B", "levels C"]
+ZONES = ["general", "cave", "HUD", "gameplay", "other+models", "extras", "rooms A", "rooms B"]
 
 
 def main() -> int:

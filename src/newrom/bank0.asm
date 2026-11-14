@@ -2785,7 +2785,7 @@ ObjSpriteOffTable:
 
     .ds $F8C0 - *, 0
 CallPad_RaftBody:
-    sta BK_HUD                    ; select bank1 (last byte fetched from bank0)
+    sta BK_GAMEPLAY               ; select the gameplay bank (last byte fetched from bank0)
     jmp $FDE3                    ; bank1 RaftBody — returns via bank1's ReturnPad
 
 ; PlayerSpriteA/B, PlayerWalkA/B + PlayerColTable MOVED to the $FE00
@@ -3448,7 +3448,7 @@ CallPad_BuildColupF:
     sta BK_EXTRAS                   ; C7: body lives in bank3 now ($F9D9 cluster —
                                 ;   it walks the shape/extras stream there)
 CallPad_BombMarkWalls:
-    sta BK_HUD                   ; S5.2: body lives in bank1 ($FB10)
+    sta BK_GAMEPLAY              ; S5.2: body lives in the gameplay bank ($FB10)
     .byte 0,0,0                 ; $FC1D-$FC1F: CallPad_SelectObject retired by
                                 ;   A1 (SelectActiveObject is back in bank0, so
                                 ;   the VBL jsrs it directly). The 3 dead bytes
