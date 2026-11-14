@@ -256,6 +256,41 @@ Measured: bank0 holds 4,050 B in 4,096 B (~46 B free). Level pads with the bit-t
   `DoorLocked`) can move out; it was moved INTO bank0 in 2026-10-20 for cycles, so it costs a hop x3 per frame
   (check with `test_frame_stability`). `PickPlayerFrame` (49 B) calls nothing.
 
+## Layout v3 (2026-11-14, after the gate results; supersedes v2)
+
+Gate 2 killed v2's idea of folding every read. Capacity kills "readers x3". What is left is the cheapest shape that
+keeps every per-frame reader next to its data: **two identical room banks (A, B) plus one extras bank**.
+
+- **Rooms A / B (banks 6, 7), twins:** each holds ALL of today's bank2 code (~1,750 B: room entry, level load, exit scan,
+  moth, laser, blast, stage slot, miner) + stubs/boot/vectors/ReturnPad (~250 B) = ~2.0 KB, and ~2.1 KB of room data
+  (shapes, positions, counts, enemy records, level index). A holds levels 1..K, B holds K+1..32; K is chosen by bytes by
+  the converter, the engine knows it as one equate. Room data needed 3,393 B + ~230 B index = ~3.6 KB against
+  4.2 KB: **~0.6 KB margin** (before whole-level rounding, ~0.2 KB per bank).
+- **Entering:** the bank0 pads keep `sta BK_ROOMS` (= A); A's `jmp body` at pad+3 becomes `jmp Stub_i` (~10 B, flags
+  only): `bit LevelRoomN` (b7 = level >= K) / `bpl` to the body / `sta BK_ROOMS_B`; B serves `jmp body_i` after that
+  `sta`. Bank0 growth: 0 B. `FoldIndirect` gets the same stub (+~15 c x 8 per frame = ~120 c of the 389 c VBL slack).
+- **Extras bank (5): walkers + all extras data** for the 32 levels: the bank3 code that reads extras every frame
+  (hot overlap, phase, hcrunch, `ExtrasLoad`, ~1.4 KB) + 2,155 B of extras = ~3.6 KB; the non-extras bank3 code
+  (stage band, colour build, ~0.6 KB) moves to a code bank to widen the margin to ~0.9 KB.
+- **Code zone (banks 0-4):** 0 general (>= 200 B free), 1 cave, 2 HUD + title, 3 raft/bomb marks/strip blast + stage-band
+  and colour code, 4 save + version + transition + attract + models. ~13 KB of ~16 KB used.
+
+| Bank | Zone | Holds |
+|---|---|---|
+| 0 | general code | as today, level pads unchanged, >= 200 B free |
+| 1 | cave code | kernel (now bank6) + prologue (now bank7) |
+| 2 | HUD code | HUD, score, bars, title, level select (now bank1 minus raft etc.) |
+| 3 | gameplay code | raft, bomb wall marks, strip blast, stage band, colour build |
+| 4 | other code + models | save, version, transition, attract, shape blocks, row pool |
+| 5 | levels: extras | extras walkers + extras data, 32 levels |
+| 6 | levels: rooms A | room code (twin) + room data, levels 1..K |
+| 7 | levels: rooms B | the same code + room data, levels K+1..32 |
+
+Levels stay last (banks 5-7), code first, every bank has the boot stub. Gates for v3: (1) stub + FoldIndirect cost
+measured in the old ROM (`test_frame_all_rooms`, VBL slack >= 150 c); (2) A/B code identical except data (guard in
+`verify_build`); (3) bank0 cluster `PHMOverlay`+`OvShutBand`+`OvM1Block` moved out, hop cost measured; (4) the converter
+splits levels by bytes between A and B and reports the margin.
+
 ## Lesson: survey the READERS before planning where data lives
 
 2026-11-14: the plan said "levels last, banks 5-7" without tracing which code reads the level data. Data can only be
