@@ -27,10 +27,12 @@ import argparse
 import collections
 import heapq
 import json
+import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+LEVEL_COUNT = int(re.search(r"^LEVEL_COUNT\s*=\s*(\d+)", (ROOT / "kernel.asm").read_text(), re.M).group(1))   # the ROM's level count
 sys.path.insert(0, str(ROOT / "tools"))
 from test_cell_map import parse_labels  # noqa: E402
 import stage_reach as SR  # noqa: E402
@@ -141,7 +143,7 @@ class Console:
         self.frame()
         for _ in range(3):
             self.frame()
-        self.w("Level", (level - 2) % 20)      # one SELECT edge = Level + 1
+        self.w("Level", (level - 2) % LEVEL_COUNT)      # one SELECT edge = Level + 1
         self.swchb = 0xFD
         self.frame()
         self.swchb = 0xFF
@@ -1028,7 +1030,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("levels", nargs="*", type=int)
     ap.add_argument("--mortal", action="store_true")
-    ap.add_argument("--frames", type=int, default=7200)
+    ap.add_argument("--frames", type=int, default=9000)
     ap.add_argument("-v", action="store_true")
     ap.add_argument("--log", help="append one JSON line per death / give-up (last 48 frames, "
                                   "enemies, crunch/phase state, what the bot was doing)")

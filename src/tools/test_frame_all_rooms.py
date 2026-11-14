@@ -55,7 +55,7 @@ def main():
         i = args.index("--jobs")
         jobs = int(args[i + 1])
         del args[i:i + 2]
-    levels = [int(a) for a in args] or list(range(1, 21))
+    levels = [int(a) for a in args] or list(range(1, len(F.STAGE['levels']) + 1))
     bad, total = [], 0
     with Pool(jobs) as pool:
         for b, n in pool.imap_unordered(one_level, levels):

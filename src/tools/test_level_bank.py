@@ -172,8 +172,8 @@ def main() -> None:
     # count / enemy-record bases are the block's +n / +2n / +3n offsets, so the
     # emission order IS the contract. The block address is no longer stored per
     # room: it is LEVEL_ShapeTable[shape index].
-    index = (ROOT / "generated" / "levels_index.asm").read_text(
-        encoding="utf-8")
+    index = (ROOT / "generated" / "levels_index.asm").read_text(encoding="utf-8")
+    index_b = (ROOT / "generated" / "levels_index_B.asm").read_text(encoding="utf-8")   # room bank B's table
     assert "LEVEL_DATA_STRIDE = 7" in index, (
         "level index stride is not the 7-byte layout (kernel LoadLevel "
         "computes Level*7; start_room and miner_y are kernel constants)")
@@ -181,7 +181,7 @@ def main() -> None:
                          r"LEVEL\2_MINER_X, LEVEL\2_WALL_COLOR, "
                          r"LEVEL\2_WALL_COLOR2\n"
                          r"\s*\.word (LEVEL\2_RoomShapes)\n"
-                         r"\s*\.byte (\d+) ;", index, re.M)
+                         r"\s*\.byte (\d+) ;", index + "\n" + index_b, re.M)   # A + B tables
     assert len(entries) == n_levels, (
         f"level index has {len(entries)} 7-byte entries, want {n_levels} "
         "(miner room/x + 2 wall colors + shape column word + room count)")

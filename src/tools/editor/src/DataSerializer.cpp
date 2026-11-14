@@ -499,7 +499,7 @@ static const int kLevelPalettes2[32][3] = {
     {220, 70, 120},   // L29
     {90, 100, 200},   // L30
     {70, 200, 200},   // L31
-    {200, 60, 60}   // L32
+    {232, 232, 92}   // L32: silver + pale gold
 };
 
 // ---------------------------------------------------------------------------
@@ -542,7 +542,7 @@ static const int kLevelPalettes2[32][3] = {
 // ---------------------------------------------------------------------------
 namespace {
 
-constexpr int kStageLevels = 20;     // 21-32 are coded (lattice, palettes, ramp) but the ROM has no room for them yet
+constexpr int kStageLevels = 32;     // 21-32 are coded (lattice, palettes, ramp) but the ROM has no room for them yet
 constexpr int kGridW = 5;            // layout lattice (positions are 4-bit)
 constexpr int kGridH = 5;
 // Exit bits + hazard bits (2026-10-20: the generated stage got its HERO-style
@@ -2408,6 +2408,15 @@ int PlaceMothsAndSnakes(LevelData& lv, const std::vector<ModelData>& models, int
                 RoomData& room = lv.rooms[i];
                 const ModelData* m = ShapeOf(models, room.model_id);
                 if (!m || !CreatureRoomOk(room, *m, i)) continue;
+                // Frame budget (2026-11-14, test_frame_all_rooms): a moth walk AND a snake patrol in a room that
+                // also carries two async strips (M1 + ball overlay tests every collision walk) leave no
+                // overscan slack - the laser-kill frame wobbles. Never both creatures in a two-strip room.
+                if (room.asym_patches.size() >= 2) {
+                    bool other = false;
+                    for (const EnemyData& e : room.enemies)
+                        if (e.type == (int)(kind == 0 ? EnemyType::SNAKE : EnemyType::GIANT_MOTH)) other = true;
+                    if (other) continue;
+                }
                 if (pass == 0) {
                     if (ObjectCount(room) + (lv.miner_room == i ? 1 : 0) >= 2) continue;
                 } else {
@@ -3079,7 +3088,8 @@ int PlaceDoorsAndKeyN(LevelData& lv, const std::vector<ModelData>& models, int l
 int PlaceDoorsAndKey(LevelData& lv, const std::vector<ModelData>& models, int l) {
     if (l < 15) return 0;
     const int want = l >= 26 ? 3 : l >= 18 ? 2 : 1;
-    for (int w = want; w >= 1; --w) {
+    const int fewest = l >= 21 ? 2 : 1;      // levels 21+ always carry at least two doors (user 2026-11-13)
+    for (int w = want; w >= fewest; --w) {
         const LevelData saved = lv;
         const int r = PlaceDoorsAndKeyN(lv, models, l, w);
         if (r >= 0) return r;
@@ -3247,9 +3257,17 @@ int PlaceExtraMiners(LevelData& lv, const std::vector<ModelData>& models,
 // plan keeps every stretch between refills under kCellBudget, aiming for
 // kCellLead after the previous one. Returns the cells placed, or -1 when no
 // eligible route cell exists for a stretch (test_generator then fails loudly).
-int PlanPowerCells(LevelData& lv, const std::vector<ModelData>& models) {
+static int PlanPowerCellsAt(LevelData& lv, const std::vector<ModelData>& models, int level, int frac20) {
     const ReachResult rr = AnalyseReach(lv, models);
-    if (rr.route.empty() || rr.route.back().cost <= kCellBudget) return 0;
+    if (rr.route.empty()) return 0;
+    // Levels 21+ (user 2026-11-13: "2+ power cells per level"): the budget shrinks with the route so the
+    // level always carries at least two cells (four is the cap: one latch bit per room index mod 4).
+    int budget = kCellBudget;
+    if (level >= 21) {
+        budget = std::clamp(rr.route.back().cost * frac20 / 20, 10 * 60, kCellBudget);   // two cells, a third at most (4 latch bits)
+    }
+    const int lead = std::max(budget - 10 * 60, budget / 2);
+    if (rr.route.back().cost <= budget) return 0;
     auto modelOf = [&](int id) -> const ModelData* {
         for (const auto& m : models) {
             if (m.id == id) return &m;
@@ -3343,22 +3361,27 @@ int PlanPowerCells(LevelData& lv, const std::vector<ModelData>& models) {
     int placed = 0;
     int last = 0;
     const int total = rr.route.back().cost;
-    while (total - last > kCellBudget) {
+    while (total - last > budget) {
         int pick = -1, pickEvict = -1, ev = -1, pickBand = 0, pickCol = 0;
         // Preference: a free host in the lead window, then a free host anywhere
         // that leaves 10 s of slack, then the same two windows with eviction.
-        for (int pass = 0; pass < 4 && pick < 0; ++pass) {
-            // pass 0/2: the lead window; 1/3: as late as the budget allows
-            const int limit = last + ((pass & 1) ? kCellBudget - 10 * 60 : kCellLead);
+        for (int pass = 0; pass < 6 && pick < 0; ++pass) {
+            // passes 0-3: the lead window (free host, then with eviction); 4/5: as late as the budget allows
+            const int limit = last + (pass < 4 ? lead : budget);
+            const bool evict = pass == 2 || pass == 3 || pass == 5;
             for (size_t k = 0; k < rr.route.size(); ++k) {
                 if (rr.route[k].cost <= last) continue;
                 if (rr.route[k].cost > limit) break;
-                if (eligible(k, pass >= 2, ev)) {
+                if (eligible(k, evict, ev)) {
                     pick = (int)k; pickEvict = ev; pickBand = cBand; pickCol = cCol;
                 }
             }
         }
         if (pick < 0) {
+            if (std::getenv("SAVIOR_GEN_DEBUG")) {
+                std::fprintf(stderr, "cells: level %d no host: last=%d total=%d budget=%d bits=%zu placed=%d\n",
+                             level, last, total, budget, bits.size(), placed);
+            }
             return -1;
         }
         const auto& nd = rr.route[pick];
@@ -3372,6 +3395,28 @@ int PlanPowerCells(LevelData& lv, const std::vector<ModelData>& models) {
         ++placed;
     }
     return placed;
+}
+
+// Levels 21+ carry at least two cells (user 2026-11-13). The budget is a fraction of the route; when the
+// first fraction finds no host for some stretch, a longer budget (fewer cells) is tried, but the level must end
+// with two or more cells.
+int PlanPowerCells(LevelData& lv, const std::vector<ModelData>& models, int level) {
+    if (level < 21) return PlanPowerCellsAt(lv, models, level, 0);
+    auto cellsIn = [](const LevelData& d) {
+        int n = 0;
+        for (const RoomData& r : d.rooms)
+            for (const EnemyData& e : r.enemies)
+                if (e.type == (int)EnemyType::POWER_CELL) ++n;
+        return n;
+    };
+    const LevelData saved = lv;
+    for (int frac : {9, 10, 11, 12}) {
+        lv = saved;
+        const int r = PlanPowerCellsAt(lv, models, level, frac);
+        if (r >= 0 && cellsIn(lv) >= 2) return r;
+    }
+    lv = saved;
+    return -1;
 }
 
 // Moves the room's spider (same band) to the nearest column where the level is
@@ -3772,7 +3817,11 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         used.clear();
         for (int l = 1; l <= kStageLevels; ++l) {
             {   // experiment knob: SAVIOR_GEN_ROOMS_CAP caps the room count of levels 21+
-                int rooms = l < 2 ? 2 : l;
+                // Room count: level N has N rooms up to 20, then 20 (measured 2026-11-14): the room tables of the
+                // 32 levels live in two room banks whose data windows hold ~4.0 KB in total, and the tables do not
+                // pack past 20 rooms per level (22 does not fit; see docs/agents/banks.md). The extra levels grow in
+                // doors, keys, power cells and enemy mix instead.
+                int rooms = l < 2 ? 2 : std::min(l, 20);
                 if (l > 20 && std::getenv("SAVIOR_GEN_ROOMS_CAP"))
                     rooms = std::min(rooms, std::atoi(std::getenv("SAVIOR_GEN_ROOMS_CAP")));
                 walks[l - 1] = LevelLayout(l, rooms);
@@ -5160,7 +5209,7 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
     }
     // Power cells go in LAST: the route they sit on is the finished level's.
     for (int l = 1; l <= kStageLevels; ++l) {
-        if (PlanPowerCells(levels[l - 1], models) < 0) {
+        if (PlanPowerCells(levels[l - 1], models, l) < 0) {
             repair.problems.push_back(
                 "level " + std::to_string(l) + ": the route is longer than the "
                 "timer but no room can host a power cell");

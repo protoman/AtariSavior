@@ -344,7 +344,7 @@ EnemyClk        = $D7           ; 2026-10-26 ENEMY clock: every enemy gate / bob
                                 ;   EnemySpd / 2 (x1 .. x3 by level: tools/test_enemy_speed.py)
 EnemySpd        = $D8           ; half-units per frame: 2 + Level / 5 (x1, x1.5, x2 ...)
 EnemyFrac       = $D9           ; 0/1 carry of the half-unit accumulator
-UE_MIN_INTIM    = 12            ; TIM64T units (64c) of overscan an EXTRA enemy pass needs left
+UE_MIN_INTIM    = 16            ; TIM64T units (64c) of overscan an EXTRA enemy pass needs left
 EnemyPass       = $DA           ; passes left this frame
 ; Attract mode (2026-11, bank5 DemoHook). StickA / DemoOn are EOR-ed onto the real
 ; SWCHA / INPT4 reads in the three gameplay readers (main joystick read, walk
@@ -1563,7 +1563,12 @@ OverscanAudio:                  ; rejoin for the spawn drop-in (DropStep tail):
     ; --- Wait for overscan timer ---
 .WaitOverscan:
     lda INTIM
+    bmi .WaitDone               ; 2026-11-14: the timer already EXPIRED (work ran late): INTIM now counts
+                                ;   $FF,$FE.. one per cycle, and this loop polls every 7 cycles, so it
+                                ;   could skip the zero and spin whole 256-cycle laps (a 304-line frame
+                                ;   from a work overrun of a few cycles). Late = leave at once.
     bne .WaitOverscan
+.WaitDone:
 
     jmp TailHook                ; = jmp StartFrame, unless a room change is pending
                                 ;   (bank5 runs a blank frame first) or the demo plays
@@ -2812,7 +2817,7 @@ ENEMY_RAFT     = 7             ; type-7 enemy record = the moving, rideable raft
                                ; water of model row 2, carries the player and
                                ; returns; body lives in bank1 (RaftBody)
 ENEMY_DATA_STRIDE = 6
-LEVEL_COUNT    = 20              ; hand copy of generated LEVEL_COUNT (cmp in
+LEVEL_COUNT    = 32              ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync).
                                 ; 2026-10-21: live stage cut 20 -> 4 levels to
                                 ; fund the HERO kernel plan (bank0 eviction);
@@ -3281,17 +3286,18 @@ PHMOverlay:
     sec
     sbc #13                     ; BallX-13 (lit span is 7px, not 8: [vl,vl+6])
     cmp CollisionX              ; vs vl: overlap iff BallX-13 <= vl
-    bcc .OvBand
     beq .OvBand
+    bcs .OvClear                ; BallX-13 > vl: no overlap (2026-11-14: order swapped so the miss falls
+                                ;   straight into OvM1Block - the `jmp` is gone, -3 B in a full bank)
+.OvBand:
+    jmp OvShutBand              ; band overlap → shutter kill / strip solid
 .OvClear:
-    jmp OvM1Block               ; right-strip miss → M1 (left) strip test;
+                                ; right-strip miss → M1 (left) strip test (OvM1Block follows);
                                 ; IT returns with C set/clear.
                                 ; Shutter rooms: miss here = player left of
                                 ; the VISIBLE right-half block → passable
                                 ; (kill follows the drawn block only, async
                                 ; ruling 2026-10-14 — no left mirror)
-.OvBand:
-    jmp OvShutBand              ; band overlap → shutter kill / strip solid
 
 OvM1Block:
     ; Phase 4 M1 (left strip) collision overlay. Entered by JMP from
@@ -3570,6 +3576,10 @@ CEH_KeyDisp:
 EnterRoom:
     sta BK_ROOMS
     jmp $F010                    ; EnterRoomB2 — fetched from bank2 twin
+    .ds $FBD6 - *, 0
+UEEdone:
+    rts                         ; UEEpilogue's exit lives in the 3-byte hole after EnterRoom's slot (2026-11-14:
+                                ;   the `bmi` guard needed one byte more than the corridor had left)
 
 ; ------------------------------------------------------------------------------
 ; C3 (2026-10-20): room-exit entry pads. Four `sta $1FF6` halves packed 3 B
@@ -3614,16 +3624,17 @@ StageSlot1:
 ; calls does not overrun into 273+ lines. The first pass always runs. EnemySpd is
 ; never 0 here (LoadLevel sets it; sim_frame_budget asserts it), so the old `bmi`
 ; guard went to make room. An expired timer reads as a wrapped INTIM (>= $80 for
-; 127c): also "enough", but by then the frame is already late either way.
+; 127c): that is NOT "enough" - 2026-11-14: it used to count as enough, so a frame that had
+; already overrun started another pass and ran 304 lines (the A/B room-bank stubs cost ~100c
+; per frame; two heavy laser-kill rooms crossed the edge). `bmi` drops the pass instead.
 UEEpilogue:
     dec EnemyPass
-    beq .UEEdone
+    beq UEEdone
     lda INTIM
+    bmi UEEdone
     cmp #UE_MIN_INTIM
-    bcc .UEEdone
+    bcc UEEdone
     jmp UEPass
-.UEEdone:
-    rts
     .ds $FBF8 - *, 0            ; TitleSequenceFold / FooterFold /
                                  ;   TitlePlayerFold retired with the intro
                                  ;   movie (merged title, 2026-10-19)

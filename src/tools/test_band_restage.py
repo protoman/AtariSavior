@@ -75,10 +75,13 @@ for n, payload in enumerate(payloads, start=1):
     names = {f"LEVEL{n}_RoomShapes", f"LEVEL{n}_RoomCounts",
              f"LEVEL{n}_EnemyDataTable"}
     got = parse_labels(SRC / "bank2.lst", names)
+    in_b = bool(names - got.keys())         # not in room bank A: it is in room bank B (bank5)
+    if in_b:
+        got = parse_labels(SRC / "bank5.lst", names)
     missing = names - got.keys()
     if missing:
-        sys.exit(f"bank2.lst labels missing: {sorted(missing)}")
-    levels.append((n, got, payload))
+        sys.exit(f"bank2.lst/bank5.lst labels missing: {sorted(missing)}")
+    levels.append((n, got, payload, in_b))
 
 ZMETA = parse_labels(SRC / "bank2.lst", {"RoomMetaA", "RoomMetaB"})
 if {"RoomMetaA", "RoomMetaB"} - ZMETA.keys():
@@ -96,7 +99,7 @@ nostream = POOL["RoomNoStream"]
 
 
 def enter_room(mem: Mem, table: int, room_count: int, room: int,
-               level: int = 1) -> None:
+               level: int = 1, in_b: bool = False) -> None:
     """Stage what LoadLevel stages (C4): the level block base + its room count.
     The RoomPositions / RoomCounts / enemy-record bases are the block's
     +n / +2n / +3n offsets (C2 2026-10-20: 3 B shape-index room records),
@@ -109,6 +112,7 @@ def enter_room(mem: Mem, table: int, room_count: int, room: int,
     # with `Level` ($A3) — LoadLevelB2 sets it in the real game; the harness
     # stages what LoadLevel would (level is 1-based on the command line).
     r[L0["Level"] - 0x80] = level - 1
+    r[0xDB - 0x80] = 0x80 if in_b else 0   # RoomExits b7: which room bank the A/B stubs enter (LoadLevel sets it)
     mpu = MPU(memory=mem)
     mpu.pc = L0["EnterRoom"]
     mpu.a = room
@@ -135,7 +139,7 @@ def main() -> int:
                                 idx_text, re.M).group(1))
     model_blocks = parse_labels(
         SRC / "bank4.lst", {f"M{mid}Shape" for mid in range(shape_count)})
-    for n, syms, level in levels:
+    for n, syms, level, in_b in levels:
         table = syms[f"LEVEL{n}_RoomShapes"]
         enemy_data = syms[f"LEVEL{n}_EnemyDataTable"]
         rooms = level["rooms"]
@@ -143,7 +147,7 @@ def main() -> int:
                   for r in rooms]
         for i, room in enumerate(rooms):
             mem = Mem()
-            enter_room(mem, table, len(rooms), i, n)
+            enter_room(mem, table, len(rooms), i, n, in_b)
             band = mem.ram[L0["RoomBandColor"] - 0x80]
             want_on = bool(room.get("bottom_band"))
             if want_on:

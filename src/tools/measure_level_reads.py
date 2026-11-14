@@ -82,7 +82,7 @@ def main():
         i = a.index("--jobs")
         jobs = int(a[i + 1])
         del a[i:i + 2]
-    levels = [int(x) for x in a] or list(range(1, 21))
+    levels = [int(x) for x in a] or list(range(1, len(F.STAGE['levels']) + 1))
     allrows = []
     with Pool(jobs) as pool:
         for r in pool.imap_unordered(one_level, levels):

@@ -66,12 +66,12 @@ def main() -> int:
                 died = con.r("PlayerLives") < 8
                 if not hot and room.get("feature_cells"):
                     died = False      # a phase/crunch cell beside the strip may kill: not ours
-                ok = not left and bool(xs) and max(xs) <= 8 * f + 1 and died == hot
+                ok = not left and (bool(xs) or died) and max(xs, default=0) <= 8 * f + 1 and died == hot   # (a hot band may kill at the start x already)
                 if died != hot:
                     bad.append(f"level {n} room {ri + 1}: the ball strip on a "
                                f"{'hot' if hot else 'cold'} band "
                                f"{'did not kill' if hot else 'killed'}")
-                if ok and max(xs) < 8 * f - 6: unproven.append((n, ri + 1, row, f))
+                if ok and xs and max(xs) < 8 * f - 6: unproven.append((n, ri + 1, row, f))
                 what = f"ball strip col {f}: max RoomX {max(xs) if xs else '?'} > {8 * f + 1}"
             else:                              # M1 strip: full column col
                 f = col

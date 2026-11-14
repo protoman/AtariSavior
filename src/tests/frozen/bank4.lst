@@ -353,7 +353,7 @@
      56  f005		       00 08	   R_HIGH     =	8
      57  f005		       00 0b	   R_CHK      =	11
      58  f005		       00 08	   LIVES_MAX  =	8
-     59  f005		       00 14	   LEVEL_COUNT =	20	; hand copy of the kernel's LEVEL_COUNT
+     59  f005		       00 20	   LEVEL_COUNT =	32	; hand copy of the kernel's LEVEL_COUNT
      60  f005
      61  f005							; Game variables (hand copies of kernel.asm; check_equ_sync pairs the names)
      62  f005		       00 a3	   Level      =	$A3
@@ -579,7 +579,7 @@
     282  f16a		       ca		      dex		; (dex keeps C) SkN = 3: game over / run won
     283  f16b		       d0 15		      bne	.SkBack
     284  f16d		       a5 a3		      lda	Level	; game over / run won: the title comes back on the level
-    285  f16f		       c9 14		      cmp	#LEVEL_COUNT	;   just played (no SaveKey needed): GameStart keeps
+    285  f16f		       c9 20		      cmp	#LEVEL_COUNT	;   just played (no SaveKey needed): GameStart keeps
     286  f171		       90 04		      bcc	.SkKeep	;   Level when these two bytes hold the magic
     287  f173		       a9 00		      lda	#0
     288  f175		       85 a3		      sta	Level
@@ -620,7 +620,7 @@
     323  f1a6		       88		      dey
     324  f1a7		       10 f7		      bpl	.SkHi
     325  f1a9		       a5 c6		      lda	SkBuf+R_LEVEL	; (state 0 = no run to resume, but the level of the
-    326  f1ab		       c9 14		      cmp	#LEVEL_COUNT	;   last run stays selected: user 2026-11-11)
+    326  f1ab		       c9 20		      cmp	#LEVEL_COUNT	;   last run stays selected: user 2026-11-11)
     327  f1ad		       b0 05		      bcs	SkNothing
     328  f1af		       85 a3		      sta	Level
     329  f1b1		       4c b8 f1 	      jmp	SkOk
@@ -658,7 +658,7 @@
     361  f1e1							; zero high score. SkBuf[R_HIGH..] = max(old high, current score) on the way out.
     362  f1e1				   SkCheckpoint
     363  f1e1		       a5 a3		      lda	Level
-    364  f1e3		       c9 14		      cmp	#LEVEL_COUNT
+    364  f1e3		       c9 20		      cmp	#LEVEL_COUNT
     365  f1e5		       90 04		      bcc	SkWriter	; a stage advance
     366  f1e7		       a9 03		      lda	#3
     367  f1e9		       85 89		      sta	SkN	; the last stage was cleared: the run is over
@@ -711,7 +711,7 @@
     414  f23b		       4c 0b f1 	      jmp	SkStore
     415  f23e				   .SkOver
     416  f23e		       a5 a3		      lda	Level	; the title comes back on the level just played
-    417  f240		       c9 14		      cmp	#LEVEL_COUNT	;   (a cleared last stage wraps to the first)
+    417  f240		       c9 20		      cmp	#LEVEL_COUNT	;   (a cleared last stage wraps to the first)
     418  f242		       90 02		      bcc	.SkOvLv
     419  f244		       a9 00		      lda	#0
     420  f246				   .SkOvLv

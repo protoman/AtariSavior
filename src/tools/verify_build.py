@@ -2449,6 +2449,15 @@ def sync_kernel_literals(src: Path) -> int:
                       + b1[m1.end():])
                 bank1_p.write_text(b1, encoding="utf-8")
                 changed.append(f"bank1 LEVEL_COUNT {m1.group(1)} -> {gen_count}")
+        # bank4 (save-to-cartridge) keeps a third copy: a stage longer than its copy would never "clear the last stage"
+        bank4_p = src / "bank4.asm"
+        if bank4_p.exists() and not os.environ.get("FREEZE_STAGED"):   # (the frozen test banks keep the live count)
+            b4 = bank4_p.read_text(encoding="utf-8")
+            m4 = re.search(r"^LEVEL_COUNT = (\d+)", b4, re.M)
+            if m4 and int(m4.group(1)) != gen_count:
+                b4 = b4[:m4.start()] + f"LEVEL_COUNT = {gen_count}" + b4[m4.end():]
+                bank4_p.write_text(b4, encoding="utf-8")
+                changed.append(f"bank4 LEVEL_COUNT {m4.group(1)} -> {gen_count}")
 
     if changed:
         kernel_p.write_text(text, encoding="utf-8")

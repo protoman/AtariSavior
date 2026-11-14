@@ -53,8 +53,9 @@ import convert_level as C            # noqa: E402  (rows_from_json / load_stage)
 import test_editor_roundtrip as ER   # noqa: E402  (editor build + PY constant)
 import stage_reach as SR           # noqa: E402  (route_segments: power-cell guard)
 
-LEVELS = 20
-ROOMS = 2 + sum(range(2, LEVELS + 1))   # 211 (level 1 has 2 rooms too)
+LEVELS = 32
+ROOM_CAP = 20                            # rooms per level stop growing at 20 (banks plan: the two room banks hold ~4.0 KB)
+ROOMS = 2 + sum(min(n, ROOM_CAP) for n in range(2, LEVELS + 1))   # 451 (level 1 has 2 rooms too)
 GRID_SPAN = 15                          # C1: nibble 15 is the no-room sentinel
 MAX_SHAPES = 128  # format cap: 7-bit shape index (LAYOUT 8, 2026-10-24)
 SHAPE_BUDGET = 128     # the format cap; the REAL limit is the bank3 shapes
@@ -265,7 +266,7 @@ def main() -> int:
             print(f"FAIL: {len(levels)} levels, want {LEVELS}")
             return 1
         counts = [len(level["rooms"]) for level in levels]
-        want_counts = [2] + list(range(2, LEVELS + 1))   # 2-room floor
+        want_counts = [2] + [min(n, ROOM_CAP) for n in range(2, LEVELS + 1)]   # 2-room floor, capped at 20
         if counts != want_counts:
             print(f"FAIL: rooms per level {counts} != {want_counts}")
             return 1
@@ -1343,6 +1344,11 @@ def main() -> int:
                     print(f"FAIL: level {level_n} needs >= 1 locked door and exactly one "
                           f"key (doors={door_total}, keys={key_total})")
                     return 1
+                cells_total = sum(1 for rm in rooms for e in rm.get("enemies") or [] if e.get("type") == 14)
+                if level_n >= 21 and (door_total < 2 or cells_total < 2):
+                    print(f"FAIL: level {level_n}: the extra levels need >= 2 doors and >= 2 power cells "
+                          f"(doors={door_total}, cells={cells_total}; user 2026-11-13)")
+                    return 1
                 bad = key_before_door_problem(level, shapes)
                 if bad:
                     print(f"FAIL: level {level_n}: {bad}")
@@ -1380,7 +1386,9 @@ def main() -> int:
             # The crunch sweeps band 1 from pair 1 (pair 0 stays open so a
             # crunch room can carry a side link), so ANY room with a vertical
             # passage can host it.
-            if level_n >= 14 and hcrunches == 0:
+            # (levels 21+ use the 7x7 maze: a room first entered from the side never hosts a crunch (user
+            # 2026-10-28), a rule this host test does not model; the per-level demand is for levels 14-20)
+            if 14 <= level_n <= 20 and hcrunches == 0:
                 host = False
                 for (hx, hy), hrid in pos.items():
                     if hrid == 0 or hrid == level.get("miner_room"):
@@ -1495,7 +1503,7 @@ def main() -> int:
             print(f"FAIL: {len(txts)} room .txt mirrors, want {ROOMS}")
             return 1
 
-        print(f"test_generator: OK (20 levels, {ROOMS} rooms, "
+        print(f"test_generator: OK ({LEVELS} levels, {ROOMS} rooms, "
               f"{len(models)} shapes, byte-identical reruns, "
               f"bank2 slack {tables_slack}B, bank3 extras {extras_slack}B / "
               f"shapes {shapes_slack}B)")

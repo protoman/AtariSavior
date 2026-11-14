@@ -47,7 +47,7 @@ def worker(args):
     rnd = random.Random(seed * 1000 + level)
     con = P.Console()
     con.boot(level)
-    nlev = 20
+    nlev = P.LEVEL_COUNT
     seen = {"sp": 0xFF, "x": (255, 0), "y": (255, 0)}
     msgs = []
     still = 0
@@ -119,7 +119,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=6)
     ap.add_argument("--seed0", type=int, default=1)
     a = ap.parse_args()
-    levels = a.levels or list(range(1, 21))
+    levels = a.levels or list(range(1, P.LEVEL_COUNT + 1))
     jobs = [(lv, s, a.frames) for lv in levels for s in range(a.seed0, a.seed0 + a.seeds)]
     bad, sp, xs, ys = [], 0xFF, (255, 0), (255, 0)
     with Pool(a.jobs) as pool:

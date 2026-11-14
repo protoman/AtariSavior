@@ -297,15 +297,15 @@ def main() -> int:
         "game over must restart the run at the title on the stage played with 3 lives")
 
     # ---- F. the last stage cleared ends the run the same way ------------------
-    g = Game(chip_mem=make_record(1, 19, 4, 90000, 90000))
+    g = Game(chip_mem=make_record(1, 31, 4, 90000, 90000))
     boot(g)
-    assert g.ram[LEVEL] == 19
+    assert g.ram[LEVEL] == 31
     start_game(g)
     assert g.ram[LIVES] == 4 and g.score() == 90000
     g.run(6)
     stage_pickup(g, bar=60, bombs=2, lives=4)
     g.until(lambda: g.ram[DROPT] == 0xFE, 60, "the last tally to arm")
-    finish_tally(g, 20)
+    finish_tally(g, 32)
     g.until(lambda: g.title_shown() and g.bank == 0, 120, "the restart after the last stage")
     won = g.record()
     assert won[2] == 0, f"the run is over: no save may remain: {won.hex()}"

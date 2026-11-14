@@ -101,7 +101,7 @@ MothYDerive:
 SWCHB       = $0282
 StepsLeft   = $97               ; bank0 per-frame step latch (ZP byte block)
 BombY       = $85               ; bank0 bomb Y; on the title it is the key-grace counter (TitleSelect)
-LEVEL_COUNT = 20                 ; hand copy of kernel LEVEL_COUNT
+LEVEL_COUNT = 32                 ; hand copy of kernel LEVEL_COUNT
 ; ==============================================================================
 ; Merged title screen (2026-10-19): banner shown over the CAVE kernel? No —
 ; TitleKernel is the title frame itself: stage PF (rows 0-2) + player + logo

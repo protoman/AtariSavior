@@ -39,7 +39,7 @@ BASE = 0x7FE0                       # record block in the chip
 OP_BOOT, OP_RESUME, OP_CHECKPOINT, OP_GAMEOVER, OP_TITLE = 0, 1, 2, 3, 4
 ENEMY_RAMP, SK_HI = 0xC2, 0x93        # frame clock; vyLo/vyHi/PlayerYSub = the high score
 FRAME_CYCLES = 19912                # 262 lines x 76 cycles
-LEVEL_COUNT = 20
+LEVEL_COUNT = 32
 RESTART_PC = 0xF005                 # bank0's `jmp GameStart` after the power-up pad
 
 

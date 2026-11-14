@@ -56,7 +56,7 @@ R_SCORE     = 5
 R_HIGH      = 8
 R_CHK       = 11
 LIVES_MAX   = 8
-LEVEL_COUNT = 20                ; hand copy of the kernel's LEVEL_COUNT
+LEVEL_COUNT = 32                ; hand copy of the kernel's LEVEL_COUNT
 
 ; Game variables (hand copies of kernel.asm; check_equ_sync pairs the names)
 Level       = $A3
