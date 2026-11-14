@@ -82,6 +82,9 @@ LaserState = $C0                  ; b5-2 = RoomDarkMask rooms 4-7 (BCFDarkRun)
 EnemyRamD = $C1                  ; dir bits: 1 = right, 0 = left
 EnemyRamP = $C2                  ; free-running frame clock
 EnemyClk = $D7                   ; enemy clock (speed multiplier, kernel.asm)
+EnemyPass       = $DA           ; passes left this frame (kernel.asm EnemyPass)
+INTIM           = $0284
+MOTH_MIN_INTIM  = 16            ; TIM64T units (64c) of overscan the moth walk needs left
 EnemySpd = $D8                   ; half-units per frame = 2 + Level / 5
 RoomExits = $DB                  ; b1 = NO room to the west, b0 = NO room to the east
                                  ;   (set by SetRoomExits at every room entry; bank1's bomb
@@ -417,6 +420,13 @@ MothRoutine:
     ; the col swap and walk both use X (E3 lesson). Every exit re-stages
     ; FetchPtr (the walk overwrites it with window bytes) then
     ; jmp MothExitPad (sta $1FF4 / jmp UE_Next in bank0).
+    lda INTIM                 ; the moth walk is the heaviest enemy pass (~600c): it needs MOTH_MIN_INTIM
+    bmi .MothLate             ;   units of overscan left (2026-11-13: at EnemySpd >= 3 it overran the
+    cmp #MOTH_MIN_INTIM       ;   overscan - 304-line frames in level 20 room 13). A wrapped timer
+    bcs .MothGate             ;   (>= $80) means the overscan is already over.
+.MothLate:
+    jmp MothExit
+.MothGate:
     lda EnemyClk
     and #1
     beq .MothRun              ; branch-over-jmp (tail labels exceed ±127)

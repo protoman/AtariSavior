@@ -967,7 +967,8 @@ class Pilot:
                 for e in self.lv.rooms[tgt[0]].get("enemies") or []:
                     if e.get("type") == 6:
                         px = int(e["x"] * 4) + 7
-                self.touch(tgt, px)
+                if not (c.r("LevelStartRoom") & 0x80):   # KeyHeld: the flight may have picked it up already
+                    self.touch(tgt, px)
                 self.lv.doors_open = True
                 continue
             if tgt in self.lv.extras:
@@ -988,6 +989,8 @@ class Pilot:
         for _ in range(300):
             if c.r("DropTarget") == 0xFE:
                 return
+            if self.lv.key == tgt and (c.r("LevelStartRoom") & 0x80):
+                return                    # the key is ours (KeyHeld)
             if c.r("RoomNo") != room:
                 raise GiveUp(f"left the miner's room {room}")
             mx = px if px is not None else c.r("MinerX")

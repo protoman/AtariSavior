@@ -34,6 +34,7 @@ Usage: verify_build.py [src_dir]
 import json
 import os
 import re
+import banksym  # noqa: E402  (BK_* bank-selector roles <-> hotspots)
 import sys
 from pathlib import Path
 
@@ -1455,7 +1456,7 @@ def check_shape_blocks(src: Path) -> None:
         if "LEVEL_ShapeTable" not in shape7:
             err("bank7.asm ShapeStep7 does not read LEVEL_ShapeTable — the "
                 "shape index must resolve in bank7 (2026-11-10)")
-        if not re.search(r"sta\s+\$1FFB", loader):
+        if not re.search(r"sta\s+(\$1FFB|BK_PROLOGUE)", loader):
             err("bank3.asm B3RoomBlocks does not hop to bank7 (sta $1FFB)")
         # C11 (2026-10-21): the hot flag rides band 1's index byte and the
         # overscan hot test must read the PF buffers, not a record stream.
@@ -1586,7 +1587,7 @@ def check_tramp_targets(src: Path) -> None:
         p = src / name
         if not p.exists():
             continue
-        lines = p.read_text(errors="replace").splitlines()
+        lines = banksym.read_asm(p).splitlines()      # BK_* roles -> $1FFx hotspots
         for i, raw in enumerate(lines):
             code = raw.split(";", 1)[0]
             m = sta_re.search(code)

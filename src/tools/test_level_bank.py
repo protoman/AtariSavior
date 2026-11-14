@@ -33,9 +33,9 @@ BANK1 = (ROOT / "bank1.asm").read_text(encoding="utf-8")
 BANK2 = (ROOT / "bank2.asm").read_text(encoding="utf-8")
 
 BLOCK = [
-    "sta $1FF6",
+    "sta BK_ROOMS",
     "lda (FetchPtr),Y",
-    "sta $1FF4",
+    "sta BK_GENERAL",
     "rts",
 ]
 

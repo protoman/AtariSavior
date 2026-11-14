@@ -89,7 +89,7 @@ assert ".LDigitLoop" not in title, "digits band was retired with the black scree
 for src, name in ((kernel, "kernel"), (bank1, "bank1")):
     assert "CallPad_TitleKernel:" not in src, \
         f"{name} still carries the retired TitleKernel pad"
-assert "CallPad_TitleBand:\n    sta $1FF5" in kernel, \
+assert "CallPad_TitleBand:\n    sta BK_HUD" in kernel, \
     "kernel must keep the TitleBand sta half"
 assert "CallPad_Overscan:" not in kernel and "CallPad_Overscan:" not in bank1, \
     "CallPad_Overscan had no caller and was deleted with the tail-pad packing"

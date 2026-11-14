@@ -52,7 +52,7 @@ def reach(level, room):
     con.boot(level)
     pilot = P.Pilot(con, P.Level(STAGE, level), False, False)
     pilot.start_frames = con.frames
-    pilot.budget = 4000
+    pilot.budget = 9000
     pilot.hover = False
 
     class Stop(Exception):
@@ -65,7 +65,7 @@ def reach(level, room):
             raise Stop
     con.frame = fr
     try:
-        pilot.play(4000)
+        pilot.play(9000)
     except (Stop, P.Done):
         pass
     con.frame = orig
