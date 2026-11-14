@@ -298,6 +298,22 @@ splits levels by bytes between A and B and reports the margin.
   boot stub + vectors only, reserved for levels. The shape window cap dropped to `$FBD0` (`_BANK3_SHAPES_SLOT`).
   `verify_build` follows the roles (`_CODE_BANKS`, `TRANS_PADS`). Battery 93/93 after fixing `test_room_transition`
   and `test_tally` (they hard-coded bank 5). Next: physical order (cave to 1, HUD to 3, extras to 5, rooms to 6)
+- **2026-11-14: 32 levels run (layout v3 built in the OLD bank order).** Room banks A (bank2) and B (bank5 = `bank2.asm`
+  assembled with `ROOMS_B = 1`) hold levels 1-23 / 24-32 (the converter picks the largest prefix that fits A; the rest
+  must fit B). Every bank0 pad is unchanged (`sta BK_ROOMS`); A's slot at pad+3 is `jmp Stub_x` (`RSTUB` macro; `bit
+  RoomExits` b7 picks the bank, set by LoadLevel / SetRoomExits). `FoldIndirect` reads through `Stub_Fold`. Extras of all
+  32 levels sit in five bank3 windows (first-fit). Guards: `check_room_banks`, stub-aware pad checks (`_bank_bytes`).
+  **Capacity is the limit:** the room tables pack only up to 20 rooms per level (22 does not fit: fragmentation of the
+  eight windows at ~93% fill), so the generator caps levels at 20 rooms. More rooms need more window space (smaller
+  records, one more room bank after merging the cave prologue, or code moved out of A/B). Frame budget: heavy rooms
+  have ~0-1 timer units of overscan left; fixes in kernel.asm: `UEEpilogue` drops the extra pass on a wrapped INTIM,
+  `.WaitOverscan` leaves at once when the timer already expired (the 7-cycle poll could skip the zero and spin
+  256-cycle laps = 304-line frames), `UE_MIN_INTIM` 16. The generator never puts a moth AND a snake in a room with two
+  async strips. Not done: the physical bank ORDER of the target table (cave to bank1, HUD after gameplay, levels in
+  5-7) - the roles still sit in the old banks (rooms 2 + 5, extras 3, cave 6, prologue 7); bank0 still has only ~45 B
+  free (the >= 200 B reserve needs the `PHMOverlay` cluster moved out, ~227 B).
+  Results: battery 93/93, playbot 32/32 levels, `test_frame_all_rooms` 902 runs OK.
+
   and the room-bank twin (bank 7).
 
 ## Lesson: survey the READERS before planning where data lives
