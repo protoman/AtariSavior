@@ -239,6 +239,23 @@ Measured: bank0 holds 4,050 B in 4,096 B (~46 B free). Level pads with the bit-t
     found, the reserve rule (user) stands and the plan changes, not the reserve.
 - **New build guard:** the new ROM's `verify_build` fails if bank0 has < 200 B of padding.
 
+## Gate results 2026-11-14 (`tools/measure_level_reads.py`, all 211 rooms, fire held and released, steady frames)
+
+- **Reads that would become folds** (`lda (FetchPtr),Y` / `lda (EnemyDataLo),Y` executed in bank2 or bank3):
+  worst frame 9 in bank3 (extras walkers; L6-L8 room 4), 12 in bank2 (moth/laser/blast/stage slot; L18 room 17),
+  plus 8 bank0 `FoldIndirect` calls (L4 room 2, L18 room 17). Worst combined: 22 in L18 room 17.
+- **Cost:** a fold is ~40 c against ~5 c for the direct read, so +35 c per read: worst room ~+500-700 c per frame.
+  The VBL window is 2,880 c and the worst room uses 2,491 c (L7 room 6), i.e. **389 c of slack** (rule: >= 150 c).
+  The extras walkers and `SelectActiveObject` run in the VBL. **Gate 2 FAILS: gameplay code cannot read level data
+  through per-read folds.** (The bank0 pad stays; the problem is the readers, not the entry.)
+- **Consequence for layout v2:** the code that reads level data every frame must live NEXT TO the data or read a RAM
+  copy. Putting the walkers (~1,100 B) in the level banks makes the service ~2.1 KB: 3 banks x ~1.9 KB = 5.7 KB
+  against 5.78 KB needed, i.e. it does not fit. Open options: (a) per-room RAM copy of the enemy records + extras
+  (needs ~30-40 B of RAM that does not exist today), (b) four level banks, (c) a smaller extras format.
+- **Bank0 reserve:** the closed cluster `PHMOverlay` + `OvShutBand` + `OvM1Block` (~227 B, calls only itself and
+  `DoorLocked`) can move out; it was moved INTO bank0 in 2026-10-20 for cycles, so it costs a hop x3 per frame
+  (check with `test_frame_stability`). `PickPlayerFrame` (49 B) calls nothing.
+
 ## Lesson: survey the READERS before planning where data lives
 
 2026-11-14: the plan said "levels last, banks 5-7" without tracing which code reads the level data. Data can only be
