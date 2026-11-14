@@ -336,3 +336,8 @@ Every future "move X to bank N" step starts with a reader/caller survey of X.
   when its bank is filled. Bank 1 = the cave kernel (old bank6, generated into `newrom/generated`). **Finding:** cave + prologue
   do NOT share a bank (8 table pages = 2 KB pinned to `$F8-$FF` + ~1.7 KB of kernel code; the plan's ~3.5 KB was wrong), so
   the prologue (~0.6 KB with its tables) goes to the gameplay code bank 3 (`BKI_PROLOGUE = 3`).
+- **2026-11-14 (newrom): banks 2 and 3 filled.** Bank 2 = HUD, title, level select, score, sound, tally, music (old bank1 minus the
+  gameplay set; 2,398 B). Bank 3 = the prologue (old bank7) + raft, strip blasts, `ClearPFColumn`, `BombMarkWalls` (cut out of old
+  bank1; the pads of bank0 use `BK_GAMEPLAY`; pinned addresses kept: RaftBody `$FDE3`, BombMarkWalls `$FB10`, ReturnPad `$FBF8`).
+  **Finding:** the stage band and the colour build do NOT go to bank 3 yet: `BuildColupF -> B3StageBand -> jsr PhaseBlink`, and
+  `PhaseBlink` walks the extras streams, so they stay with the extras walkers (bank 5) unless PhaseBlink is reworked.
