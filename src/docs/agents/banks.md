@@ -291,6 +291,15 @@ measured in the old ROM (`test_frame_all_rooms`, VBL slack >= 150 c); (2) A/B co
 `verify_build`); (3) bank0 cluster `PHMOverlay`+`OvShutBand`+`OvM1Block` moved out, hop cost measured; (4) the converter
 splits levels by bytes between A and B and reports the margin.
 
+## Progress log
+
+- **2026-11-14: bank5 emptied.** The blank transition frame, the attract script and the version header moved to
+  bank4 (`trans.inc`, version at `$FC70`; twin pads `$FBD0/$FC08/$FC20/$FC58-$FC64`); `BKI_TRANS = 4`. Bank5 is now
+  boot stub + vectors only, reserved for levels. The shape window cap dropped to `$FBD0` (`_BANK3_SHAPES_SLOT`).
+  `verify_build` follows the roles (`_CODE_BANKS`, `TRANS_PADS`). Battery 93/93 after fixing `test_room_transition`
+  and `test_tally` (they hard-coded bank 5). Next: physical order (cave to 1, HUD to 3, extras to 5, rooms to 6)
+  and the room-bank twin (bank 7).
+
 ## Lesson: survey the READERS before planning where data lives
 
 2026-11-14: the plan said "levels last, banks 5-7" without tracing which code reads the level data. Data can only be

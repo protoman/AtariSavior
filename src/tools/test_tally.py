@@ -25,6 +25,8 @@ Run: /home/iuri/python3/bin/python3 tools/test_tally.py
 import re
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import banksym  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT
@@ -133,7 +135,7 @@ calls = []                  # dynamic jsr chain: [(jsr_pc, ...)] like sim_bomb_f
 # with pushed return addresses instead of a `jsr`, so the jsr chain cannot see
 # it: treat the whole frame, TBgo -> StartFrame, as the LoadLevel chain.
 PC_TBGO = None
-for _l in (SRC / 'bank5.lst').read_text(errors='replace').splitlines():
+for _l in (SRC / 'bank4.lst').read_text(errors='replace').splitlines():
     _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+\.?TBgo\s*$', _l)
     if _m:
         PC_TBGO = int(_m.group(1), 16)
@@ -155,7 +157,7 @@ def step():
     global in_blank
     prev_pc = mpu.pc
     op = mem[prev_pc]
-    if mem.bank == 5 and prev_pc == PC_TBGO:
+    if mem.bank == banksym.bank_index("TRANS") and prev_pc == PC_TBGO:
         in_blank = True
     elif in_blank and mem.bank == 0 and prev_pc == PC_STARTFRAME:
         in_blank = False

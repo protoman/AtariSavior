@@ -21,6 +21,8 @@ Run: /home/iuri/python3/bin/python3 src/tools/test_room_transition.py
 import re
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import banksym  # noqa: E402
 
 SRC = Path(__file__).resolve().parents[1]   # src/
 BANKS = [open(SRC / f'bank{i}.bin', 'rb').read() for i in range(8)]
@@ -165,12 +167,12 @@ while not poked:
 
 # bank5 TransBody entry (the blank frame) from the listing
 PC_TBGO = None
-for _l in (SRC / 'bank5.lst').read_text(errors='replace').splitlines():
+for _l in (SRC / 'bank4.lst').read_text(errors='replace').splitlines():
     _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+\.?TBgo\s*$', _l)
     if _m:
         PC_TBGO = int(_m.group(1), 16)
 if PC_TBGO is None:
-    sys.exit('.TBgo not found in bank5.lst')
+    sys.exit('.TBgo not found in bank4.lst')
 Z_LCS = zp('LevelConnSpare')
 PC_PAD = LABELS['CallPad_Transition']
 
@@ -183,7 +185,7 @@ cur_blank = None
 SF = LABELS['StartFrame']
 while frame < FRAMES:
     step()
-    if mem.bank == 5 and mpu.pc == PC_TBGO:
+    if mem.bank == banksym.bank_index("TRANS") and mpu.pc == PC_TBGO:
         cur_blank = mem.wall
         blank_enter.append(frame)
     if mem.bank == 0 and mpu.pc == SF and cur_blank is not None:

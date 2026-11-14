@@ -281,7 +281,7 @@
      10  10000 ????		00 02	    BKI_ROOMS  =	2	; level room half: room readers, exits, laser, moth, blast + the room tables
      11  10000 ????		00 03	    BKI_EXTRAS =	3	; level extras half: phase/hcrunch/hot/dark walkers + the extras data
      12  10000 ????		00 04	    BKI_SAVE   =	4	; save-to-cartridge (I2C)
-     13  10000 ????		00 05	    BKI_TRANS  =	5	; version header, blank transition frame, attract script
+     13  10000 ????		00 04	    BKI_TRANS  =	4	; version header, blank transition frame, attract script
      14  10000 ????		00 06	    BKI_CAVE   =	6	; the generated gameplay cave kernel
      15  10000 ????		00 07	    BKI_PROLOGUE =	7	; cave kernel start-up code
      16  10000 ????		00 04	    BKI_MODELS =	4	; room models: the shape step + the shape blocks / row pool (shares bank4, plan phase 3)
@@ -291,7 +291,7 @@
      20  10000 ????		1f f6	    BK_ROOMS   =	$1FF4 + BKI_ROOMS
      21  10000 ????		1f f7	    BK_EXTRAS  =	$1FF4 + BKI_EXTRAS
      22  10000 ????		1f f8	    BK_SAVE    =	$1FF4 + BKI_SAVE
-     23  10000 ????		1f f9	    BK_TRANS   =	$1FF4 + BKI_TRANS
+     23  10000 ????		1f f8	    BK_TRANS   =	$1FF4 + BKI_TRANS
      24  10000 ????		1f fa	    BK_CAVE    =	$1FF4 + BKI_CAVE
      25  10000 ????		1f fb	    BK_PROLOGUE =	$1FF4 + BKI_PROLOGUE
      26  10000 ????		1f f8	    BK_MODELS  =	$1FF4 + BKI_MODELS
@@ -4055,12 +4055,12 @@
    3760  fc58							; itself, padded), then the same exit. CallPad_TransRet is where EnterRoom's
    3761  fc58							; rts lands (bank5 pushes $FC5D) and goes back to bank5 to pad the frame.
    3762  fc58				   CallPad_Transition
-   3763  fc58		       8d f9 1f 	      sta	BK_TRANS	; $FC58 -> bank5 `jmp TransBody` at $FC5B
+   3763  fc58		       8d f8 1f 	      sta	BK_TRANS	; $FC58 -> bank5 `jmp TransBody` at $FC5B
    3764  fc5b		       4c 5c f0 	      jmp	StartFrame	; $FC5B: reached after bank5's `sta $1FF4`
    3765  fc5e				   CallPad_TransRet
-   3766  fc5e		       8d f9 1f 	      sta	BK_TRANS	; $FC5E -> bank5 `jmp TransFinish` at $FC61
+   3766  fc5e		       8d f8 1f 	      sta	BK_TRANS	; $FC5E -> bank5 `jmp TransFinish` at $FC61
    3767  fc61				   CallPad_TransSaved
-   3768  fc61		       8d f9 1f 	      sta	BK_TRANS	; $FC61 -> bank5 `jmp TransAfterSave` at $FC64
+   3768  fc61		       8d f8 1f 	      sta	BK_TRANS	; $FC61 -> bank5 `jmp TransAfterSave` at $FC64
    3769  fc64
    3770  fc64							; ==============================================================================
    3771  fc64							; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.

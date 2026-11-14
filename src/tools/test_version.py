@@ -21,8 +21,8 @@ assert f'"S.A.V.I.O.R. {version}"' in asm, "version.asm is stale: run ./build.sh
 
 rom = (ROOT / "savior.bin").read_bytes()
 stamp = f"S.A.V.I.O.R. {version}".encode() + b"\0"
-assert rom[5 * 4096 + 5:5 * 4096 + 5 + len(stamp)] == stamp, (
-    f"bank5 header {rom[5 * 4096 + 5:5 * 4096 + 37]!r}, want {stamp!r}: run ./build.sh")
+assert rom[4 * 4096 + 0xC70:4 * 4096 + 0xC70 + len(stamp)] == stamp, (
+    f"bank5 header {rom[4 * 4096 + 0xC70:4 * 4096 + 0xC70 + 32]!r}, want {stamp!r}: run ./build.sh")
 
 manual = (ROOT / "docs" / "manual" / "build_manual.py").read_text()
 assert 'VERSION = (SRC / "VERSION")' in manual and "Version {VERSION}" in manual, (

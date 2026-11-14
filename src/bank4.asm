@@ -1,5 +1,6 @@
     processor 6502
     seg code
+    include "colors.inc"            ; TV_CAVE_LINES (the transition frame length, trans.inc)
     include "banks.inc"             ; BK_* bank selectors by role (docs/agents/banks.md)
     org $F000
 ; The power-up pad every bank carries: `lda #0 / sta $1FF4` selects bank0, whose
@@ -532,11 +533,28 @@ ShapeStep7:
 ;   return $FBF8: this `sta $1FF4` selects bank0, whose `rts` at $FBFB returns
 ;          to the caller (bank0's ReturnPad is the same two instructions)
 ; ------------------------------------------------------------------------------
+    .ds $FBD0 - *, 0
+    sta BK_ROOMS                   ; twin of bank0's EnterRoom pad (the transition frame jumps here)
     .ds $FBF8 - *, 0
 ReturnPad:
     sta BK_GENERAL
+    .ds $FC08 - *, 0
+    sta BK_SAVE                    ; twin of CallPad_SaveKey (the `jmp` below is fetched after it)
     .ds $FC0B - *, 0
     jmp SkService
+    .ds $FC20 - *, 0
+    sta BK_ROOMS                   ; twin of LoadLevel (bank2 serves the jmp at $FC23)
+    .ds $FC58 - *, 0
+    sta BK_GENERAL                 ; bank0 $FC5B = jmp StartFrame
+    jmp TransBody                  ; $FC5B: fetched after bank0's `sta BK_TRANS` pad at $FC58
+    .ds $FC61 - *, 0
+    jmp TransFinish                ; $FC61: after bank0's second pad at $FC5E
+    .ds $FC64 - *, 0
+    jmp TransAfterSave             ; $FC64: after bank0's third pad at $FC61
+    .ds $FC70 - *, 0
+RomVersion:
+    include "version.asm"
+    include "trans.inc"
 
     .ds $FFFA - *, 0
     .word $F000

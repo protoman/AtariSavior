@@ -582,9 +582,9 @@ MOVE_PADS = (
 # (`jmp StartFrame`, reached after bank5's `sta $1FF4` at $FC58). Pad 2 ($FC5E)
 # is where EnterRoom's rts lands (bank5 pushes $FC5D).
 TRANS_PADS = (
-    ("CallPad_Transition", 0xFC58, 5, "TransBody"),
-    ("CallPad_TransRet", 0xFC5E, 5, "TransFinish"),
-    ("CallPad_TransSaved", 0xFC61, 5, "TransAfterSave"),
+    ("CallPad_Transition", 0xFC58, banksym.bank_index("TRANS"), "TransBody"),
+    ("CallPad_TransRet", 0xFC5E, banksym.bank_index("TRANS"), "TransFinish"),
+    ("CallPad_TransSaved", 0xFC61, banksym.bank_index("TRANS"), "TransAfterSave"),
 )
 SPLIT_PADS = CORRIDOR_PADS + EXIT_PADS + TAIL_PADS + MOVE_PADS + TRANS_PADS
 
@@ -1610,6 +1610,11 @@ def check_tramp_targets(src: Path) -> None:
                 break  # first non-comment line decides: jmp pair or not a tramp
 
 
+# Banks that hold CODE (pads, ReturnPad); the level banks and the empty banks carry only the boot stub.
+_CODE_BANKS = sorted({banksym.bank_index(r) for r in
+                      ("GENERAL", "HUD", "ROOMS", "EXTRAS", "SAVE", "TRANS", "MODELS")})
+
+
 def check_callpads(src: Path) -> None:
     """Cross-bank call pads: ONE live half per bank (split, 2026-10-20 chunk 4).
 
@@ -1622,7 +1627,7 @@ def check_callpads(src: Path) -> None:
     wrong pad address or a stale operand is a silent wrong-bank jump.
     """
     banks: dict[int, bytes] = {}
-    for idx in (0, 1, 2, 3, 4, 5):
+    for idx in _CODE_BANKS:
         p = src / f"bank{idx}.bin"
         if not p.exists():
             err(f"bank{idx}.bin missing (callpad check)")
@@ -1630,10 +1635,10 @@ def check_callpads(src: Path) -> None:
         data = p.read_bytes()
         if len(data) == 4096:
             banks[idx] = data
-    if len(banks) != 6:
+    if len(banks) != len(_CODE_BANKS):
         return
     labels: dict[int, dict[str, int]] = {}
-    for idx in (0, 1, 2, 3, 4, 5):
+    for idx in _CODE_BANKS:
         lp = src / f"bank{idx}.lst"
         if not lp.exists():
             err(f"bank{idx}.lst missing (callpad label check)")
@@ -1646,7 +1651,7 @@ def check_callpads(src: Path) -> None:
     # --- ReturnPad: every bank that HAS bodies switches to bank0; bank0
     # serves the `rts`. C7 2026-10-20: bank3 has bodies again (the shape
     # half), so 0/1/2/3 all carry the pad.
-    for idx in (0, 1, 2, 3, 4, 5):
+    for idx in _CODE_BANKS:
         rp = labels[idx].get("ReturnPad")
         if rp is not None and rp != PAD_LO:
             err(f"bank{idx} ReturnPad ${rp:04X} != ${PAD_LO:04X} (every "

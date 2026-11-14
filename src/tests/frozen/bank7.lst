@@ -296,7 +296,7 @@
      10  f005		       00 02	   BKI_ROOMS  =	2	; level room half: room readers, exits, laser, moth, blast + the room tables
      11  f005		       00 03	   BKI_EXTRAS =	3	; level extras half: phase/hcrunch/hot/dark walkers + the extras data
      12  f005		       00 04	   BKI_SAVE   =	4	; save-to-cartridge (I2C)
-     13  f005		       00 05	   BKI_TRANS  =	5	; version header, blank transition frame, attract script
+     13  f005		       00 04	   BKI_TRANS  =	4	; version header, blank transition frame, attract script
      14  f005		       00 06	   BKI_CAVE   =	6	; the generated gameplay cave kernel
      15  f005		       00 07	   BKI_PROLOGUE =	7	; cave kernel start-up code
      16  f005		       00 04	   BKI_MODELS =	4	; room models: the shape step + the shape blocks / row pool (shares bank4, plan phase 3)
@@ -306,7 +306,7 @@
      20  f005		       1f f6	   BK_ROOMS   =	$1FF4 + BKI_ROOMS
      21  f005		       1f f7	   BK_EXTRAS  =	$1FF4 + BKI_EXTRAS
      22  f005		       1f f8	   BK_SAVE    =	$1FF4 + BKI_SAVE
-     23  f005		       1f f9	   BK_TRANS   =	$1FF4 + BKI_TRANS
+     23  f005		       1f f8	   BK_TRANS   =	$1FF4 + BKI_TRANS
      24  f005		       1f fa	   BK_CAVE    =	$1FF4 + BKI_CAVE
      25  f005		       1f fb	   BK_PROLOGUE =	$1FF4 + BKI_PROLOGUE
      26  f005		       1f f8	   BK_MODELS  =	$1FF4 + BKI_MODELS
