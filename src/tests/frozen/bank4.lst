@@ -1,479 +1,1327 @@
 ------- FILE bank4.asm LEVEL 1 PASS 2
       1  fffe					      processor	6502
       2  10000 ????				       seg	code
-      3  f000					      org	$F000
-      4  f000							; The power-up pad every bank carries: `lda #0 / sta $1FF4` selects bank0, whose
-      5  f000							; $F005 is `jmp GameStart`. The restart ops (game over, last stage cleared) jump
-      6  f000							; here: the run restarts at the title and never returns to the caller.
-      7  f000				   Restart
-      8  f000		       a9 00		      lda	#0
-      9  f002		       8d f4 1f 	      sta	$1FF4
-     10  f005							; ==============================================================================
-     11  f005							; Bank4 — SaveKey service (docs/savekey_design.md, user 2026-10-28).
-     12  f005							; ==============================================================================
-     13  f005							; A 24LC256 I2C EEPROM on the RIGHT controller port: pin 3 = SDA = SWCHA bit 2,
-     14  f005							; pin 4 = SCL = SWCHA bit 3 (Stella SaveKey.cxx). Open drain by hand: the SWCHA
-     15  f005							; latch bits stay 0 and a line is driven LOW by setting its SWACNT bit (output)
-     16  f005							; or RELEASED by clearing it (input, pulled up in the key). Nothing is ever
-     17  f005							; driven high. Bit-banged without delays: every SWACNT store is >= 4 cycles
-     18  f005							; (3.4 us), far above the chip's 400 kHz timing.
-     19  f005							;
-     20  f005							; ONE 12-byte record at SK_ADDR (16-byte aligned: it never straddles a 64-byte
-     21  f005							; page), staged in SkBuf for the whole call:
-     22  f005							;   0-1 magic $53,$01 (the 2nd byte is the format version)   2 state (1 = save)
-     23  f005							;   3 level (0-based)	 4 lives   5-7 score (packed BCD Th,Hu,Te)
-     24  f005							;   8-10 HIGH score (packed BCD)  11 checksum = $A5 eor bytes 0-10
-     25  f005							; A bad magic/checksum is "no data": the game starts fresh and the next write
-     26  f005							; repairs it. No key (NACK on the control byte) aborts every op at once.
-     27  f005							;
-     28  f005							; SkService (A = op), C=0 when it did something, C=1 when there was nothing to do
-     29  f005							;   0 BOOT	   title power-on: Level := the saved stage; the high score goes
-     30  f005							;		   to SkHi (vyLo/vyHi/PlayerYSub) for the title to show
-     31  f005							;   1 RESUME	   RESET on the saved stage: lives + score := the saved ones
-     32  f005							;   2 CHECKPOINT  stage advance (the caller already did `inc Level`): save {Level,
-     33  f005							;		   lives, score}; high = max(high,score). Level >= LEVEL_COUNT =
-     34  f005							;		   the last stage was cleared: same as GAMEOVER
-     35  f005							;   3 GAMEOVER    erase the save; high = max(high, score); then RESTART at the
-     36  f005							;		   title (never returns; with no key it just restarts)
-     37  f005							; Clobbers A/X/Y, SkB/SkN/SkT/SkL and SkBuf. Leaves SWACNT = 0 (bus released).
-     38  f005							; Hotspot for this bank: $1FF8 (F4: bank = addr - $1FF4).
-     39  f005							; ==============================================================================
-     40  f005		       02 80	   SWCHA      =	$0280
-     41  f005		       02 81	   SWACNT     =	$0281
-     42  f005		       00 04	   SK_SDA     =	$04	; SWCHA/SWACNT bit of pin 3
-     43  f005		       00 08	   SK_SCL     =	$08	; SWCHA/SWACNT bit of pin 4
-     44  f005		       00 0c	   SK_BOTH    =	SK_SDA|SK_SCL
-     45  f005		       00 7f	   SK_ADDR_H  =	$7F	; record block $7FE0 (open question: AtariVox list)
-     46  f005		       00 e0	   SK_ADDR_L  =	$E0
-     47  f005		       00 a0	   SK_CTRL_W  =	$A0	; 1010 000 R/W
-     48  f005		       00 a1	   SK_CTRL_R  =	$A1
-     49  f005		       00 0c	   SK_REC_LEN =	12
-     50  f005		       00 02	   R_STATE    =	2
-     51  f005		       00 03	   R_LEVEL    =	3
-     52  f005		       00 04	   R_LIVES    =	4
-     53  f005		       00 05	   R_SCORE    =	5
-     54  f005		       00 08	   R_HIGH     =	8
-     55  f005		       00 0b	   R_CHK      =	11
-     56  f005		       00 08	   LIVES_MAX  =	8
-     57  f005		       00 14	   LEVEL_COUNT =	20	; hand copy of the kernel's LEVEL_COUNT
-     58  f005
-     59  f005							; Game variables (hand copies of kernel.asm; check_equ_sync pairs the names)
-     60  f005		       00 a3	   Level      =	$A3
-     61  f005		       00 ac	   PlayerLives =	$AC
-     62  f005		       00 c2	   EnemyRamP  =	$C2	; free-running frame clock (bank0 RefreshEnemyY)
-     63  f005		       00 f3	   ScoreTh    =	$F3
-     64  f005		       00 f4	   ScoreHu    =	$F4
-     65  f005		       00 f5	   ScoreTe    =	$F5
-     66  f005
-     67  f005							; Scratch: dead at every call site (title / level load) - see the design doc.
-     68  f005		       00 88	   SkB	      =	$88	; byte being shifted (kernel Temp)
-     69  f005		       00 89	   SkN	      =	$89	; op flag (kernel ZPSpare89, free)
-     70  f005		       00 8b	   SkT	      =	$8B	; (kernel CollisionX)
-     71  f005		       00 8e	   SkL	      =	$8E	; loop counter (kernel CollisionEndX)
-     72  f005		       00 93	   SkHi       =	$93	; high score handed to the title: vyLo, vyHi, PlayerYSub
-     73  f005							;   (dead on the title; bank0 TitleScore reads them)
-     74  f005		       00 c3	   SkBuf      =	$C3	; 12 bytes = PF0Buf..PF2Buf (rebuilt by the room load)
-     75  f005
-     76  f005							; ------------------------------------------------------------------------------
-     77  f005							; I2C primitives. Between bits SCL is low; STOP/START leave the bus released/low.
-     78  f005							; ------------------------------------------------------------------------------
-     79  f005				   SkStart		; bus released -> START, SCL low
-     80  f005		       a9 04		      lda	#SK_SDA
-     81  f007		       8d 81 02 	      sta	SWACNT	; SDA falls while SCL is high
-     82  f00a		       a9 0c		      lda	#SK_BOTH
-     83  f00c		       8d 81 02 	      sta	SWACNT
-     84  f00f		       60		      rts
-     85  f010
-     86  f010				   SkStop		; any state -> STOP, bus released
-     87  f010		       a9 0c		      lda	#SK_BOTH
-     88  f012		       8d 81 02 	      sta	SWACNT	; SDA low, SCL low
-     89  f015		       a9 04		      lda	#SK_SDA
-     90  f017		       8d 81 02 	      sta	SWACNT	; SCL high
-     91  f01a		       a9 00		      lda	#0
-     92  f01c		       8d 81 02 	      sta	SWACNT	; SDA rises while SCL is high
-     93  f01f		       60		      rts
-     94  f020
-     95  f020				   SkRestart		; SCL low -> repeated START, SCL low
-     96  f020		       a9 08		      lda	#SK_SCL
-     97  f022		       8d 81 02 	      sta	SWACNT	; release SDA
-     98  f025		       a9 00		      lda	#0
-     99  f027		       8d 81 02 	      sta	SWACNT	; release SCL
-    100  f02a		       4c 05 f0 	      jmp	SkStart
-    101  f02d
-    102  f02d							; Send A, MSB first; returns C=0 when the chip ACKed. SCL low, SDA low on exit.
-    103  f02d				   SkSend
-    104  f02d		       85 88		      sta	SkB
-    105  f02f		       a2 08		      ldx	#8
-    106  f031				   .SkBit
-    107  f031		       06 88		      asl	SkB
-    108  f033		       a0 0c		      ldy	#SK_BOTH	; bit 0: SDA low
-    109  f035		       90 02		      bcc	.SkOut
-    110  f037		       a0 08		      ldy	#SK_SCL	; bit 1: SDA released
-    111  f039				   .SkOut
-    112  f039		       8c 81 02 	      sty	SWACNT	; data valid, SCL low
-    113  f03c		       98		      tya
-    114  f03d		       29 04		      and	#SK_SDA
-    115  f03f		       8d 81 02 	      sta	SWACNT	; SCL high
-    116  f042		       8c 81 02 	      sty	SWACNT	; SCL low
-    117  f045		       ca		      dex
-    118  f046		       d0 e9		      bne	.SkBit
-    119  f048		       a9 08		      lda	#SK_SCL
-    120  f04a		       8d 81 02 	      sta	SWACNT	; release SDA for the ACK
-    121  f04d		       a9 00		      lda	#0
-    122  f04f		       8d 81 02 	      sta	SWACNT	; SCL high: the chip holds SDA low for an ACK
-    123  f052		       ad 80 02 	      lda	SWCHA
-    124  f055		       29 04		      and	#SK_SDA
-    125  f057		       85 8b		      sta	SkT
-    126  f059		       a9 08		      lda	#SK_SCL
-    127  f05b		       8d 81 02 	      sta	SWACNT	; SCL low
-    128  f05e		       a9 0c		      lda	#SK_BOTH
-    129  f060		       8d 81 02 	      sta	SWACNT	; SDA low again
-    130  f063		       a5 8b		      lda	SkT
-    131  f065		       c9 01		      cmp	#1	; C = 1 when SDA stayed high (NACK)
-    132  f067		       60		      rts
-    133  f068
-    134  f068							; Receive a byte into A. C=1 on entry -> NACK it (the last byte), C=0 -> ACK.
-    135  f068				   SkRecv
-    136  f068		       a9 00		      lda	#0
-    137  f06a		       2a		      rol		; A = the ACK bit to send (1 = NACK)
-    138  f06b		       85 8b		      sta	SkT
-    139  f06d		       a9 08		      lda	#SK_SCL
-    140  f06f		       8d 81 02 	      sta	SWACNT	; SDA released, SCL low
-    141  f072		       a2 08		      ldx	#8
-    142  f074				   .SkRb
-    143  f074		       a9 00		      lda	#0
-    144  f076		       8d 81 02 	      sta	SWACNT	; SCL high
-    145  f079		       ad 80 02 	      lda	SWCHA
-    146  f07c		       29 04		      and	#SK_SDA
-    147  f07e		       c9 01		      cmp	#1	; C = the data bit
-    148  f080		       26 88		      rol	SkB
-    149  f082		       a9 08		      lda	#SK_SCL
-    150  f084		       8d 81 02 	      sta	SWACNT	; SCL low
-    151  f087		       ca		      dex
-    152  f088		       d0 ea		      bne	.SkRb
-    153  f08a		       a0 0c		      ldy	#SK_BOTH	; ACK: SDA low
-    154  f08c		       a5 8b		      lda	SkT
-    155  f08e		       f0 02		      beq	.SkAck
-    156  f090		       a0 08		      ldy	#SK_SCL	; NACK: SDA released
-    157  f092				   .SkAck
-    158  f092		       8c 81 02 	      sty	SWACNT
-    159  f095		       98		      tya
-    160  f096		       29 04		      and	#SK_SDA
-    161  f098		       8d 81 02 	      sta	SWACNT	; SCL high
-    162  f09b		       8c 81 02 	      sty	SWACNT	; SCL low
-    163  f09e		       a9 08		      lda	#SK_SCL
-    164  f0a0		       8d 81 02 	      sta	SWACNT	; release SDA
-    165  f0a3		       a5 88		      lda	SkB
-    166  f0a5		       60		      rts
-    167  f0a6
-    168  f0a6							; ------------------------------------------------------------------------------
-    169  f0a6							; Record transactions
-    170  f0a6							; ------------------------------------------------------------------------------
-    171  f0a6				   SkSum		; A = $A5 eor SkBuf[0..10]
-    172  f0a6		       a9 a5		      lda	#$A5
-    173  f0a8		       a0 0a		      ldy	#R_CHK-1
-    174  f0aa				   .SkS1
-    175  f0aa		       59 c3 00 	      eor	SkBuf,y
-    176  f0ad		       88		      dey
-    177  f0ae		       10 fa		      bpl	.SkS1
-    178  f0b0		       60		      rts
-    179  f0b1
-    180  f0b1							; SkLoad: read the record into SkBuf.
-    181  f0b1							; C=0 valid. C=1 with A=0: no key (nothing else is worth trying); A=1: bad data.
-    182  f0b1				   SkLoad
-    183  f0b1		       a9 00		      lda	#0
-    184  f0b3		       8d 80 02 	      sta	SWCHA	; latch low for pins 3/4 (never drive high)
-    185  f0b6		       8d 81 02 	      sta	SWACNT
-    186  f0b9		       20 05 f0 	      jsr	SkStart
-    187  f0bc		       a9 a0		      lda	#SK_CTRL_W
-    188  f0be		       20 2d f0 	      jsr	SkSend
-    189  f0c1		       b0 3d		      bcs	.SkAbsent
-    190  f0c3		       a9 7f		      lda	#SK_ADDR_H
-    191  f0c5		       20 2d f0 	      jsr	SkSend
-    192  f0c8		       a9 e0		      lda	#SK_ADDR_L
-    193  f0ca		       20 2d f0 	      jsr	SkSend
-    194  f0cd		       20 20 f0 	      jsr	SkRestart
-    195  f0d0		       a9 a1		      lda	#SK_CTRL_R
-    196  f0d2		       20 2d f0 	      jsr	SkSend
-    197  f0d5		       a0 00		      ldy	#0
-    198  f0d7				   .SkRd
-    199  f0d7		       84 8e		      sty	SkL
-    200  f0d9		       c0 0b		      cpy	#SK_REC_LEN-1	; C=1 for the last byte: NACK it
-    201  f0db		       20 68 f0 	      jsr	SkRecv
-    202  f0de		       a4 8e		      ldy	SkL
-    203  f0e0		       99 c3 00 	      sta	SkBuf,y
-    204  f0e3		       c8		      iny
-    205  f0e4		       c0 0c		      cpy	#SK_REC_LEN
-    206  f0e6		       d0 ef		      bne	.SkRd
-    207  f0e8		       20 10 f0 	      jsr	SkStop
-    208  f0eb		       a5 c3		      lda	SkBuf
-    209  f0ed		       c9 53		      cmp	#$53
-    210  f0ef		       d0 16		      bne	.SkBad
-    211  f0f1		       a5 c4		      lda	SkBuf+1
-    212  f0f3		       c9 01		      cmp	#$01
-    213  f0f5		       d0 10		      bne	.SkBad
-    214  f0f7		       20 a6 f0 	      jsr	SkSum
-    215  f0fa		       c5 ce		      cmp	SkBuf+R_CHK
-    216  f0fc		       d0 09		      bne	.SkBad
-    217  f0fe		       18		      clc
-    218  f0ff		       60		      rts
-    219  f100				   .SkAbsent
-    220  f100		       20 10 f0 	      jsr	SkStop
-    221  f103		       a9 00		      lda	#0
-    222  f105		       38		      sec
-    223  f106		       60		      rts
-    224  f107				   .SkBad
-    225  f107		       a9 01		      lda	#1
-    226  f109		       38		      sec
-    227  f10a		       60		      rts
-    228  f10b
-    229  f10b							; SkStore: complete the record (magic + checksum) and write it, then ACK-poll the
-    230  f10b							; chip's write cycle (<= 5 ms). C=0 written, C=1 the chip never answered.
-    231  f10b				   SkStore
-    232  f10b		       a9 53		      lda	#$53
-    233  f10d		       85 c3		      sta	SkBuf
-    234  f10f		       a9 01		      lda	#$01
-    235  f111		       85 c4		      sta	SkBuf+1
-    236  f113		       20 a6 f0 	      jsr	SkSum
-    237  f116		       85 ce		      sta	SkBuf+R_CHK
-    238  f118		       20 05 f0 	      jsr	SkStart
-    239  f11b		       a9 a0		      lda	#SK_CTRL_W
-    240  f11d		       20 2d f0 	      jsr	SkSend
-    241  f120		       b0 37		      bcs	.SkWfail
-    242  f122		       a9 7f		      lda	#SK_ADDR_H
-    243  f124		       20 2d f0 	      jsr	SkSend
-    244  f127		       a9 e0		      lda	#SK_ADDR_L
-    245  f129		       20 2d f0 	      jsr	SkSend
-    246  f12c		       a0 00		      ldy	#0
-    247  f12e				   .SkWr
-    248  f12e		       84 8e		      sty	SkL
-    249  f130		       b9 c3 00 	      lda	SkBuf,y
-    250  f133		       20 2d f0 	      jsr	SkSend
-    251  f136		       a4 8e		      ldy	SkL
-    252  f138		       c8		      iny
-    253  f139		       c0 0c		      cpy	#SK_REC_LEN
-    254  f13b		       d0 f1		      bne	.SkWr
-    255  f13d		       20 10 f0 	      jsr	SkStop
-    256  f140		       a9 c8		      lda	#200
-    257  f142		       85 8e		      sta	SkL	; poll up to 200 times
-    258  f144				   .SkPoll
-    259  f144		       20 05 f0 	      jsr	SkStart
-    260  f147		       a9 a0		      lda	#SK_CTRL_W
-    261  f149		       20 2d f0 	      jsr	SkSend
-    262  f14c		       20 10 f0 	      jsr	SkStop	; (keeps C)
-    263  f14f		       90 0f		      bcc	.SkWdone	; ACK: the write cycle is over
-    264  f151		       c6 8e		      dec	SkL
-    265  f153		       d0 ef		      bne	.SkPoll
-    266  f155		       38		      sec
-    267  f156		       4c 61 f1 	      jmp	SkRelease
-    268  f159				   .SkWfail
-    269  f159		       20 10 f0 	      jsr	SkStop
-    270  f15c		       38		      sec
-    271  f15d		       4c 61 f1 	      jmp	SkRelease
-    272  f160				   .SkWdone
-    273  f160		       18		      clc
-    274  f161				   SkRelease		; leave the bus released (C kept)
-    275  f161		       a9 00		      lda	#0
-    276  f163		       8d 81 02 	      sta	SWACNT
-    277  f166		       a6 89		      ldx	SkN
-    278  f168		       ca		      dex
-    279  f169		       ca		      dex
-    280  f16a		       ca		      dex		; (dex keeps C) SkN = 3: game over / run won
-    281  f16b		       d0 03		      bne	.SkBack
-    282  f16d		       4c 00 f0 	      jmp	Restart
-    283  f170				   .SkBack
-    284  f170		       4c f8 fb 	      jmp	ReturnPad	; back to the bank0 caller (the C flag survives)
-    285  f173
-    286  f173							; ------------------------------------------------------------------------------
-    287  f173							; Ops
-    288  f173							; ------------------------------------------------------------------------------
-    289  f173				   SkService
-    290  f173		       85 89		      sta	SkN	; the op: SkRelease restarts the run when it is 3
-    291  f175		       aa		      tax
-    292  f176		       f0 0f		      beq	SkBoot
-    293  f178		       ca		      dex
-    294  f179		       f0 33		      beq	SkResume
-    295  f17b		       ca		      dex
-    296  f17c		       f0 55		      beq	SkCheckpoint
-    297  f17e		       ca		      dex
-    298  f17f		       f0 03		      beq	.SkGO
-    299  f181		       4c 43 f2 	      jmp	SkTitle	; 4 = the title's score window
-    300  f184				   .SkGO
-    301  f184		       4c dd f1 	      jmp	SkWriter	; 3 = game over
-    302  f187
-    303  f187
-    304  f187				   SkBoot
-    305  f187		       20 b1 f0 	      jsr	SkLoad
-    306  f18a		       b0 1a		      bcs	SkNothing
-    307  f18c		       a0 02		      ldy	#2
-    308  f18e				   .SkHi
-    309  f18e		       b9 cb 00 	      lda	SkBuf+R_HIGH,y	; the title shows the high score now and then
-    310  f191		       99 93 00 	      sta	SkHi,y
-    311  f194		       88		      dey
-    312  f195		       10 f7		      bpl	.SkHi
-    313  f197		       a5 c5		      lda	SkBuf+R_STATE
-    314  f199		       f0 0b		      beq	SkNothing	; state 0: no save
-    315  f19b		       a5 c6		      lda	SkBuf+R_LEVEL
-    316  f19d		       c9 14		      cmp	#LEVEL_COUNT
-    317  f19f		       b0 05		      bcs	SkNothing
-    318  f1a1		       85 a3		      sta	Level
-    319  f1a3		       4c aa f1 	      jmp	SkOk
-    320  f1a6				   SkNothing
-    321  f1a6		       38		      sec
-    322  f1a7		       4c 61 f1 	      jmp	SkRelease
-    323  f1aa
-    324  f1aa				   SkOk
-    325  f1aa		       18		      clc
-    326  f1ab		       4c 61 f1 	      jmp	SkRelease
-    327  f1ae
-    328  f1ae				   SkResume
-    329  f1ae		       20 b1 f0 	      jsr	SkLoad
-    330  f1b1		       b0 f3		      bcs	SkNothing
-    331  f1b3		       a5 c5		      lda	SkBuf+R_STATE
-    332  f1b5		       f0 ef		      beq	SkNothing
-    333  f1b7		       a5 c6		      lda	SkBuf+R_LEVEL
-    334  f1b9		       c5 a3		      cmp	Level
-    335  f1bb		       d0 e9		      bne	SkNothing	; another stage was picked: fresh start
-    336  f1bd		       a5 c7		      lda	SkBuf+R_LIVES
-    337  f1bf		       c9 09		      cmp	#LIVES_MAX+1
-    338  f1c1		       b0 e3		      bcs	SkNothing
-    339  f1c3		       85 ac		      sta	PlayerLives
-    340  f1c5		       a0 02		      ldy	#2
-    341  f1c7				   .SkSc
-    342  f1c7		       b9 c8 00 	      lda	SkBuf+R_SCORE,y
-    343  f1ca		       99 f3 00 	      sta	ScoreTh,y
-    344  f1cd		       88		      dey
-    345  f1ce		       10 f7		      bpl	.SkSc
-    346  f1d0		       4c aa f1 	      jmp	SkOk
-    347  f1d3
-    348  f1d3							; The two writers share SkPrep (entered by `jmp`, so the call chain stays at
-    349  f1d3							; pad 2 + SkLoad 2 + a leaf 2 = 6 stack bytes - the stack mirror is only 8 wide).
-    350  f1d3							; SkN = 2 checkpoint, 3 game over. A missing key ends the op, bad data leaves a
-    351  f1d3							; zero high score. SkBuf[R_HIGH..] = max(old high, current score) on the way out.
-    352  f1d3				   SkCheckpoint
-    353  f1d3		       a5 a3		      lda	Level
-    354  f1d5		       c9 14		      cmp	#LEVEL_COUNT
-    355  f1d7		       90 04		      bcc	SkWriter	; a stage advance
-    356  f1d9		       a9 03		      lda	#3
-    357  f1db		       85 89		      sta	SkN	; the last stage was cleared: the run is over
-    358  f1dd				   SkWriter
-    359  f1dd		       20 b1 f0 	      jsr	SkLoad
-    360  f1e0		       90 10		      bcc	.SkHave
-    361  f1e2		       c9 00		      cmp	#0
-    362  f1e4		       d0 04		      bne	.SkBadData
-    363  f1e6		       38		      sec		; absent: do not touch anything
-    364  f1e7		       4c 61 f1 	      jmp	SkRelease
-    365  f1ea				   .SkBadData
-    366  f1ea		       a9 00		      lda	#0
-    367  f1ec		       85 cb		      sta	SkBuf+R_HIGH
-    368  f1ee		       85 cc		      sta	SkBuf+R_HIGH+1
-    369  f1f0		       85 cd		      sta	SkBuf+R_HIGH+2
-    370  f1f2				   .SkHave
-    371  f1f2		       a0 00		      ldy	#0
-    372  f1f4				   .SkCmp
-    373  f1f4		       b9 f3 00 	      lda	ScoreTh,y
-    374  f1f7		       d9 cb 00 	      cmp	SkBuf+R_HIGH,y
-    375  f1fa		       d0 07		      bne	.SkDiff
-    376  f1fc		       c8		      iny
-    377  f1fd		       c0 03		      cpy	#3
-    378  f1ff		       d0 f3		      bne	.SkCmp
-    379  f201		       f0 0d		      beq	.SkMerged	; equal
-    380  f203				   .SkDiff
-    381  f203		       90 0b		      bcc	.SkMerged	; score < high
-    382  f205		       a0 02		      ldy	#2
-    383  f207				   .SkCp
-    384  f207		       b9 f3 00 	      lda	ScoreTh,y
-    385  f20a		       99 cb 00 	      sta	SkBuf+R_HIGH,y
-    386  f20d		       88		      dey
-    387  f20e		       10 f7		      bpl	.SkCp
-    388  f210				   .SkMerged
-    389  f210		       a5 89		      lda	SkN
-    390  f212		       c9 03		      cmp	#3
-    391  f214		       f0 1a		      beq	.SkOver
-    392  f216		       a9 01		      lda	#1
-    393  f218		       85 c5		      sta	SkBuf+R_STATE
-    394  f21a		       a5 a3		      lda	Level
-    395  f21c		       85 c6		      sta	SkBuf+R_LEVEL
-    396  f21e		       a5 ac		      lda	PlayerLives
-    397  f220		       85 c7		      sta	SkBuf+R_LIVES
-    398  f222		       a0 02		      ldy	#2
-    399  f224				   .SkSv
-    400  f224		       b9 f3 00 	      lda	ScoreTh,y
-    401  f227		       99 c8 00 	      sta	SkBuf+R_SCORE,y
-    402  f22a		       88		      dey
-    403  f22b		       10 f7		      bpl	.SkSv
-    404  f22d		       4c 0b f1 	      jmp	SkStore
-    405  f230				   .SkOver
-    406  f230		       a9 00		      lda	#0
-    407  f232		       85 c5		      sta	SkBuf+R_STATE
-    408  f234		       85 c6		      sta	SkBuf+R_LEVEL
-    409  f236		       85 c8		      sta	SkBuf+R_SCORE
-    410  f238		       85 c9		      sta	SkBuf+R_SCORE+1
-    411  f23a		       85 ca		      sta	SkBuf+R_SCORE+2
-    412  f23c		       a9 03		      lda	#3
-    413  f23e		       85 c7		      sta	SkBuf+R_LIVES
-    414  f240		       4c 0b f1 	      jmp	SkStore
-    415  f243
-    416  f243							; Op 4 TITLE (every title frame, no I2C): the HUD score window shows the 1-based
-    417  f243							; stage number (packed BCD, 000001 = stage 1) and, for 64 of every 256 frames
-    418  f243							; (EnemyRamP $80-$BF; it restarts at $F0 on every LoadLevel, so SELECT always
-    419  f243							; shows the stage first), the HIGH SCORE BOOT left in SkHi. No high score (no key,
-    420  f243							; blank chip) = the stage number only. DropArm's title path writes the same stage
-    421  f243							; number once per LoadLevel (SELECT); this keeps it right in between.
-    422  f243				   SkTitle
-    423  f243		       a5 a3		      lda	Level
-    424  f245		       18		      clc
-    425  f246		       69 01		      adc	#1
-    426  f248		       a2 00		      ldx	#0
-    427  f24a				   .SkTen
-    428  f24a		       c9 0a		      cmp	#10
-    429  f24c		       90 05		      bcc	.SkOnes
-    430  f24e		       e9 0a		      sbc	#10
-    431  f250		       e8		      inx
-    432  f251		       d0 f7		      bne	.SkTen	; (X <= 2: always taken)
-    433  f253				   .SkOnes
-    434  f253		       85 88		      sta	SkB
-    435  f255		       8a		      txa
-    436  f256		       0a		      asl
-    437  f257		       0a		      asl
-    438  f258		       0a		      asl
-    439  f259		       0a		      asl
-    440  f25a		       05 88		      ora	SkB
-    441  f25c		       85 f5		      sta	ScoreTe	; packed BCD: tens, ones
-    442  f25e		       a9 00		      lda	#0
-    443  f260		       85 f3		      sta	ScoreTh
-    444  f262		       85 f4		      sta	ScoreHu
-    445  f264		       a5 c2		      lda	EnemyRamP
-    446  f266		       29 c0		      and	#$C0
-    447  f268		       c9 80		      cmp	#$80
-    448  f26a		       d0 11		      bne	.SkTdone	; only clock $80-$BF (64 of 256 frames) shows it
-    449  f26c		       a5 93		      lda	SkHi
-    450  f26e		       05 94		      ora	SkHi+1
-    451  f270		       05 95		      ora	SkHi+2
-    452  f272		       f0 09		      beq	.SkTdone	; no high score yet
-    453  f274		       a2 02		      ldx	#2
-    454  f276				   .SkTHi
-    455  f276		       b5 93		      lda	SkHi,x
-    456  f278		       95 f3		      sta	ScoreTh,x
-    457  f27a		       ca		      dex
-    458  f27b		       10 f9		      bpl	.SkTHi
-    459  f27d				   .SkTdone
-    460  f27d		       4c f8 fb 	      jmp	ReturnPad
-    461  f280
-    462  f280							; ------------------------------------------------------------------------------
-    463  f280							; Cross-bank twins (bank0 is the caller; every pad is split across the banks):
-    464  f280							;   entry  A=$FC08: bank0 runs `sta $1FF8`; the fetch at $FC0B comes from HERE
-    465  f280							;	    = `jmp SkService` (bank0's own bytes at $FC0B are never fetched)
-    466  f280							;   return $FBF8: this `sta $1FF4` selects bank0, whose `rts` at $FBFB returns
-    467  f280							;	    to the caller (bank0's ReturnPad is the same two instructions)
-    468  f280							; ------------------------------------------------------------------------------
-    469  f280		       00 00 00 00*	      .ds	$FBF8 - *, 0
-    470  fbf8				   ReturnPad
-    471  fbf8		       8d f4 1f 	      sta	$1FF4
-    472  fbfb		       00 00 00 00*	      .ds	$FC0B - *, 0
-    473  fc0b		       4c 73 f1 	      jmp	SkService
-    474  fc0e
-    475  fc0e		       00 00 00 00*	      .ds	$FFFA - *, 0
-    476  fffa		       00 f0		      .word.w	$F000
-    477  fffc		       00 f0		      .word.w	$F000
-    478  fffe		       00 f0		      .word.w	$F000
+------- FILE banks.inc LEVEL 2 PASS 2
+      0  10000 ????				       include	"banks.inc"	; BK_* bank selectors by role (docs/agents/banks.md)
+      1  10000 ????						; ==============================================================================
+      2  10000 ????						; Bank selectors by ROLE (docs/agents/banks.md). Code never writes a literal $1FF4-$1FFB: it writes
+      3  10000 ????						; the selector of the bank that holds the ROLE it wants (`sta BK_ROOMS`), so the physical bank
+      4  10000 ????						; number of every role is decided HERE and nowhere else. The F4 hotspot of physical bank n is $1FF4+n.
+      5  10000 ????						;
+      6  10000 ????						; BKI_x = the physical bank (0-7) that holds role x. OLD layout (what build.sh assembles today):
+      7  10000 ????						; ==============================================================================
+      8  10000 ????		00 00	    BKI_GENERAL =	0	; main loop, input, physics, collision, sound, the fold pads
+      9  10000 ????		00 01	    BKI_HUD    =	1	; HUD, title and level select, raft, bomb wall marks, strip blast
+     10  10000 ????		00 02	    BKI_ROOMS  =	2	; level room half: room readers, exits, laser, moth, blast + the room tables
+     11  10000 ????		00 03	    BKI_EXTRAS =	3	; level extras half: phase/hcrunch/hot/dark walkers + the extras data
+     12  10000 ????		00 04	    BKI_SAVE   =	4	; save-to-cartridge (I2C)
+     13  10000 ????		00 05	    BKI_TRANS  =	5	; version header, blank transition frame, attract script
+     14  10000 ????		00 06	    BKI_CAVE   =	6	; the generated gameplay cave kernel
+     15  10000 ????		00 07	    BKI_PROLOGUE =	7	; cave kernel start-up code
+     16  10000 ????		00 04	    BKI_MODELS =	4	; room models: the shape step + the shape blocks / row pool (shares bank4, plan phase 3)
+     17  10000 ????
+     18  10000 ????		1f f4	    BK_GENERAL =	$1FF4 + BKI_GENERAL
+     19  10000 ????		1f f5	    BK_HUD     =	$1FF4 + BKI_HUD
+     20  10000 ????		1f f6	    BK_ROOMS   =	$1FF4 + BKI_ROOMS
+     21  10000 ????		1f f7	    BK_EXTRAS  =	$1FF4 + BKI_EXTRAS
+     22  10000 ????		1f f8	    BK_SAVE    =	$1FF4 + BKI_SAVE
+     23  10000 ????		1f f9	    BK_TRANS   =	$1FF4 + BKI_TRANS
+     24  10000 ????		1f fa	    BK_CAVE    =	$1FF4 + BKI_CAVE
+     25  10000 ????		1f fb	    BK_PROLOGUE =	$1FF4 + BKI_PROLOGUE
+     26  10000 ????		1f f8	    BK_MODELS  =	$1FF4 + BKI_MODELS
+------- FILE bank4.asm
+      4  f000					      org	$F000
+      5  f000							; The power-up pad every bank carries: `lda #0 / sta $1FF4` selects bank0, whose
+      6  f000							; $F005 is `jmp GameStart`. The restart ops (game over, last stage cleared) jump
+      7  f000							; here: the run restarts at the title and never returns to the caller.
+      8  f000				   Restart
+      9  f000		       a9 00		      lda	#0
+     10  f002		       8d f4 1f 	      sta	BK_GENERAL
+     11  f005							; ==============================================================================
+     12  f005							; Bank4 — SaveKey service (docs/savekey_design.md, user 2026-10-28).
+     13  f005							; ==============================================================================
+     14  f005							; A 24LC256 I2C EEPROM on the RIGHT controller port: pin 3 = SDA = SWCHA bit 2,
+     15  f005							; pin 4 = SCL = SWCHA bit 3 (Stella SaveKey.cxx). Open drain by hand: the SWCHA
+     16  f005							; latch bits stay 0 and a line is driven LOW by setting its SWACNT bit (output)
+     17  f005							; or RELEASED by clearing it (input, pulled up in the key). Nothing is ever
+     18  f005							; driven high. Bit-banged without delays: every SWACNT store is >= 4 cycles
+     19  f005							; (3.4 us), far above the chip's 400 kHz timing.
+     20  f005							;
+     21  f005							; ONE 12-byte record at SK_ADDR (16-byte aligned: it never straddles a 64-byte
+     22  f005							; page), staged in SkBuf for the whole call:
+     23  f005							;   0-1 magic $53,$01 (the 2nd byte is the format version)   2 state (1 = save)
+     24  f005							;   3 level (0-based)	 4 lives   5-7 score (packed BCD Th,Hu,Te)
+     25  f005							;   8-10 HIGH score (packed BCD)  11 checksum = $A5 eor bytes 0-10
+     26  f005							; A bad magic/checksum is "no data": the game starts fresh and the next write
+     27  f005							; repairs it. No key (NACK on the control byte) aborts every op at once.
+     28  f005							;
+     29  f005							; SkService (A = op), C=0 when it did something, C=1 when there was nothing to do
+     30  f005							;   0 BOOT	   title power-on: Level := the saved stage; the high score goes
+     31  f005							;		   to SkHi (vyLo/vyHi/PlayerYSub) for the title to show
+     32  f005							;   1 RESUME	   RESET on the saved stage: lives + score := the saved ones
+     33  f005							;   2 CHECKPOINT  stage advance (the caller already did `inc Level`): save {Level,
+     34  f005							;		   lives, score}; high = max(high,score). Level >= LEVEL_COUNT =
+     35  f005							;		   the last stage was cleared: same as GAMEOVER
+     36  f005							;   3 GAMEOVER    erase the save; high = max(high, score); then RESTART at the
+     37  f005							;		   title (never returns; with no key it just restarts)
+     38  f005							; Clobbers A/X/Y, SkB/SkN/SkT/SkL and SkBuf. Leaves SWACNT = 0 (bus released).
+     39  f005							; Hotspot for this bank: $1FF8 (F4: bank = addr - $1FF4).
+     40  f005							; ==============================================================================
+     41  f005		       02 80	   SWCHA      =	$0280
+     42  f005		       02 81	   SWACNT     =	$0281
+     43  f005		       00 04	   SK_SDA     =	$04	; SWCHA/SWACNT bit of pin 3
+     44  f005		       00 08	   SK_SCL     =	$08	; SWCHA/SWACNT bit of pin 4
+     45  f005		       00 0c	   SK_BOTH    =	SK_SDA|SK_SCL
+     46  f005		       00 7f	   SK_ADDR_H  =	$7F	; record block $7FE0 (open question: AtariVox list)
+     47  f005		       00 e0	   SK_ADDR_L  =	$E0
+     48  f005		       00 a0	   SK_CTRL_W  =	$A0	; 1010 000 R/W
+     49  f005		       00 a1	   SK_CTRL_R  =	$A1
+     50  f005		       00 0c	   SK_REC_LEN =	12
+     51  f005		       00 02	   R_STATE    =	2
+     52  f005		       00 03	   R_LEVEL    =	3
+     53  f005		       00 04	   R_LIVES    =	4
+     54  f005		       00 05	   R_SCORE    =	5
+     55  f005		       00 08	   R_HIGH     =	8
+     56  f005		       00 0b	   R_CHK      =	11
+     57  f005		       00 08	   LIVES_MAX  =	8
+     58  f005		       00 14	   LEVEL_COUNT =	20	; hand copy of the kernel's LEVEL_COUNT
+     59  f005
+     60  f005							; Game variables (hand copies of kernel.asm; check_equ_sync pairs the names)
+     61  f005		       00 a3	   Level      =	$A3
+     62  f005		       00 ac	   PlayerLives =	$AC
+     63  f005		       00 c2	   EnemyRamP  =	$C2	; free-running frame clock (bank0 RefreshEnemyY)
+     64  f005		       00 f3	   ScoreTh    =	$F3
+     65  f005		       00 f4	   ScoreHu    =	$F4
+     66  f005		       00 f5	   ScoreTe    =	$F5
+     67  f005
+     68  f005							; Scratch: dead at every call site (title / level load) - see the design doc.
+     69  f005		       00 88	   SkB	      =	$88	; byte being shifted (kernel Temp)
+     70  f005		       00 89	   SkN	      =	$89	; op flag (kernel ZPSpare89, free)
+     71  f005		       00 8b	   SkT	      =	$8B	; (kernel CollisionX)
+     72  f005		       00 8e	   SkL	      =	$8E	; loop counter (kernel CollisionEndX)
+     73  f005		       00 93	   SkHi       =	$93	; high score handed to the title: vyLo, vyHi, PlayerYSub
+     74  f005							;   (dead on the title; bank0 TitleScore reads them)
+     75  f005		       00 c3	   SkBuf      =	$C3	; 12 bytes = PF0Buf..PF2Buf (rebuilt by the room load)
+     76  f005
+     77  f005							; ------------------------------------------------------------------------------
+     78  f005							; I2C primitives. Between bits SCL is low; STOP/START leave the bus released/low.
+     79  f005							; ------------------------------------------------------------------------------
+     80  f005				   SkStart		; bus released -> START, SCL low
+     81  f005		       a9 04		      lda	#SK_SDA
+     82  f007		       8d 81 02 	      sta	SWACNT	; SDA falls while SCL is high
+     83  f00a		       a9 0c		      lda	#SK_BOTH
+     84  f00c		       8d 81 02 	      sta	SWACNT
+     85  f00f		       60		      rts
+     86  f010
+     87  f010				   SkStop		; any state -> STOP, bus released
+     88  f010		       a9 0c		      lda	#SK_BOTH
+     89  f012		       8d 81 02 	      sta	SWACNT	; SDA low, SCL low
+     90  f015		       a9 04		      lda	#SK_SDA
+     91  f017		       8d 81 02 	      sta	SWACNT	; SCL high
+     92  f01a		       a9 00		      lda	#0
+     93  f01c		       8d 81 02 	      sta	SWACNT	; SDA rises while SCL is high
+     94  f01f		       60		      rts
+     95  f020
+     96  f020				   SkRestart		; SCL low -> repeated START, SCL low
+     97  f020		       a9 08		      lda	#SK_SCL
+     98  f022		       8d 81 02 	      sta	SWACNT	; release SDA
+     99  f025		       a9 00		      lda	#0
+    100  f027		       8d 81 02 	      sta	SWACNT	; release SCL
+    101  f02a		       4c 05 f0 	      jmp	SkStart
+    102  f02d
+    103  f02d							; Send A, MSB first; returns C=0 when the chip ACKed. SCL low, SDA low on exit.
+    104  f02d				   SkSend
+    105  f02d		       85 88		      sta	SkB
+    106  f02f		       a2 08		      ldx	#8
+    107  f031				   .SkBit
+    108  f031		       06 88		      asl	SkB
+    109  f033		       a0 0c		      ldy	#SK_BOTH	; bit 0: SDA low
+    110  f035		       90 02		      bcc	.SkOut
+    111  f037		       a0 08		      ldy	#SK_SCL	; bit 1: SDA released
+    112  f039				   .SkOut
+    113  f039		       8c 81 02 	      sty	SWACNT	; data valid, SCL low
+    114  f03c		       98		      tya
+    115  f03d		       29 04		      and	#SK_SDA
+    116  f03f		       8d 81 02 	      sta	SWACNT	; SCL high
+    117  f042		       8c 81 02 	      sty	SWACNT	; SCL low
+    118  f045		       ca		      dex
+    119  f046		       d0 e9		      bne	.SkBit
+    120  f048		       a9 08		      lda	#SK_SCL
+    121  f04a		       8d 81 02 	      sta	SWACNT	; release SDA for the ACK
+    122  f04d		       a9 00		      lda	#0
+    123  f04f		       8d 81 02 	      sta	SWACNT	; SCL high: the chip holds SDA low for an ACK
+    124  f052		       ad 80 02 	      lda	SWCHA
+    125  f055		       29 04		      and	#SK_SDA
+    126  f057		       85 8b		      sta	SkT
+    127  f059		       a9 08		      lda	#SK_SCL
+    128  f05b		       8d 81 02 	      sta	SWACNT	; SCL low
+    129  f05e		       a9 0c		      lda	#SK_BOTH
+    130  f060		       8d 81 02 	      sta	SWACNT	; SDA low again
+    131  f063		       a5 8b		      lda	SkT
+    132  f065		       c9 01		      cmp	#1	; C = 1 when SDA stayed high (NACK)
+    133  f067		       60		      rts
+    134  f068
+    135  f068							; Receive a byte into A. C=1 on entry -> NACK it (the last byte), C=0 -> ACK.
+    136  f068				   SkRecv
+    137  f068		       a9 00		      lda	#0
+    138  f06a		       2a		      rol		; A = the ACK bit to send (1 = NACK)
+    139  f06b		       85 8b		      sta	SkT
+    140  f06d		       a9 08		      lda	#SK_SCL
+    141  f06f		       8d 81 02 	      sta	SWACNT	; SDA released, SCL low
+    142  f072		       a2 08		      ldx	#8
+    143  f074				   .SkRb
+    144  f074		       a9 00		      lda	#0
+    145  f076		       8d 81 02 	      sta	SWACNT	; SCL high
+    146  f079		       ad 80 02 	      lda	SWCHA
+    147  f07c		       29 04		      and	#SK_SDA
+    148  f07e		       c9 01		      cmp	#1	; C = the data bit
+    149  f080		       26 88		      rol	SkB
+    150  f082		       a9 08		      lda	#SK_SCL
+    151  f084		       8d 81 02 	      sta	SWACNT	; SCL low
+    152  f087		       ca		      dex
+    153  f088		       d0 ea		      bne	.SkRb
+    154  f08a		       a0 0c		      ldy	#SK_BOTH	; ACK: SDA low
+    155  f08c		       a5 8b		      lda	SkT
+    156  f08e		       f0 02		      beq	.SkAck
+    157  f090		       a0 08		      ldy	#SK_SCL	; NACK: SDA released
+    158  f092				   .SkAck
+    159  f092		       8c 81 02 	      sty	SWACNT
+    160  f095		       98		      tya
+    161  f096		       29 04		      and	#SK_SDA
+    162  f098		       8d 81 02 	      sta	SWACNT	; SCL high
+    163  f09b		       8c 81 02 	      sty	SWACNT	; SCL low
+    164  f09e		       a9 08		      lda	#SK_SCL
+    165  f0a0		       8d 81 02 	      sta	SWACNT	; release SDA
+    166  f0a3		       a5 88		      lda	SkB
+    167  f0a5		       60		      rts
+    168  f0a6
+    169  f0a6							; ------------------------------------------------------------------------------
+    170  f0a6							; Record transactions
+    171  f0a6							; ------------------------------------------------------------------------------
+    172  f0a6				   SkSum		; A = $A5 eor SkBuf[0..10]
+    173  f0a6		       a9 a5		      lda	#$A5
+    174  f0a8		       a0 0a		      ldy	#R_CHK-1
+    175  f0aa				   .SkS1
+    176  f0aa		       59 c3 00 	      eor	SkBuf,y
+    177  f0ad		       88		      dey
+    178  f0ae		       10 fa		      bpl	.SkS1
+    179  f0b0		       60		      rts
+    180  f0b1
+    181  f0b1							; SkLoad: read the record into SkBuf.
+    182  f0b1							; C=0 valid. C=1 with A=0: no key (nothing else is worth trying); A=1: bad data.
+    183  f0b1				   SkLoad
+    184  f0b1		       a9 00		      lda	#0
+    185  f0b3		       8d 80 02 	      sta	SWCHA	; latch low for pins 3/4 (never drive high)
+    186  f0b6		       8d 81 02 	      sta	SWACNT
+    187  f0b9		       20 05 f0 	      jsr	SkStart
+    188  f0bc		       a9 a0		      lda	#SK_CTRL_W
+    189  f0be		       20 2d f0 	      jsr	SkSend
+    190  f0c1		       b0 3d		      bcs	.SkAbsent
+    191  f0c3		       a9 7f		      lda	#SK_ADDR_H
+    192  f0c5		       20 2d f0 	      jsr	SkSend
+    193  f0c8		       a9 e0		      lda	#SK_ADDR_L
+    194  f0ca		       20 2d f0 	      jsr	SkSend
+    195  f0cd		       20 20 f0 	      jsr	SkRestart
+    196  f0d0		       a9 a1		      lda	#SK_CTRL_R
+    197  f0d2		       20 2d f0 	      jsr	SkSend
+    198  f0d5		       a0 00		      ldy	#0
+    199  f0d7				   .SkRd
+    200  f0d7		       84 8e		      sty	SkL
+    201  f0d9		       c0 0b		      cpy	#SK_REC_LEN-1	; C=1 for the last byte: NACK it
+    202  f0db		       20 68 f0 	      jsr	SkRecv
+    203  f0de		       a4 8e		      ldy	SkL
+    204  f0e0		       99 c3 00 	      sta	SkBuf,y
+    205  f0e3		       c8		      iny
+    206  f0e4		       c0 0c		      cpy	#SK_REC_LEN
+    207  f0e6		       d0 ef		      bne	.SkRd
+    208  f0e8		       20 10 f0 	      jsr	SkStop
+    209  f0eb		       a5 c3		      lda	SkBuf
+    210  f0ed		       c9 53		      cmp	#$53
+    211  f0ef		       d0 16		      bne	.SkBad
+    212  f0f1		       a5 c4		      lda	SkBuf+1
+    213  f0f3		       c9 01		      cmp	#$01
+    214  f0f5		       d0 10		      bne	.SkBad
+    215  f0f7		       20 a6 f0 	      jsr	SkSum
+    216  f0fa		       c5 ce		      cmp	SkBuf+R_CHK
+    217  f0fc		       d0 09		      bne	.SkBad
+    218  f0fe		       18		      clc
+    219  f0ff		       60		      rts
+    220  f100				   .SkAbsent
+    221  f100		       20 10 f0 	      jsr	SkStop
+    222  f103		       a9 00		      lda	#0
+    223  f105		       38		      sec
+    224  f106		       60		      rts
+    225  f107				   .SkBad
+    226  f107		       a9 01		      lda	#1
+    227  f109		       38		      sec
+    228  f10a		       60		      rts
+    229  f10b
+    230  f10b							; SkStore: complete the record (magic + checksum) and write it, then ACK-poll the
+    231  f10b							; chip's write cycle (<= 5 ms). C=0 written, C=1 the chip never answered.
+    232  f10b				   SkStore
+    233  f10b		       a9 53		      lda	#$53
+    234  f10d		       85 c3		      sta	SkBuf
+    235  f10f		       a9 01		      lda	#$01
+    236  f111		       85 c4		      sta	SkBuf+1
+    237  f113		       20 a6 f0 	      jsr	SkSum
+    238  f116		       85 ce		      sta	SkBuf+R_CHK
+    239  f118		       20 05 f0 	      jsr	SkStart
+    240  f11b		       a9 a0		      lda	#SK_CTRL_W
+    241  f11d		       20 2d f0 	      jsr	SkSend
+    242  f120		       b0 37		      bcs	.SkWfail
+    243  f122		       a9 7f		      lda	#SK_ADDR_H
+    244  f124		       20 2d f0 	      jsr	SkSend
+    245  f127		       a9 e0		      lda	#SK_ADDR_L
+    246  f129		       20 2d f0 	      jsr	SkSend
+    247  f12c		       a0 00		      ldy	#0
+    248  f12e				   .SkWr
+    249  f12e		       84 8e		      sty	SkL
+    250  f130		       b9 c3 00 	      lda	SkBuf,y
+    251  f133		       20 2d f0 	      jsr	SkSend
+    252  f136		       a4 8e		      ldy	SkL
+    253  f138		       c8		      iny
+    254  f139		       c0 0c		      cpy	#SK_REC_LEN
+    255  f13b		       d0 f1		      bne	.SkWr
+    256  f13d		       20 10 f0 	      jsr	SkStop
+    257  f140		       a9 c8		      lda	#200
+    258  f142		       85 8e		      sta	SkL	; poll up to 200 times
+    259  f144				   .SkPoll
+    260  f144		       20 05 f0 	      jsr	SkStart
+    261  f147		       a9 a0		      lda	#SK_CTRL_W
+    262  f149		       20 2d f0 	      jsr	SkSend
+    263  f14c		       20 10 f0 	      jsr	SkStop	; (keeps C)
+    264  f14f		       90 0f		      bcc	.SkWdone	; ACK: the write cycle is over
+    265  f151		       c6 8e		      dec	SkL
+    266  f153		       d0 ef		      bne	.SkPoll
+    267  f155		       38		      sec
+    268  f156		       4c 61 f1 	      jmp	SkRelease
+    269  f159				   .SkWfail
+    270  f159		       20 10 f0 	      jsr	SkStop
+    271  f15c		       38		      sec
+    272  f15d		       4c 61 f1 	      jmp	SkRelease
+    273  f160				   .SkWdone
+    274  f160		       18		      clc
+    275  f161				   SkRelease		; leave the bus released (C kept)
+    276  f161		       a9 00		      lda	#0
+    277  f163		       8d 81 02 	      sta	SWACNT
+    278  f166		       a6 89		      ldx	SkN
+    279  f168		       ca		      dex
+    280  f169		       ca		      dex
+    281  f16a		       ca		      dex		; (dex keeps C) SkN = 3: game over / run won
+    282  f16b		       d0 15		      bne	.SkBack
+    283  f16d		       a5 a3		      lda	Level	; game over / run won: the title comes back on the level
+    284  f16f		       c9 14		      cmp	#LEVEL_COUNT	;   just played (no SaveKey needed): GameStart keeps
+    285  f171		       90 04		      bcc	.SkKeep	;   Level when these two bytes hold the magic
+    286  f173		       a9 00		      lda	#0
+    287  f175		       85 a3		      sta	Level
+    288  f177				   .SkKeep
+    289  f177		       a9 5a		      lda	#$5A
+    290  f179		       85 8b		      sta	SkT
+    291  f17b		       a9 a5		      lda	#$A5
+    292  f17d		       85 8e		      sta	SkL
+    293  f17f		       4c 00 f0 	      jmp	Restart
+    294  f182				   .SkBack
+    295  f182		       4c f8 fb 	      jmp	ReturnPad	; back to the bank0 caller (the C flag survives)
+    296  f185
+    297  f185							; ------------------------------------------------------------------------------
+    298  f185							; Ops
+    299  f185							; ------------------------------------------------------------------------------
+    300  f185				   SkService
+    301  f185		       85 89		      sta	SkN	; the op: SkRelease restarts the run when it is 3
+    302  f187		       aa		      tax
+    303  f188		       f0 0f		      beq	SkBoot
+    304  f18a		       ca		      dex
+    305  f18b		       f0 2f		      beq	SkResume
+    306  f18d		       ca		      dex
+    307  f18e		       f0 51		      beq	SkCheckpoint
+    308  f190		       ca		      dex
+    309  f191		       f0 03		      beq	.SkGO
+    310  f193		       4c 59 f2 	      jmp	SkTitle	; 4 = the title's score window
+    311  f196				   .SkGO
+    312  f196		       4c eb f1 	      jmp	SkWriter	; 3 = game over
+    313  f199
+    314  f199
+    315  f199				   SkBoot
+    316  f199		       20 b1 f0 	      jsr	SkLoad
+    317  f19c		       b0 16		      bcs	SkNothing
+    318  f19e		       a0 02		      ldy	#2
+    319  f1a0				   .SkHi
+    320  f1a0		       b9 cb 00 	      lda	SkBuf+R_HIGH,y	; the title shows the high score now and then
+    321  f1a3		       99 93 00 	      sta	SkHi,y
+    322  f1a6		       88		      dey
+    323  f1a7		       10 f7		      bpl	.SkHi
+    324  f1a9		       a5 c6		      lda	SkBuf+R_LEVEL	; (state 0 = no run to resume, but the level of the
+    325  f1ab		       c9 14		      cmp	#LEVEL_COUNT	;   last run stays selected: user 2026-11-11)
+    326  f1ad		       b0 05		      bcs	SkNothing
+    327  f1af		       85 a3		      sta	Level
+    328  f1b1		       4c b8 f1 	      jmp	SkOk
+    329  f1b4				   SkNothing
+    330  f1b4		       38		      sec
+    331  f1b5		       4c 61 f1 	      jmp	SkRelease
+    332  f1b8
+    333  f1b8				   SkOk
+    334  f1b8		       18		      clc
+    335  f1b9		       4c 61 f1 	      jmp	SkRelease
+    336  f1bc
+    337  f1bc				   SkResume
+    338  f1bc		       20 b1 f0 	      jsr	SkLoad
+    339  f1bf		       b0 f3		      bcs	SkNothing
+    340  f1c1		       a5 c5		      lda	SkBuf+R_STATE
+    341  f1c3		       f0 ef		      beq	SkNothing
+    342  f1c5		       a5 c6		      lda	SkBuf+R_LEVEL
+    343  f1c7		       c5 a3		      cmp	Level
+    344  f1c9		       d0 e9		      bne	SkNothing	; another stage was picked: fresh start
+    345  f1cb		       a5 c7		      lda	SkBuf+R_LIVES
+    346  f1cd		       c9 09		      cmp	#LIVES_MAX+1
+    347  f1cf		       b0 e3		      bcs	SkNothing
+    348  f1d1		       85 ac		      sta	PlayerLives
+    349  f1d3		       a0 02		      ldy	#2
+    350  f1d5				   .SkSc
+    351  f1d5		       b9 c8 00 	      lda	SkBuf+R_SCORE,y
+    352  f1d8		       99 f3 00 	      sta	ScoreTh,y
+    353  f1db		       88		      dey
+    354  f1dc		       10 f7		      bpl	.SkSc
+    355  f1de		       4c b8 f1 	      jmp	SkOk
+    356  f1e1
+    357  f1e1							; The two writers share SkPrep (entered by `jmp`, so the call chain stays at
+    358  f1e1							; pad 2 + SkLoad 2 + a leaf 2 = 6 stack bytes - the stack mirror is only 8 wide).
+    359  f1e1							; SkN = 2 checkpoint, 3 game over. A missing key ends the op, bad data leaves a
+    360  f1e1							; zero high score. SkBuf[R_HIGH..] = max(old high, current score) on the way out.
+    361  f1e1				   SkCheckpoint
+    362  f1e1		       a5 a3		      lda	Level
+    363  f1e3		       c9 14		      cmp	#LEVEL_COUNT
+    364  f1e5		       90 04		      bcc	SkWriter	; a stage advance
+    365  f1e7		       a9 03		      lda	#3
+    366  f1e9		       85 89		      sta	SkN	; the last stage was cleared: the run is over
+    367  f1eb				   SkWriter
+    368  f1eb		       20 b1 f0 	      jsr	SkLoad
+    369  f1ee		       90 10		      bcc	.SkHave
+    370  f1f0		       c9 00		      cmp	#0
+    371  f1f2		       d0 04		      bne	.SkBadData
+    372  f1f4		       38		      sec		; absent: do not touch anything
+    373  f1f5		       4c 61 f1 	      jmp	SkRelease
+    374  f1f8				   .SkBadData
+    375  f1f8		       a9 00		      lda	#0
+    376  f1fa		       85 cb		      sta	SkBuf+R_HIGH
+    377  f1fc		       85 cc		      sta	SkBuf+R_HIGH+1
+    378  f1fe		       85 cd		      sta	SkBuf+R_HIGH+2
+    379  f200				   .SkHave
+    380  f200		       a0 00		      ldy	#0
+    381  f202				   .SkCmp
+    382  f202		       b9 f3 00 	      lda	ScoreTh,y
+    383  f205		       d9 cb 00 	      cmp	SkBuf+R_HIGH,y
+    384  f208		       d0 07		      bne	.SkDiff
+    385  f20a		       c8		      iny
+    386  f20b		       c0 03		      cpy	#3
+    387  f20d		       d0 f3		      bne	.SkCmp
+    388  f20f		       f0 0d		      beq	.SkMerged	; equal
+    389  f211				   .SkDiff
+    390  f211		       90 0b		      bcc	.SkMerged	; score < high
+    391  f213		       a0 02		      ldy	#2
+    392  f215				   .SkCp
+    393  f215		       b9 f3 00 	      lda	ScoreTh,y
+    394  f218		       99 cb 00 	      sta	SkBuf+R_HIGH,y
+    395  f21b		       88		      dey
+    396  f21c		       10 f7		      bpl	.SkCp
+    397  f21e				   .SkMerged
+    398  f21e		       a5 89		      lda	SkN
+    399  f220		       c9 03		      cmp	#3
+    400  f222		       f0 1a		      beq	.SkOver
+    401  f224		       a9 01		      lda	#1
+    402  f226		       85 c5		      sta	SkBuf+R_STATE
+    403  f228		       a5 a3		      lda	Level
+    404  f22a		       85 c6		      sta	SkBuf+R_LEVEL
+    405  f22c		       a5 ac		      lda	PlayerLives
+    406  f22e		       85 c7		      sta	SkBuf+R_LIVES
+    407  f230		       a0 02		      ldy	#2
+    408  f232				   .SkSv
+    409  f232		       b9 f3 00 	      lda	ScoreTh,y
+    410  f235		       99 c8 00 	      sta	SkBuf+R_SCORE,y
+    411  f238		       88		      dey
+    412  f239		       10 f7		      bpl	.SkSv
+    413  f23b		       4c 0b f1 	      jmp	SkStore
+    414  f23e				   .SkOver
+    415  f23e		       a5 a3		      lda	Level	; the title comes back on the level just played
+    416  f240		       c9 14		      cmp	#LEVEL_COUNT	;   (a cleared last stage wraps to the first)
+    417  f242		       90 02		      bcc	.SkOvLv
+    418  f244		       a9 00		      lda	#0
+    419  f246				   .SkOvLv
+    420  f246		       85 c6		      sta	SkBuf+R_LEVEL
+    421  f248		       a9 00		      lda	#0
+    422  f24a		       85 c5		      sta	SkBuf+R_STATE
+    423  f24c		       85 c8		      sta	SkBuf+R_SCORE
+    424  f24e		       85 c9		      sta	SkBuf+R_SCORE+1
+    425  f250		       85 ca		      sta	SkBuf+R_SCORE+2
+    426  f252		       a9 03		      lda	#3
+    427  f254		       85 c7		      sta	SkBuf+R_LIVES
+    428  f256		       4c 0b f1 	      jmp	SkStore
+    429  f259
+    430  f259							; Op 4 TITLE (every title frame, no I2C): the HUD score window shows the 1-based
+    431  f259							; stage number (packed BCD, 000001 = stage 1) and, for 64 of every 256 frames
+    432  f259							; (EnemyRamP $80-$BF; it restarts at $F0 on every LoadLevel, so SELECT always
+    433  f259							; shows the stage first), the HIGH SCORE BOOT left in SkHi. No high score (no key,
+    434  f259							; blank chip) = the stage number only. DropArm's title path writes the same stage
+    435  f259							; number once per LoadLevel (SELECT); this keeps it right in between.
+    436  f259				   SkTitle
+    437  f259		       a5 a3		      lda	Level
+    438  f25b		       18		      clc
+    439  f25c		       69 01		      adc	#1
+    440  f25e		       a2 00		      ldx	#0
+    441  f260				   .SkTen
+    442  f260		       c9 0a		      cmp	#10
+    443  f262		       90 05		      bcc	.SkOnes
+    444  f264		       e9 0a		      sbc	#10
+    445  f266		       e8		      inx
+    446  f267		       d0 f7		      bne	.SkTen	; (X <= 2: always taken)
+    447  f269				   .SkOnes
+    448  f269		       85 88		      sta	SkB
+    449  f26b		       8a		      txa
+    450  f26c		       0a		      asl
+    451  f26d		       0a		      asl
+    452  f26e		       0a		      asl
+    453  f26f		       0a		      asl
+    454  f270		       05 88		      ora	SkB
+    455  f272		       85 f5		      sta	ScoreTe	; packed BCD: tens, ones
+    456  f274		       a9 00		      lda	#0
+    457  f276		       85 f3		      sta	ScoreTh
+    458  f278		       85 f4		      sta	ScoreHu
+    459  f27a		       a5 c2		      lda	EnemyRamP
+    460  f27c		       29 c0		      and	#$C0
+    461  f27e		       c9 80		      cmp	#$80
+    462  f280		       d0 11		      bne	.SkTdone	; only clock $80-$BF (64 of 256 frames) shows it
+    463  f282		       a5 93		      lda	SkHi
+    464  f284		       05 94		      ora	SkHi+1
+    465  f286		       05 95		      ora	SkHi+2
+    466  f288		       f0 09		      beq	.SkTdone	; no high score yet
+    467  f28a		       a2 02		      ldx	#2
+    468  f28c				   .SkTHi
+    469  f28c		       b5 93		      lda	SkHi,x
+    470  f28e		       95 f3		      sta	ScoreTh,x
+    471  f290		       ca		      dex
+    472  f291		       10 f9		      bpl	.SkTHi
+    473  f293				   .SkTdone
+    474  f293		       4c f8 fb 	      jmp	ReturnPad
+    475  f296
+    476  f296							; ---- the SHAPE STEP of the room load (moved from bank3 2026-11-10, from bank7 to bank4 (the models share bank4) 2026-11-14) ------------------
+    477  f296							; bank3 B3RoomBlocks (at $F453) does `sta BK_MODELS`; the next fetch (+3) is the jmp below.
+    478  f296							; ShapeStep7 expands the room's shape block into the PF buffers and stages the hot flag in
+    479  f296							; RoomMetaB; `sta $1FF7` at +6 returns to bank3 (B3Meta, +9).
+    480  f296		       00 e5	   FetchPtr   =	$E5
+    481  f296		       00 99	   RoomPF0Lo  =	$99
+    482  f296		       00 9a	   RoomMetaB  =	$9A
+    483  f296		       00 c3	   PF0Buf     =	$C3
+    484  f296		       00 c7	   PF1Buf     =	$C7
+    485  f296		       00 cb	   PF2Buf     =	$CB
+    486  f296		       00 04	   TILE_ROWS  =	4
+    487  f456					      org	$F453 + 3
+    488  f456		       4c 60 f4 	      jmp	ShapeStep7
+    489  f459					      org	$F453 + 6
+    490  f459		       8d f7 1f 	      sta	BK_EXTRAS
+    491  f460					      org	$F460
+    492  f460				   ShapeStep7
+    493  f460		       a5 99		      lda	RoomPF0Lo
+    494  f462		       29 7f		      and	#$7F	; shape index, 7 bits (128 shapes)
+    495  f464		       0a		      asl		; *2: LEVEL_ShapeTable is a word table
+    496  f465		       aa		      tax
+    497  f466		       bd 1c f7 	      lda	LEVEL_ShapeTable,X	; block address = the table entry
+    498  f469		       85 e5		      sta	FetchPtr
+    499  f46b		       bd 1d f7 	      lda	LEVEL_ShapeTable+1,X
+    500  f46e		       85 e6		      sta	FetchPtr+1
+    501  f470		       a0 03		      ldy	#TILE_ROWS-1
+    502  f472				   .sp
+    503  f472		       b1 e5		      lda	(FetchPtr),Y	; row index for this band (b7 = band 1's hot flag)
+    504  f474		       29 7f		      and	#$7F
+    505  f476		       aa		      tax
+    506  f477		       bd a4 f6 	      lda	RowPoolPF0,X
+    507  f47a		       99 c3 00 	      sta	PF0Buf,Y
+    508  f47d		       bd cc f6 	      lda	RowPoolPF1,X
+    509  f480		       99 c7 00 	      sta	PF1Buf,Y
+    510  f483		       bd f4 f6 	      lda	RowPoolPF2,X
+    511  f486		       99 cb 00 	      sta	PF2Buf,Y
+    512  f489		       88		      dey
+    513  f48a		       10 e6		      bpl	.sp
+    514  f48c		       a0 01		      ldy	#1
+    515  f48e		       b1 e5		      lda	(FetchPtr),Y	; band-1 index | hot b7
+    516  f490		       29 80		      and	#$80
+    517  f492		       4a		      lsr		; $80 -> $40 (MetaB b6)
+    518  f493		       85 9a		      sta	RoomMetaB
+    519  f495		       4c 59 f4 	      jmp	$F453 + 6	; sta $1FF7 -> bank3 B3Meta
+    520  f498
+    521  f498							; ---- DATA WINDOW: shape blocks + row pool + shape address table ----------------------
+    522  f498							; (models_data.asm via generated/spill_bank3_shapes.asm; convert_level.py capacity-checks
+    523  f498							; it as _BANK3_SHAPES_SLOT = $F4C0-$FBF7, below bank4's ReturnPad.)
+    524  f498		       00 00 00 00*	      .ds	$F4C0 - *, 0
+------- FILE generated/spill_bank3_shapes.asm LEVEL 2 PASS 2
+      0  f4c0					      include	"generated/spill_bank3_shapes.asm"
+      1  f4c0							; Generated by convert_level.py --levels (C12 2026-10-21).
+      2  f4c0							; Include list for BANK3's $F5CC SHAPE window — see bank3.asm.
+------- FILE generated/models_data.asm LEVEL 3 PASS 2
+      0  f4c0					      include	"generated/models_data.asm"
+      1  f4c0							; Generated by convert_level.py --levels. Do not edit by hand.
+      2  f4c0
+      3  f4c0							; Generated from models.json model 0. Do not edit by hand.
+      4  f4c0				   M0Shape
+      5  f4c0				   M0Rows
+      6  f4c0		       00 01 02 00	      .byte.b	$00, $01, $02, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+      7  f4c4
+      8  f4c4							; Generated from models.json model 1. Do not edit by hand.
+      9  f4c4				   M1Shape
+     10  f4c4				   M1Rows
+     11  f4c4		       02 01 02 00	      .byte.b	$02, $01, $02, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     12  f4c8
+     13  f4c8							; Generated from models.json model 2. Do not edit by hand.
+     14  f4c8				   M2Shape
+     15  f4c8				   M2Rows
+     16  f4c8		       00 01 03 00	      .byte.b	$00, $01, $03, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     17  f4cc
+     18  f4cc							; Generated from models.json model 3. Do not edit by hand.
+     19  f4cc				   M3Shape
+     20  f4cc				   M3Rows
+     21  f4cc		       03 01 03 00	      .byte.b	$03, $01, $03, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     22  f4d0
+     23  f4d0							; Generated from models.json model 4. Do not edit by hand.
+     24  f4d0				   M4Shape
+     25  f4d0				   M4Rows
+     26  f4d0		       00 84 01 05	      .byte.b	$00, $84, $01, $05	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     27  f4d4
+     28  f4d4							; Generated from models.json model 5. Do not edit by hand.
+     29  f4d4				   M5Shape
+     30  f4d4				   M5Rows
+     31  f4d4		       02 86 01 05	      .byte.b	$02, $86, $01, $05	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     32  f4d8
+     33  f4d8							; Generated from models.json model 6. Do not edit by hand.
+     34  f4d8				   M6Shape
+     35  f4d8				   M6Rows
+     36  f4d8		       00 84 01 05	      .byte.b	$00, $84, $01, $05	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     37  f4dc
+     38  f4dc							; Generated from models.json model 7. Do not edit by hand.
+     39  f4dc				   M7Shape
+     40  f4dc				   M7Rows
+     41  f4dc		       03 87 01 05	      .byte.b	$03, $87, $01, $05	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     42  f4e0
+     43  f4e0							; Generated from models.json model 8. Do not edit by hand.
+     44  f4e0				   M8Shape
+     45  f4e0				   M8Rows
+     46  f4e0		       00 01 08 02	      .byte.b	$00, $01, $08, $02	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     47  f4e4
+     48  f4e4							; Generated from models.json model 9. Do not edit by hand.
+     49  f4e4				   M9Shape
+     50  f4e4				   M9Rows
+     51  f4e4		       00 01 09 03	      .byte.b	$00, $01, $09, $03	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     52  f4e8
+     53  f4e8							; Generated from models.json model 10. Do not edit by hand.
+     54  f4e8				   M10Shape
+     55  f4e8				   M10Rows
+     56  f4e8		       00 01 0a 02	      .byte.b	$00, $01, $0a, $02	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     57  f4ec
+     58  f4ec							; Generated from models.json model 11. Do not edit by hand.
+     59  f4ec				   M11Shape
+     60  f4ec				   M11Rows
+     61  f4ec		       03 01 0a 00	      .byte.b	$03, $01, $0a, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     62  f4f0
+     63  f4f0							; Generated from models.json model 12. Do not edit by hand.
+     64  f4f0				   M12Shape
+     65  f4f0				   M12Rows
+     66  f4f0		       00 01 0a 03	      .byte.b	$00, $01, $0a, $03	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     67  f4f4
+     68  f4f4							; Generated from models.json model 13. Do not edit by hand.
+     69  f4f4				   M13Shape
+     70  f4f4				   M13Rows
+     71  f4f4		       03 01 0a 00	      .byte.b	$03, $01, $0a, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     72  f4f8
+     73  f4f8							; Generated from models.json model 14. Do not edit by hand.
+     74  f4f8				   M14Shape
+     75  f4f8				   M14Rows
+     76  f4f8		       00 01 0a 03	      .byte.b	$00, $01, $0a, $03	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     77  f4fc
+     78  f4fc							; Generated from models.json model 15. Do not edit by hand.
+     79  f4fc				   M15Shape
+     80  f4fc				   M15Rows
+     81  f4fc		       03 8b 03 00	      .byte.b	$03, $8b, $03, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     82  f500
+     83  f500							; Generated from models.json model 16. Do not edit by hand.
+     84  f500				   M16Shape
+     85  f500				   M16Rows
+     86  f500		       03 8c 03 00	      .byte.b	$03, $8c, $03, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     87  f504
+     88  f504							; Generated from models.json model 17. Do not edit by hand.
+     89  f504				   M17Shape
+     90  f504				   M17Rows
+     91  f504		       0d 01 02 02	      .byte.b	$0d, $01, $02, $02	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     92  f508
+     93  f508							; Generated from models.json model 18. Do not edit by hand.
+     94  f508				   M18Shape
+     95  f508				   M18Rows
+     96  f508		       0e 01 03 00	      .byte.b	$0e, $01, $03, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+     97  f50c
+     98  f50c							; Generated from models.json model 19. Do not edit by hand.
+     99  f50c				   M19Shape
+    100  f50c				   M19Rows
+    101  f50c		       0e 01 03 03	      .byte.b	$0e, $01, $03, $03	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    102  f510
+    103  f510							; Generated from models.json model 20. Do not edit by hand.
+    104  f510				   M20Shape
+    105  f510				   M20Rows
+    106  f510		       0d 86 01 05	      .byte.b	$0d, $86, $01, $05	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    107  f514
+    108  f514							; Generated from models.json model 21. Do not edit by hand.
+    109  f514				   M21Shape
+    110  f514				   M21Rows
+    111  f514		       0e 87 01 05	      .byte.b	$0e, $87, $01, $05	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    112  f518
+    113  f518							; Generated from models.json model 22. Do not edit by hand.
+    114  f518				   M22Shape
+    115  f518				   M22Rows
+    116  f518		       0d 01 08 00	      .byte.b	$0d, $01, $08, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    117  f51c
+    118  f51c							; Generated from models.json model 23. Do not edit by hand.
+    119  f51c				   M23Shape
+    120  f51c				   M23Rows
+    121  f51c		       0d 01 08 02	      .byte.b	$0d, $01, $08, $02	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    122  f520
+    123  f520							; Generated from models.json model 24. Do not edit by hand.
+    124  f520				   M24Shape
+    125  f520				   M24Rows
+    126  f520		       0d 0f 0a 00	      .byte.b	$0d, $0f, $0a, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    127  f524
+    128  f524							; Generated from models.json model 25. Do not edit by hand.
+    129  f524				   M25Shape
+    130  f524				   M25Rows
+    131  f524		       0d 01 0a 00	      .byte.b	$0d, $01, $0a, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    132  f528
+    133  f528							; Generated from models.json model 26. Do not edit by hand.
+    134  f528				   M26Shape
+    135  f528				   M26Rows
+    136  f528		       0e 10 11 00	      .byte.b	$0e, $10, $11, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    137  f52c
+    138  f52c							; Generated from models.json model 27. Do not edit by hand.
+    139  f52c				   M27Shape
+    140  f52c				   M27Rows
+    141  f52c		       0e 01 0a 03	      .byte.b	$0e, $01, $0a, $03	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    142  f530
+    143  f530							; Generated from models.json model 28. Do not edit by hand.
+    144  f530				   M28Shape
+    145  f530				   M28Rows
+    146  f530		       0d 12 0a 00	      .byte.b	$0d, $12, $0a, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    147  f534
+    148  f534							; Generated from models.json model 29. Do not edit by hand.
+    149  f534				   M29Shape
+    150  f534				   M29Rows
+    151  f534		       0d 01 0a 00	      .byte.b	$0d, $01, $0a, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    152  f538
+    153  f538							; Generated from models.json model 30. Do not edit by hand.
+    154  f538				   M30Shape
+    155  f538				   M30Rows
+    156  f538		       0e 13 11 00	      .byte.b	$0e, $13, $11, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    157  f53c
+    158  f53c							; Generated from models.json model 31. Do not edit by hand.
+    159  f53c				   M31Shape
+    160  f53c				   M31Rows
+    161  f53c		       0e 01 0a 03	      .byte.b	$0e, $01, $0a, $03	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    162  f540
+    163  f540							; Generated from models.json model 32. Do not edit by hand.
+    164  f540				   M32Shape
+    165  f540				   M32Rows
+    166  f540		       0d 81 02 02	      .byte.b	$0d, $81, $02, $02	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    167  f544
+    168  f544							; Generated from models.json model 33. Do not edit by hand.
+    169  f544				   M33Shape
+    170  f544				   M33Rows
+    171  f544		       0d 8d 0d 00	      .byte.b	$0d, $8d, $0d, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    172  f548
+    173  f548							; Generated from models.json model 34. Do not edit by hand.
+    174  f548				   M34Shape
+    175  f548				   M34Rows
+    176  f548		       0d 94 0d 00	      .byte.b	$0d, $94, $0d, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    177  f54c
+    178  f54c							; Generated from models.json model 35. Do not edit by hand.
+    179  f54c				   M35Shape
+    180  f54c				   M35Rows
+    181  f54c		       0d 81 02 02	      .byte.b	$0d, $81, $02, $02	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    182  f550
+    183  f550							; Generated from models.json model 36. Do not edit by hand.
+    184  f550				   M36Shape
+    185  f550				   M36Rows
+    186  f550		       0e 8c 03 03	      .byte.b	$0e, $8c, $03, $03	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    187  f554
+    188  f554							; Generated from models.json model 37. Do not edit by hand.
+    189  f554				   M37Shape
+    190  f554				   M37Rows
+    191  f554		       0d 81 02 02	      .byte.b	$0d, $81, $02, $02	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    192  f558
+    193  f558							; Generated from models.json model 38. Do not edit by hand.
+    194  f558				   M38Shape
+    195  f558				   M38Rows
+    196  f558		       00 01 02 0d	      .byte.b	$00, $01, $02, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    197  f55c
+    198  f55c							; Generated from models.json model 39. Do not edit by hand.
+    199  f55c				   M39Shape
+    200  f55c				   M39Rows
+    201  f55c		       02 01 02 0d	      .byte.b	$02, $01, $02, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    202  f560
+    203  f560							; Generated from models.json model 40. Do not edit by hand.
+    204  f560				   M40Shape
+    205  f560				   M40Rows
+    206  f560		       15 05 02 0d	      .byte.b	$15, $05, $02, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    207  f564
+    208  f564							; Generated from models.json model 41. Do not edit by hand.
+    209  f564				   M41Shape
+    210  f564				   M41Rows
+    211  f564		       15 01 02 0d	      .byte.b	$15, $01, $02, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    212  f568
+    213  f568							; Generated from models.json model 42. Do not edit by hand.
+    214  f568				   M42Shape
+    215  f568				   M42Rows
+    216  f568		       00 01 03 0e	      .byte.b	$00, $01, $03, $0e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    217  f56c
+    218  f56c							; Generated from models.json model 43. Do not edit by hand.
+    219  f56c				   M43Shape
+    220  f56c				   M43Rows
+    221  f56c		       00 01 08 0d	      .byte.b	$00, $01, $08, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    222  f570
+    223  f570							; Generated from models.json model 44. Do not edit by hand.
+    224  f570				   M44Shape
+    225  f570				   M44Rows
+    226  f570		       00 01 09 0e	      .byte.b	$00, $01, $09, $0e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    227  f574
+    228  f574							; Generated from models.json model 45. Do not edit by hand.
+    229  f574				   M45Shape
+    230  f574				   M45Rows
+    231  f574		       00 01 0a 0d	      .byte.b	$00, $01, $0a, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    232  f578
+    233  f578							; Generated from models.json model 46. Do not edit by hand.
+    234  f578				   M46Shape
+    235  f578				   M46Rows
+    236  f578		       00 10 11 0e	      .byte.b	$00, $10, $11, $0e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    237  f57c
+    238  f57c							; Generated from models.json model 47. Do not edit by hand.
+    239  f57c				   M47Shape
+    240  f57c				   M47Rows
+    241  f57c		       03 01 0a 0e	      .byte.b	$03, $01, $0a, $0e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    242  f580
+    243  f580							; Generated from models.json model 48. Do not edit by hand.
+    244  f580				   M48Shape
+    245  f580				   M48Rows
+    246  f580		       00 01 0a 0d	      .byte.b	$00, $01, $0a, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    247  f584
+    248  f584							; Generated from models.json model 49. Do not edit by hand.
+    249  f584				   M49Shape
+    250  f584				   M49Rows
+    251  f584		       02 01 0a 0d	      .byte.b	$02, $01, $0a, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    252  f588
+    253  f588							; Generated from models.json model 50. Do not edit by hand.
+    254  f588				   M50Shape
+    255  f588				   M50Rows
+    256  f588		       00 13 11 0e	      .byte.b	$00, $13, $11, $0e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    257  f58c
+    258  f58c							; Generated from models.json model 51. Do not edit by hand.
+    259  f58c				   M51Shape
+    260  f58c				   M51Rows
+    261  f58c		       00 94 0d 0d	      .byte.b	$00, $94, $0d, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    262  f590
+    263  f590							; Generated from models.json model 52. Do not edit by hand.
+    264  f590				   M52Shape
+    265  f590				   M52Rows
+    266  f590		       02 81 02 0d	      .byte.b	$02, $81, $02, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    267  f594
+    268  f594							; Generated from models.json model 53. Do not edit by hand.
+    269  f594				   M53Shape
+    270  f594				   M53Rows
+    271  f594		       00 94 0d 0d	      .byte.b	$00, $94, $0d, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    272  f598
+    273  f598							; Generated from models.json model 54. Do not edit by hand.
+    274  f598				   M54Shape
+    275  f598				   M54Rows
+    276  f598		       15 94 0d 0d	      .byte.b	$15, $94, $0d, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    277  f59c
+    278  f59c							; Generated from models.json model 55. Do not edit by hand.
+    279  f59c				   M55Shape
+    280  f59c				   M55Rows
+    281  f59c		       11 8c 03 0e	      .byte.b	$11, $8c, $03, $0e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    282  f5a0
+    283  f5a0							; Generated from models.json model 56. Do not edit by hand.
+    284  f5a0				   M56Shape
+    285  f5a0				   M56Rows
+    286  f5a0		       16 01 02 00	      .byte.b	$16, $01, $02, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    287  f5a4
+    288  f5a4							; Generated from models.json model 57. Do not edit by hand.
+    289  f5a4				   M57Shape
+    290  f5a4				   M57Rows
+    291  f5a4		       0b 01 03 00	      .byte.b	$0b, $01, $03, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    292  f5a8
+    293  f5a8							; Generated from models.json model 58. Do not edit by hand.
+    294  f5a8				   M58Shape
+    295  f5a8				   M58Rows
+    296  f5a8		       16 81 02 00	      .byte.b	$16, $81, $02, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    297  f5ac
+    298  f5ac							; Generated from models.json model 59. Do not edit by hand.
+    299  f5ac				   M59Shape
+    300  f5ac				   M59Rows
+    301  f5ac		       0b 05 03 00	      .byte.b	$0b, $05, $03, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    302  f5b0
+    303  f5b0							; Generated from models.json model 60. Do not edit by hand.
+    304  f5b0				   M60Shape
+    305  f5b0				   M60Rows
+    306  f5b0		       0b 01 03 03	      .byte.b	$0b, $01, $03, $03	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    307  f5b4
+    308  f5b4							; Generated from models.json model 61. Do not edit by hand.
+    309  f5b4				   M61Shape
+    310  f5b4				   M61Rows
+    311  f5b4		       16 01 02 0d	      .byte.b	$16, $01, $02, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    312  f5b8
+    313  f5b8							; Generated from models.json model 62. Do not edit by hand.
+    314  f5b8				   M62Shape
+    315  f5b8				   M62Rows
+    316  f5b8		       0b 01 03 0e	      .byte.b	$0b, $01, $03, $0e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    317  f5bc
+    318  f5bc							; Generated from models.json model 63. Do not edit by hand.
+    319  f5bc				   M63Shape
+    320  f5bc				   M63Rows
+    321  f5bc		       0d 01 16 16	      .byte.b	$0d, $01, $16, $16	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    322  f5c0
+    323  f5c0							; Generated from models.json model 64. Do not edit by hand.
+    324  f5c0				   M64Shape
+    325  f5c0				   M64Rows
+    326  f5c0		       0e 05 0b 0b	      .byte.b	$0e, $05, $0b, $0b	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    327  f5c4
+    328  f5c4							; Generated from models.json model 65. Do not edit by hand.
+    329  f5c4				   M65Shape
+    330  f5c4				   M65Rows
+    331  f5c4		       0e 01 0b 0b	      .byte.b	$0e, $01, $0b, $0b	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    332  f5c8
+    333  f5c8							; Generated from models.json model 66. Do not edit by hand.
+    334  f5c8				   M66Shape
+    335  f5c8				   M66Rows
+    336  f5c8		       02 01 16 17	      .byte.b	$02, $01, $16, $17	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    337  f5cc
+    338  f5cc							; Generated from models.json model 67. Do not edit by hand.
+    339  f5cc				   M67Shape
+    340  f5cc				   M67Rows
+    341  f5cc		       03 01 0b 0b	      .byte.b	$03, $01, $0b, $0b	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    342  f5d0
+    343  f5d0							; Generated from models.json model 68. Do not edit by hand.
+    344  f5d0				   M68Shape
+    345  f5d0				   M68Rows
+    346  f5d0		       17 01 16 16	      .byte.b	$17, $01, $16, $16	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    347  f5d4
+    348  f5d4							; Generated from models.json model 69. Do not edit by hand.
+    349  f5d4				   M69Shape
+    350  f5d4				   M69Rows
+    351  f5d4		       0b 01 0b 0b	      .byte.b	$0b, $01, $0b, $0b	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    352  f5d8
+    353  f5d8							; Generated from models.json model 70. Do not edit by hand.
+    354  f5d8				   M70Shape
+    355  f5d8				   M70Rows
+    356  f5d8		       02 05 02 0d	      .byte.b	$02, $05, $02, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    357  f5dc
+    358  f5dc							; Generated from models.json model 71. Do not edit by hand.
+    359  f5dc				   M71Shape
+    360  f5dc				   M71Rows
+    361  f5dc		       0d 98 19 02	      .byte.b	$0d, $98, $19, $02	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    362  f5e0
+    363  f5e0							; Generated from models.json model 72. Do not edit by hand.
+    364  f5e0				   M72Shape
+    365  f5e0				   M72Rows
+    366  f5e0		       0b 9a 1b 03	      .byte.b	$0b, $9a, $1b, $03	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    367  f5e4
+    368  f5e4							; Generated from models.json model 73. Do not edit by hand.
+    369  f5e4				   M73Shape
+    370  f5e4				   M73Rows
+    371  f5e4		       02 05 1c 1d	      .byte.b	$02, $05, $1c, $1d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    372  f5e8
+    373  f5e8							; Generated from models.json model 74. Do not edit by hand.
+    374  f5e8				   M74Shape
+    375  f5e8				   M74Rows
+    376  f5e8		       00 01 1c 1d	      .byte.b	$00, $01, $1c, $1d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    377  f5ec
+    378  f5ec							; Generated from models.json model 75. Do not edit by hand.
+    379  f5ec				   M75Shape
+    380  f5ec				   M75Rows
+    381  f5ec		       03 05 0b 1d	      .byte.b	$03, $05, $0b, $1d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    382  f5f0
+    383  f5f0							; Generated from models.json model 76. Do not edit by hand.
+    384  f5f0				   M76Shape
+    385  f5f0				   M76Rows
+    386  f5f0		       00 01 0b 1d	      .byte.b	$00, $01, $0b, $1d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    387  f5f4
+    388  f5f4							; Generated from models.json model 77. Do not edit by hand.
+    389  f5f4				   M77Shape
+    390  f5f4				   M77Rows
+    391  f5f4		       0d 05 1c 00	      .byte.b	$0d, $05, $1c, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    392  f5f8
+    393  f5f8							; Generated from models.json model 78. Do not edit by hand.
+    394  f5f8				   M78Shape
+    395  f5f8				   M78Rows
+    396  f5f8		       0d 05 1c 1d	      .byte.b	$0d, $05, $1c, $1d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    397  f5fc
+    398  f5fc							; Generated from models.json model 79. Do not edit by hand.
+    399  f5fc				   M79Shape
+    400  f5fc				   M79Rows
+    401  f5fc		       0e 05 0b 1d	      .byte.b	$0e, $05, $0b, $1d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    402  f600
+    403  f600							; Generated from models.json model 80. Do not edit by hand.
+    404  f600				   M80Shape
+    405  f600				   M80Rows
+    406  f600		       1e 05 08 00	      .byte.b	$1e, $05, $08, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    407  f604
+    408  f604							; Generated from models.json model 81. Do not edit by hand.
+    409  f604				   M81Shape
+    410  f604				   M81Rows
+    411  f604		       1e 01 08 00	      .byte.b	$1e, $01, $08, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    412  f608
+    413  f608							; Generated from models.json model 82. Do not edit by hand.
+    414  f608				   M82Shape
+    415  f608				   M82Rows
+    416  f608		       1e 9f 02 00	      .byte.b	$1e, $9f, $02, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    417  f60c
+    418  f60c							; Generated from models.json model 83. Do not edit by hand.
+    419  f60c				   M83Shape
+    420  f60c				   M83Rows
+    421  f60c		       1e 01 09 00	      .byte.b	$1e, $01, $09, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    422  f610
+    423  f610							; Generated from models.json model 84. Do not edit by hand.
+    424  f610				   M84Shape
+    425  f610				   M84Rows
+    426  f610		       1e 01 09 03	      .byte.b	$1e, $01, $09, $03	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    427  f614
+    428  f614							; Generated from models.json model 85. Do not edit by hand.
+    429  f614				   M85Shape
+    430  f614				   M85Rows
+    431  f614		       1e 20 0a 00	      .byte.b	$1e, $20, $0a, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    432  f618
+    433  f618							; Generated from models.json model 86. Do not edit by hand.
+    434  f618				   M86Shape
+    435  f618				   M86Rows
+    436  f618		       1e 05 0a 03	      .byte.b	$1e, $05, $0a, $03	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    437  f61c
+    438  f61c							; Generated from models.json model 87. Do not edit by hand.
+    439  f61c				   M87Shape
+    440  f61c				   M87Rows
+    441  f61c		       1e 21 0a 00	      .byte.b	$1e, $21, $0a, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    442  f620
+    443  f620							; Generated from models.json model 88. Do not edit by hand.
+    444  f620				   M88Shape
+    445  f620				   M88Rows
+    446  f620		       1e 22 0a 02	      .byte.b	$1e, $22, $0a, $02	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    447  f624
+    448  f624							; Generated from models.json model 89. Do not edit by hand.
+    449  f624				   M89Shape
+    450  f624				   M89Rows
+    451  f624		       1e 21 0a 00	      .byte.b	$1e, $21, $0a, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    452  f628
+    453  f628							; Generated from models.json model 90. Do not edit by hand.
+    454  f628				   M90Shape
+    455  f628				   M90Rows
+    456  f628		       1e a3 03 00	      .byte.b	$1e, $a3, $03, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    457  f62c
+    458  f62c							; Generated from models.json model 91. Do not edit by hand.
+    459  f62c				   M91Shape
+    460  f62c				   M91Rows
+    461  f62c		       1e 8c 03 03	      .byte.b	$1e, $8c, $03, $03	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    462  f630
+    463  f630							; Generated from models.json model 92. Do not edit by hand.
+    464  f630				   M92Shape
+    465  f630				   M92Rows
+    466  f630		       1e 8c 03 03	      .byte.b	$1e, $8c, $03, $03	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    467  f634
+    468  f634							; Generated from models.json model 93. Do not edit by hand.
+    469  f634				   M93Shape
+    470  f634				   M93Rows
+    471  f634		       1e a4 03 00	      .byte.b	$1e, $a4, $03, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    472  f638
+    473  f638							; Generated from models.json model 94. Do not edit by hand.
+    474  f638				   M94Shape
+    475  f638				   M94Rows
+    476  f638		       1e a5 03 03	      .byte.b	$1e, $a5, $03, $03	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    477  f63c
+    478  f63c							; Generated from models.json model 95. Do not edit by hand.
+    479  f63c				   M95Shape
+    480  f63c				   M95Rows
+    481  f63c		       1e 05 08 0d	      .byte.b	$1e, $05, $08, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    482  f640
+    483  f640							; Generated from models.json model 96. Do not edit by hand.
+    484  f640				   M96Shape
+    485  f640				   M96Rows
+    486  f640		       1e 26 0a 0d	      .byte.b	$1e, $26, $0a, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    487  f644
+    488  f644							; Generated from models.json model 97. Do not edit by hand.
+    489  f644				   M97Shape
+    490  f644				   M97Rows
+    491  f644		       1e 01 0a 0d	      .byte.b	$1e, $01, $0a, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    492  f648
+    493  f648							; Generated from models.json model 98. Do not edit by hand.
+    494  f648				   M98Shape
+    495  f648				   M98Rows
+    496  f648		       1e 81 02 0d	      .byte.b	$1e, $81, $02, $0d	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    497  f64c
+    498  f64c							; Generated from models.json model 99. Do not edit by hand.
+    499  f64c				   M99Shape
+    500  f64c				   M99Rows
+    501  f64c		       1e 05 1c 00	      .byte.b	$1e, $05, $1c, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    502  f650
+    503  f650							; Generated from models.json model 100. Do not edit by hand.
+    504  f650				   M100Shape
+    505  f650				   M100Rows
+    506  f650		       1e 05 1c 00	      .byte.b	$1e, $05, $1c, $00	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    507  f654
+    508  f654							; Generated from models.json model 101. Do not edit by hand.
+    509  f654				   M101Shape
+    510  f654				   M101Rows
+    511  f654		       00 81 02 1e	      .byte.b	$00, $81, $02, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    512  f658
+    513  f658							; Generated from models.json model 102. Do not edit by hand.
+    514  f658				   M102Shape
+    515  f658				   M102Rows
+    516  f658		       0d 01 08 1e	      .byte.b	$0d, $01, $08, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    517  f65c
+    518  f65c							; Generated from models.json model 103. Do not edit by hand.
+    519  f65c				   M103Shape
+    520  f65c				   M103Rows
+    521  f65c		       0d 26 0a 1e	      .byte.b	$0d, $26, $0a, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    522  f660
+    523  f660							; Generated from models.json model 104. Do not edit by hand.
+    524  f660				   M104Shape
+    525  f660				   M104Rows
+    526  f660		       0d 01 0a 1e	      .byte.b	$0d, $01, $0a, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    527  f664
+    528  f664							; Generated from models.json model 105. Do not edit by hand.
+    529  f664				   M105Shape
+    530  f664				   M105Rows
+    531  f664		       0d 22 0a 1e	      .byte.b	$0d, $22, $0a, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    532  f668
+    533  f668							; Generated from models.json model 106. Do not edit by hand.
+    534  f668				   M106Shape
+    535  f668				   M106Rows
+    536  f668		       0d 81 02 1e	      .byte.b	$0d, $81, $02, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    537  f66c
+    538  f66c							; Generated from models.json model 107. Do not edit by hand.
+    539  f66c				   M107Shape
+    540  f66c				   M107Rows
+    541  f66c		       15 05 02 1e	      .byte.b	$15, $05, $02, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    542  f670
+    543  f670							; Generated from models.json model 108. Do not edit by hand.
+    544  f670				   M108Shape
+    545  f670				   M108Rows
+    546  f670		       11 01 03 1e	      .byte.b	$11, $01, $03, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    547  f674
+    548  f674							; Generated from models.json model 109. Do not edit by hand.
+    549  f674				   M109Shape
+    550  f674				   M109Rows
+    551  f674		       00 05 09 1e	      .byte.b	$00, $05, $09, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    552  f678
+    553  f678							; Generated from models.json model 110. Do not edit by hand.
+    554  f678				   M110Shape
+    555  f678				   M110Rows
+    556  f678		       00 01 09 1e	      .byte.b	$00, $01, $09, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    557  f67c
+    558  f67c							; Generated from models.json model 111. Do not edit by hand.
+    559  f67c				   M111Shape
+    560  f67c				   M111Rows
+    561  f67c		       00 21 0a 1e	      .byte.b	$00, $21, $0a, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    562  f680
+    563  f680							; Generated from models.json model 112. Do not edit by hand.
+    564  f680				   M112Shape
+    565  f680				   M112Rows
+    566  f680		       00 20 0a 1e	      .byte.b	$00, $20, $0a, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    567  f684
+    568  f684							; Generated from models.json model 113. Do not edit by hand.
+    569  f684				   M113Shape
+    570  f684				   M113Rows
+    571  f684		       03 01 0a 1e	      .byte.b	$03, $01, $0a, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    572  f688
+    573  f688							; Generated from models.json model 114. Do not edit by hand.
+    574  f688				   M114Shape
+    575  f688				   M114Rows
+    576  f688		       03 8c 03 1e	      .byte.b	$03, $8c, $03, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    577  f68c
+    578  f68c							; Generated from models.json model 115. Do not edit by hand.
+    579  f68c				   M115Shape
+    580  f68c				   M115Rows
+    581  f68c		       00 a4 03 1e	      .byte.b	$00, $a4, $03, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    582  f690
+    583  f690							; Generated from models.json model 116. Do not edit by hand.
+    584  f690				   M116Shape
+    585  f690				   M116Rows
+    586  f690		       11 8b 03 1e	      .byte.b	$11, $8b, $03, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    587  f694
+    588  f694							; Generated from models.json model 117. Do not edit by hand.
+    589  f694				   M117Shape
+    590  f694				   M117Rows
+    591  f694		       11 8c 03 1e	      .byte.b	$11, $8c, $03, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    592  f698
+    593  f698							; Generated from models.json model 118. Do not edit by hand.
+    594  f698				   M118Shape
+    595  f698				   M118Rows
+    596  f698		       0b 8c 03 1e	      .byte.b	$0b, $8c, $03, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    597  f69c
+    598  f69c							; Generated from models.json model 119. Do not edit by hand.
+    599  f69c				   M119Shape
+    600  f69c				   M119Rows
+    601  f69c		       0b a5 03 1e	      .byte.b	$0b, $a5, $03, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    602  f6a0
+    603  f6a0							; Generated from models.json model 120. Do not edit by hand.
+    604  f6a0				   M120Shape
+    605  f6a0				   M120Rows
+    606  f6a0		       0d 98 27 1e	      .byte.b	$0d, $98, $27, $1e	; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+    607  f6a4
+    608  f6a4							; C3 (2026-10-20): ROW DICTIONARY — one 3 B entry per DISTINCT
+    609  f6a4							; (PF0,PF1,PF2) band row for the whole game. A shape block carries
+    610  f6a4							; 3 one-byte indices (band 0/1/2) into these SoA columns; bank2's
+    611  f6a4							; B3RoomBlocks expands them into PF0Buf at room load.
+    612  f6a4		       00 28	   LEVEL_ROW_COUNT =	40
+    613  f6a4				   RowPoolPF0
+    614  f6a4		       f0 00 f0 f0*	      .byte.b	$f0, $00, $f0, $f0, $00, $30, $00, $00, $f0, $f0, $f0, $f0, $00, $f0, $f0, $f0, $00, $f0, $f0, $00, $00, $f0, $f0, $f0, $f0, $30, $f0, $30, $f0, $30, $f0, $f0, $30, $00, $30, $00, $00, $00, $f0, $30
+    615  f6cc				   RowPoolPF1
+    616  f6cc		       ff 00 ff cf*	      .byte.b	$ff, $00, $ff, $cf, $3f, $00, $3f, $0f, $03, $03, $00, $c0, $00, $ff, $cf, $ff, $03, $00, $fc, $0f, $00, $00, $c0, $c0, $ff, $00, $c3, $00, $f0, $0c, $00, $fc, $0f, $0f, $3c, $0f, $0f, $00, $f3, $00
+    617  f6f4				   RowPoolPF2
+    618  f6f4		       ff 00 0f fc*	      .byte.b	$ff, $00, $0f, $fc, $ff, $00, $0f, $3c, $0f, $0c, $0c, $fc, $fc, $cf, $ff, $00, $ff, $fc, $00, $ff, $c0, $c0, $0c, $cc, $c3, $c0, $ff, $fc, $0f, $00, $00, $0f, $00, $00, $00, $fc, $f0, $f0, $03, $f0
+    619  f71c
+    620  f71c
+    621  f71c							; C7 (2026-10-20): shape ADDRESS table — bank3's B3RoomBlocks
+    622  f71c							; reads it in-bank; the 6-bit room-record index is the row.
+    623  f71c							; LEVEL_SHAPE_COUNT = 121 (6-bit index ceiling: 128)
+    624  f71c				   LEVEL_ShapeTable
+    625  f71c		       c0 f4		      .word.w	M0Shape
+    626  f71e		       c4 f4		      .word.w	M1Shape
+    627  f720		       c8 f4		      .word.w	M2Shape
+    628  f722		       cc f4		      .word.w	M3Shape
+    629  f724		       d0 f4		      .word.w	M4Shape
+    630  f726		       d4 f4		      .word.w	M5Shape
+    631  f728		       d8 f4		      .word.w	M6Shape
+    632  f72a		       dc f4		      .word.w	M7Shape
+    633  f72c		       e0 f4		      .word.w	M8Shape
+    634  f72e		       e4 f4		      .word.w	M9Shape
+    635  f730		       e8 f4		      .word.w	M10Shape
+    636  f732		       ec f4		      .word.w	M11Shape
+    637  f734		       f0 f4		      .word.w	M12Shape
+    638  f736		       f4 f4		      .word.w	M13Shape
+    639  f738		       f8 f4		      .word.w	M14Shape
+    640  f73a		       fc f4		      .word.w	M15Shape
+    641  f73c		       00 f5		      .word.w	M16Shape
+    642  f73e		       04 f5		      .word.w	M17Shape
+    643  f740		       08 f5		      .word.w	M18Shape
+    644  f742		       0c f5		      .word.w	M19Shape
+    645  f744		       10 f5		      .word.w	M20Shape
+    646  f746		       14 f5		      .word.w	M21Shape
+    647  f748		       18 f5		      .word.w	M22Shape
+    648  f74a		       1c f5		      .word.w	M23Shape
+    649  f74c		       20 f5		      .word.w	M24Shape
+    650  f74e		       24 f5		      .word.w	M25Shape
+    651  f750		       28 f5		      .word.w	M26Shape
+    652  f752		       2c f5		      .word.w	M27Shape
+    653  f754		       30 f5		      .word.w	M28Shape
+    654  f756		       34 f5		      .word.w	M29Shape
+    655  f758		       38 f5		      .word.w	M30Shape
+    656  f75a		       3c f5		      .word.w	M31Shape
+    657  f75c		       40 f5		      .word.w	M32Shape
+    658  f75e		       44 f5		      .word.w	M33Shape
+    659  f760		       48 f5		      .word.w	M34Shape
+    660  f762		       4c f5		      .word.w	M35Shape
+    661  f764		       50 f5		      .word.w	M36Shape
+    662  f766		       54 f5		      .word.w	M37Shape
+    663  f768		       58 f5		      .word.w	M38Shape
+    664  f76a		       5c f5		      .word.w	M39Shape
+    665  f76c		       60 f5		      .word.w	M40Shape
+    666  f76e		       64 f5		      .word.w	M41Shape
+    667  f770		       68 f5		      .word.w	M42Shape
+    668  f772		       6c f5		      .word.w	M43Shape
+    669  f774		       70 f5		      .word.w	M44Shape
+    670  f776		       74 f5		      .word.w	M45Shape
+    671  f778		       78 f5		      .word.w	M46Shape
+    672  f77a		       7c f5		      .word.w	M47Shape
+    673  f77c		       80 f5		      .word.w	M48Shape
+    674  f77e		       84 f5		      .word.w	M49Shape
+    675  f780		       88 f5		      .word.w	M50Shape
+    676  f782		       8c f5		      .word.w	M51Shape
+    677  f784		       90 f5		      .word.w	M52Shape
+    678  f786		       94 f5		      .word.w	M53Shape
+    679  f788		       98 f5		      .word.w	M54Shape
+    680  f78a		       9c f5		      .word.w	M55Shape
+    681  f78c		       a0 f5		      .word.w	M56Shape
+    682  f78e		       a4 f5		      .word.w	M57Shape
+    683  f790		       a8 f5		      .word.w	M58Shape
+    684  f792		       ac f5		      .word.w	M59Shape
+    685  f794		       b0 f5		      .word.w	M60Shape
+    686  f796		       b4 f5		      .word.w	M61Shape
+    687  f798		       b8 f5		      .word.w	M62Shape
+    688  f79a		       bc f5		      .word.w	M63Shape
+    689  f79c		       c0 f5		      .word.w	M64Shape
+    690  f79e		       c4 f5		      .word.w	M65Shape
+    691  f7a0		       c8 f5		      .word.w	M66Shape
+    692  f7a2		       cc f5		      .word.w	M67Shape
+    693  f7a4		       d0 f5		      .word.w	M68Shape
+    694  f7a6		       d4 f5		      .word.w	M69Shape
+    695  f7a8		       d8 f5		      .word.w	M70Shape
+    696  f7aa		       dc f5		      .word.w	M71Shape
+    697  f7ac		       e0 f5		      .word.w	M72Shape
+    698  f7ae		       e4 f5		      .word.w	M73Shape
+    699  f7b0		       e8 f5		      .word.w	M74Shape
+    700  f7b2		       ec f5		      .word.w	M75Shape
+    701  f7b4		       f0 f5		      .word.w	M76Shape
+    702  f7b6		       f4 f5		      .word.w	M77Shape
+    703  f7b8		       f8 f5		      .word.w	M78Shape
+    704  f7ba		       fc f5		      .word.w	M79Shape
+    705  f7bc		       00 f6		      .word.w	M80Shape
+    706  f7be		       04 f6		      .word.w	M81Shape
+    707  f7c0		       08 f6		      .word.w	M82Shape
+    708  f7c2		       0c f6		      .word.w	M83Shape
+    709  f7c4		       10 f6		      .word.w	M84Shape
+    710  f7c6		       14 f6		      .word.w	M85Shape
+    711  f7c8		       18 f6		      .word.w	M86Shape
+    712  f7ca		       1c f6		      .word.w	M87Shape
+    713  f7cc		       20 f6		      .word.w	M88Shape
+    714  f7ce		       24 f6		      .word.w	M89Shape
+    715  f7d0		       28 f6		      .word.w	M90Shape
+    716  f7d2		       2c f6		      .word.w	M91Shape
+    717  f7d4		       30 f6		      .word.w	M92Shape
+    718  f7d6		       34 f6		      .word.w	M93Shape
+    719  f7d8		       38 f6		      .word.w	M94Shape
+    720  f7da		       3c f6		      .word.w	M95Shape
+    721  f7dc		       40 f6		      .word.w	M96Shape
+    722  f7de		       44 f6		      .word.w	M97Shape
+    723  f7e0		       48 f6		      .word.w	M98Shape
+    724  f7e2		       4c f6		      .word.w	M99Shape
+    725  f7e4		       50 f6		      .word.w	M100Shape
+    726  f7e6		       54 f6		      .word.w	M101Shape
+    727  f7e8		       58 f6		      .word.w	M102Shape
+    728  f7ea		       5c f6		      .word.w	M103Shape
+    729  f7ec		       60 f6		      .word.w	M104Shape
+    730  f7ee		       64 f6		      .word.w	M105Shape
+    731  f7f0		       68 f6		      .word.w	M106Shape
+    732  f7f2		       6c f6		      .word.w	M107Shape
+    733  f7f4		       70 f6		      .word.w	M108Shape
+    734  f7f6		       74 f6		      .word.w	M109Shape
+    735  f7f8		       78 f6		      .word.w	M110Shape
+    736  f7fa		       7c f6		      .word.w	M111Shape
+    737  f7fc		       80 f6		      .word.w	M112Shape
+    738  f7fe		       84 f6		      .word.w	M113Shape
+    739  f800		       88 f6		      .word.w	M114Shape
+    740  f802		       8c f6		      .word.w	M115Shape
+    741  f804		       90 f6		      .word.w	M116Shape
+    742  f806		       94 f6		      .word.w	M117Shape
+    743  f808		       98 f6		      .word.w	M118Shape
+    744  f80a		       9c f6		      .word.w	M119Shape
+    745  f80c		       a0 f6		      .word.w	M120Shape
+    746  f80e
+------- FILE generated/spill_bank3_shapes.asm
+      4  f80e
+------- FILE bank4.asm
+    526  f80e
+    527  f80e
+    528  f80e							; ------------------------------------------------------------------------------
+    529  f80e							; Cross-bank twins (bank0 is the caller; every pad is split across the banks):
+    530  f80e							;   entry  A=$FC08: bank0 runs `sta $1FF8`; the fetch at $FC0B comes from HERE
+    531  f80e							;	    = `jmp SkService` (bank0's own bytes at $FC0B are never fetched)
+    532  f80e							;   return $FBF8: this `sta $1FF4` selects bank0, whose `rts` at $FBFB returns
+    533  f80e							;	    to the caller (bank0's ReturnPad is the same two instructions)
+    534  f80e							; ------------------------------------------------------------------------------
+    535  f80e		       00 00 00 00*	      .ds	$FBF8 - *, 0
+    536  fbf8				   ReturnPad
+    537  fbf8		       8d f4 1f 	      sta	BK_GENERAL
+    538  fbfb		       00 00 00 00*	      .ds	$FC0B - *, 0
+    539  fc0b		       4c 85 f1 	      jmp	SkService
+    540  fc0e
+    541  fc0e		       00 00 00 00*	      .ds	$FFFA - *, 0
+    542  fffa		       00 f0		      .word.w	$F000
+    543  fffc		       00 f0		      .word.w	$F000
+    544  fffe		       00 f0		      .word.w	$F000

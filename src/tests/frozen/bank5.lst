@@ -268,310 +268,339 @@
     263  10000 ????		00 fe	    NC_FE      =	$FE
     264  10000 ????		00 ff	    NC_FF      =	$FF
 ------- FILE bank5.asm
-      4  f000					      org	$F000
-      5  f000							; Power-up stub (every bank has it: F4 powers up in an undefined bank): `lda #0 /
-      6  f000							; sta $1FF4` selects bank0, whose $F005 is `jmp GameStart`. Guard: verify_build
-      7  f000							; check_boot_banks (all 8 banks).
-      8  f000		       a9 00		      lda	#0
-      9  f002		       8d f4 1f 	      sta	$1FF4
-     10  f005							; ==============================================================================
-     11  f005							; Bank5 — free 4K window in the F4 (32K, 8 banks) layout.
-     12  f005							; ==============================================================================
-     13  f005							; Besides the stub, only the version header lives here ($F005: "S.A.V.I.O.R. <VERSION>", 0 - build.sh
-     14  f005							; writes version.asm from the VERSION file). The file still assembles to a full 4K
-     15  f005							; image: the tail is filled to the vector area, and the vectors are emitted (unused,
-     16  f005							; but every bank image must be 4096 B and DASM only writes what is emitted).
-     17  f005							; Hotspot for this bank: $1FF9 (F4: bank = addr - $1FF4).
-     18  f005							; ==============================================================================
-     19  f005				   RomVersion
+------- FILE banks.inc LEVEL 2 PASS 2
+      0  10000 ????				       include	"banks.inc"	; BK_* bank selectors by role (docs/agents/banks.md)
+      1  10000 ????						; ==============================================================================
+      2  10000 ????						; Bank selectors by ROLE (docs/agents/banks.md). Code never writes a literal $1FF4-$1FFB: it writes
+      3  10000 ????						; the selector of the bank that holds the ROLE it wants (`sta BK_ROOMS`), so the physical bank
+      4  10000 ????						; number of every role is decided HERE and nowhere else. The F4 hotspot of physical bank n is $1FF4+n.
+      5  10000 ????						;
+      6  10000 ????						; BKI_x = the physical bank (0-7) that holds role x. OLD layout (what build.sh assembles today):
+      7  10000 ????						; ==============================================================================
+      8  10000 ????		00 00	    BKI_GENERAL =	0	; main loop, input, physics, collision, sound, the fold pads
+      9  10000 ????		00 01	    BKI_HUD    =	1	; HUD, title and level select, raft, bomb wall marks, strip blast
+     10  10000 ????		00 02	    BKI_ROOMS  =	2	; level room half: room readers, exits, laser, moth, blast + the room tables
+     11  10000 ????		00 03	    BKI_EXTRAS =	3	; level extras half: phase/hcrunch/hot/dark walkers + the extras data
+     12  10000 ????		00 04	    BKI_SAVE   =	4	; save-to-cartridge (I2C)
+     13  10000 ????		00 05	    BKI_TRANS  =	5	; version header, blank transition frame, attract script
+     14  10000 ????		00 06	    BKI_CAVE   =	6	; the generated gameplay cave kernel
+     15  10000 ????		00 07	    BKI_PROLOGUE =	7	; cave kernel start-up code
+     16  10000 ????		00 04	    BKI_MODELS =	4	; room models: the shape step + the shape blocks / row pool (shares bank4, plan phase 3)
+     17  10000 ????
+     18  10000 ????		1f f4	    BK_GENERAL =	$1FF4 + BKI_GENERAL
+     19  10000 ????		1f f5	    BK_HUD     =	$1FF4 + BKI_HUD
+     20  10000 ????		1f f6	    BK_ROOMS   =	$1FF4 + BKI_ROOMS
+     21  10000 ????		1f f7	    BK_EXTRAS  =	$1FF4 + BKI_EXTRAS
+     22  10000 ????		1f f8	    BK_SAVE    =	$1FF4 + BKI_SAVE
+     23  10000 ????		1f f9	    BK_TRANS   =	$1FF4 + BKI_TRANS
+     24  10000 ????		1f fa	    BK_CAVE    =	$1FF4 + BKI_CAVE
+     25  10000 ????		1f fb	    BK_PROLOGUE =	$1FF4 + BKI_PROLOGUE
+     26  10000 ????		1f f8	    BK_MODELS  =	$1FF4 + BKI_MODELS
+------- FILE bank5.asm
+      5  f000					      org	$F000
+      6  f000							; Power-up stub (every bank has it: F4 powers up in an undefined bank): `lda #0 /
+      7  f000							; sta $1FF4` selects bank0, whose $F005 is `jmp GameStart`. Guard: verify_build
+      8  f000							; check_boot_banks (all 8 banks).
+      9  f000		       a9 00		      lda	#0
+     10  f002		       8d f4 1f 	      sta	BK_GENERAL
+     11  f005							; ==============================================================================
+     12  f005							; Bank5 — free 4K window in the F4 (32K, 8 banks) layout.
+     13  f005							; ==============================================================================
+     14  f005							; Besides the stub, only the version header lives here ($F005: "S.A.V.I.O.R. <VERSION>", 0 - build.sh
+     15  f005							; writes version.asm from the VERSION file). The file still assembles to a full 4K
+     16  f005							; image: the tail is filled to the vector area, and the vectors are emitted (unused,
+     17  f005							; but every bank image must be 4096 B and DASM only writes what is emitted).
+     18  f005							; Hotspot for this bank: $1FF9 (F4: bank = addr - $1FF4).
+     19  f005							; ==============================================================================
+     20  f005				   RomVersion
 ------- FILE version.asm LEVEL 2 PASS 2
       0  f005					      include	"version.asm"
       1  f005							; generated by build.sh from VERSION - do not edit
-      2  f005		       53 2e 41 2e*	      .byte.b	"S.A.V.I.O.R. 1.1.0", 0
+      2  f005		       53 2e 41 2e*	      .byte.b	"S.A.V.I.O.R. 1.1.1", 0
 ------- FILE bank5.asm
-     21  f018
-     22  f018							; ==============================================================================
-     23  f018							; TransBody — the blank ROOM-TRANSITION frame (2026-11). An exit sets
-     24  f018							; LevelConnSpare = room | $80 (bank2 ExitDirB2); EnterRoom's 1000-2000c would
-     25  f018							; overrun the overscan, so every gameplay frame ends in bank0's Transition pad
-     26  f018							; ($FC58: `sta $1FF9`, then this bank's `jmp TransBody` at $FC5B):
-     27  f018							;   not pending -> `jmp $FC58` = our `sta $1FF4` there; bank0 $FC5B runs
-     28  f018							;		    `jmp StartFrame` (cost: ~22c per frame).
-     29  f018							;   pending	 -> emit one blank frame: VSYNC, VBLANK stays on, EnterRoom
-     30  f018							;		    (it ends in ReturnPad, whose rts lands on bank0's second pad
-     31  f018							;		    $FC5E because we push $FC5D), then TransFinish pads the
-     32  f018							;		    frame to 272 lines and leaves through $FC58 the same way.
-     33  f018							; EnterRoom's chain zeroes LevelConnSpare (bank3 ERLoadDone): flag consumed.
-     34  f018							; ==============================================================================
-     35  f018		       00 00	   VSYNC      =	$00
-     36  f018		       02 96	   TIM64T     =	$0296
-     37  f018		       02 84	   INTIM      =	$0284
-     38  f018		       00 02	   WSYNC      =	$02
-     39  f018		       00 3e	   TF_LINES   =	54 + TV_CAVE_LINES - 272	; scanlines after the 255-unit timer (tuned: 272 total on NTSC)
-     40  f018		       00 a2	   LevelConnSpare =	$A2
-     41  f018		       00 8a	   DropTarget =	$8A
-     42  f018		       00 97	   StepsLeft  =	$97
-     43  f018		       00 ac	   PlayerLives =	$AC
-     44  f018		       00 ad	   TickCounter =	$AD
-     45  f018		       00 ae	   BarLevel   =	$AE
-     46  f018		       00 f3	   ScoreTh    =	$F3
-     47  f018		       00 f4	   ScoreHu    =	$F4
-     48  f018		       00 f5	   ScoreTe    =	$F5
-     49  f018		       00 f6	   BombX      =	$F6
-     50  f018		       00 f7	   BombTimer  =	$F7
-     51  f018		       00 dc	   StickA     =	$DC
-     52  f018		       00 dd	   DemoOn     =	$DD	; b7 = virtual FIRE, b6 = demo playing, b5-0 = the title's Level
-     53  f018		       00 a3	   Level      =	$A3
-     54  f018		       00 de	   DemoPos    =	$DE
-     55  f018		       00 df	   DemoDur    =	$DF
-     56  f018		       00 19	   AUDV0      =	$19
-     57  f018		       00 1a	   AUDV1      =	$1A
-     58  f018		       02 80	   SWCHA      =	$0280
-     59  f018		       02 82	   SWCHB      =	$0282
-     60  f018		       00 0c	   INPT4      =	$0C
-     61  f018		       00 96	   IDLE_FRAMES =	150	; x2 passes = 300 frames = 5 s of an untouched title
-     62  f018		       00 00 00 00*	      .ds	$F100 - *, 0
-     63  f100				   TransBody
-     64  f100		       a5 a2		      lda	LevelConnSpare
-     65  f102		       30 03		      bmi	TBgo
-     66  f104		       4c 00 f2 	      jmp	DemoHook	; the title or the demo (a plain frame never gets here:
-     67  f107							;   bank0's TailHook sends only pending/demo frames)
-     68  f107				   TBgo
-     69  f107		       85 02		      sta	WSYNC
-     70  f109		       a9 02		      lda	#2
-     71  f10b		       85 00		      sta	VSYNC
-     72  f10d		       85 02		      sta	WSYNC
-     73  f10f		       85 02		      sta	WSYNC
-     74  f111		       85 02		      sta	WSYNC
-     75  f113		       a9 00		      lda	#0
-     76  f115		       85 00		      sta	VSYNC
-     77  f117		       a9 ff		      lda	#255
-     78  f119		       8d 96 02 	      sta	TIM64T	; 255 * 64c = 214 lines, EnterRoom runs inside
-     79  f11c		       a5 a2		      lda	LevelConnSpare
-     80  f11e		       c9 a0		      cmp	#$A0
-     81  f120		       f0 26		      beq	.TBreload	; attract mode: reload the stage (see DemoHook)
-     82  f122		       0a		      asl		; N = b6: new stage (TallyWork), else a room exit
-     83  f123		       30 0d		      bmi	.TBlevel
-     84  f125		       a9 fc		      lda	#$FC
-     85  f127		       48		      pha
-     86  f128		       a9 5d		      lda	#$5D
-     87  f12a		       48		      pha		; EnterRoom's rts -> $FC5E (bank0 pad 2)
-     88  f12b		       a5 a2		      lda	LevelConnSpare
-     89  f12d		       29 7f		      and	#$7F	; A = target room
-     90  f12f		       4c d0 fb 	      jmp	$FBD0	; EnterRoom tramp twin: sta $1FF6, bank2 jmp $F010
-     91  f132				   .TBlevel
-     92  f132		       a5 dd		      lda	DemoOn
-     93  f134		       f0 03		      beq	.TBlevelOk
-     94  f136		       4c b3 f2 	      jmp	DHabort	; the demo must never advance/save the stage
-     95  f139				   .TBlevelOk
-     96  f139		       a9 00		      lda	#0
-     97  f13b		       85 a2		      sta	LevelConnSpare	; consumed (LoadLevel's chain would zero it too)
-     98  f13d		       a9 fc		      lda	#$FC
-     99  f13f		       48		      pha
-    100  f140		       a9 60		      lda	#$60
-    101  f142		       48		      pha		; SaveKey's rts -> $FC61 (bank0 pad 3)
-    102  f143		       a9 02		      lda	#2	; SaveKey op 2 = CHECKPOINT (may RESTART the game)
-    103  f145		       4c 08 fc 	      jmp	$FC08	; twin of bank0's CallPad_SaveKey: sta $1FF8, bank4 jmp
-    104  f148				   .TBreload
-    105  f148		       a9 00		      lda	#0
-    106  f14a		       85 a2		      sta	LevelConnSpare
-    107  f14c		       85 19		      sta	AUDV0	; the title theme (or the demo's last sound) stops
-    108  f14e		       85 1a		      sta	AUDV1
-    109  f150		       f0 00		      beq	TransAfterSave	; A = 0: always taken
-    110  f152				   TransAfterSave
-    111  f152		       a9 fc		      lda	#$FC
-    112  f154		       48		      pha
-    113  f155		       a9 5d		      lda	#$5D
-    114  f157		       48		      pha		; LoadLevel's final rts (DropArm) -> $FC5E
-    115  f158		       4c 20 fc 	      jmp	$FC20	; twin of bank0's LoadLevel: sta $1FF6, bank2 jmp LoadLevelB2
-    116  f15b				   TransFinish
-    117  f15b				   .TBwait
-    118  f15b		       ad 84 02 	      lda	INTIM
-    119  f15e		       d0 fb		      bne	.TBwait
-    120  f160		       a2 3e		      ldx	#TF_LINES
-    121  f162				   .TBline
-    122  f162		       85 02		      sta	WSYNC
-    123  f164		       ca		      dex
-    124  f165		       d0 fb		      bne	.TBline
-    125  f167		       4c 58 fc 	      jmp	$FC58
-    126  f16a
+     22  f018
+     23  f018							; ==============================================================================
+     24  f018							; TransBody — the blank ROOM-TRANSITION frame (2026-11). An exit sets
+     25  f018							; LevelConnSpare = room | $80 (bank2 ExitDirB2); EnterRoom's 1000-2000c would
+     26  f018							; overrun the overscan, so every gameplay frame ends in bank0's Transition pad
+     27  f018							; ($FC58: `sta $1FF9`, then this bank's `jmp TransBody` at $FC5B):
+     28  f018							;   not pending -> `jmp $FC58` = our `sta $1FF4` there; bank0 $FC5B runs
+     29  f018							;		    `jmp StartFrame` (cost: ~22c per frame).
+     30  f018							;   pending	 -> emit one blank frame: VSYNC, VBLANK stays on, EnterRoom
+     31  f018							;		    (it ends in ReturnPad, whose rts lands on bank0's second pad
+     32  f018							;		    $FC5E because we push $FC5D), then TransFinish pads the
+     33  f018							;		    frame to 272 lines and leaves through $FC58 the same way.
+     34  f018							; EnterRoom's chain zeroes LevelConnSpare (bank3 ERLoadDone): flag consumed.
+     35  f018							; ==============================================================================
+     36  f018		       00 00	   VSYNC      =	$00
+     37  f018		       02 96	   TIM64T     =	$0296
+     38  f018		       02 84	   INTIM      =	$0284
+     39  f018		       00 02	   WSYNC      =	$02
+     40  f018		       00 3e	   TF_LINES   =	54 + TV_CAVE_LINES - 272	; scanlines after the 255-unit timer (tuned: 272 total on NTSC)
+     41  f018		       00 a2	   LevelConnSpare =	$A2
+     42  f018		       00 8a	   DropTarget =	$8A
+     43  f018		       00 97	   StepsLeft  =	$97
+     44  f018		       00 ac	   PlayerLives =	$AC
+     45  f018		       00 ad	   TickCounter =	$AD
+     46  f018		       00 ae	   BarLevel   =	$AE
+     47  f018		       00 f3	   ScoreTh    =	$F3
+     48  f018		       00 f4	   ScoreHu    =	$F4
+     49  f018		       00 f5	   ScoreTe    =	$F5
+     50  f018		       00 f6	   BombX      =	$F6
+     51  f018		       00 f7	   BombTimer  =	$F7
+     52  f018		       00 dc	   StickA     =	$DC
+     53  f018		       00 dd	   DemoOn     =	$DD	; b7 = virtual FIRE, b6 = demo playing, b5-0 = the title's Level
+     54  f018		       00 a3	   Level      =	$A3
+     55  f018		       00 de	   DemoPos    =	$DE
+     56  f018		       00 df	   DemoDur    =	$DF
+     57  f018		       00 19	   AUDV0      =	$19
+     58  f018		       00 1a	   AUDV1      =	$1A
+     59  f018		       02 80	   SWCHA      =	$0280
+     60  f018		       02 82	   SWCHB      =	$0282
+     61  f018		       00 0c	   INPT4      =	$0C
+     62  f018		       00 96	   IDLE_FRAMES =	150	; x2 passes = 300 frames = 5 s of an untouched title
+     63  f018		       00 00 00 00*	      .ds	$F100 - *, 0
+     64  f100				   TransBody
+     65  f100		       a5 a2		      lda	LevelConnSpare
+     66  f102		       30 03		      bmi	TBgo
+     67  f104		       4c 00 f2 	      jmp	DemoHook	; the title or the demo (a plain frame never gets here:
+     68  f107							;   bank0's TailHook sends only pending/demo frames)
+     69  f107				   TBgo
+     70  f107		       85 02		      sta	WSYNC
+     71  f109		       a9 02		      lda	#2
+     72  f10b		       85 00		      sta	VSYNC
+     73  f10d		       85 02		      sta	WSYNC
+     74  f10f		       85 02		      sta	WSYNC
+     75  f111		       85 02		      sta	WSYNC
+     76  f113		       a9 00		      lda	#0
+     77  f115		       85 00		      sta	VSYNC
+     78  f117		       a9 ff		      lda	#255
+     79  f119		       8d 96 02 	      sta	TIM64T	; 255 * 64c = 214 lines, EnterRoom runs inside
+     80  f11c		       a5 a2		      lda	LevelConnSpare
+     81  f11e		       c9 a0		      cmp	#$A0
+     82  f120		       f0 26		      beq	.TBreload	; attract mode: reload the stage (see DemoHook)
+     83  f122		       0a		      asl		; N = b6: new stage (TallyWork), else a room exit
+     84  f123		       30 0d		      bmi	.TBlevel
+     85  f125		       a9 fc		      lda	#$FC
+     86  f127		       48		      pha
+     87  f128		       a9 5d		      lda	#$5D
+     88  f12a		       48		      pha		; EnterRoom's rts -> $FC5E (bank0 pad 2)
+     89  f12b		       a5 a2		      lda	LevelConnSpare
+     90  f12d		       29 7f		      and	#$7F	; A = target room
+     91  f12f		       4c d0 fb 	      jmp	$FBD0	; EnterRoom tramp twin: sta $1FF6, bank2 jmp $F010
+     92  f132				   .TBlevel
+     93  f132		       a5 dd		      lda	DemoOn
+     94  f134		       f0 03		      beq	.TBlevelOk
+     95  f136		       4c b3 f2 	      jmp	DHabort	; the demo must never advance/save the stage
+     96  f139				   .TBlevelOk
+     97  f139		       a9 00		      lda	#0
+     98  f13b		       85 a2		      sta	LevelConnSpare	; consumed (LoadLevel's chain would zero it too)
+     99  f13d		       a9 fc		      lda	#$FC
+    100  f13f		       48		      pha
+    101  f140		       a9 60		      lda	#$60
+    102  f142		       48		      pha		; SaveKey's rts -> $FC61 (bank0 pad 3)
+    103  f143		       a9 02		      lda	#2	; SaveKey op 2 = CHECKPOINT (may RESTART the game)
+    104  f145		       4c 08 fc 	      jmp	$FC08	; twin of bank0's CallPad_SaveKey: sta $1FF8, bank4 jmp
+    105  f148				   .TBreload
+    106  f148		       a9 00		      lda	#0
+    107  f14a		       85 a2		      sta	LevelConnSpare
+    108  f14c		       85 19		      sta	AUDV0	; the title theme (or the demo's last sound) stops
+    109  f14e		       85 1a		      sta	AUDV1
+    110  f150		       f0 00		      beq	TransAfterSave	; A = 0: always taken
+    111  f152				   TransAfterSave
+    112  f152		       a9 fc		      lda	#$FC
+    113  f154		       48		      pha
+    114  f155		       a9 5d		      lda	#$5D
+    115  f157		       48		      pha		; LoadLevel's final rts (DropArm) -> $FC5E
+    116  f158		       4c 20 fc 	      jmp	$FC20	; twin of bank0's LoadLevel: sta $1FF6, bank2 jmp LoadLevelB2
+    117  f15b				   TransFinish
+    118  f15b				   .TBwait
+    119  f15b		       ad 84 02 	      lda	INTIM
+    120  f15e		       d0 fb		      bne	.TBwait
+    121  f160		       a2 3e		      ldx	#TF_LINES
+    122  f162				   .TBline
+    123  f162		       85 02		      sta	WSYNC
+    124  f164		       ca		      dex
+    125  f165		       d0 fb		      bne	.TBline
+    126  f167		       4c 58 fc 	      jmp	$FC58
     127  f16a
-    128  f16a							; ==============================================================================
-    129  f16a							; DemoHook (attract mode, 2026-11) — runs at the END of every non-plain frame
-    130  f16a							; (title, drop-in, tally, demo), from TransBody. Entered with A != 0.
-    131  f16a							;   title idle  : 300 frames (5 s) with every title input released -> start the demo
-    132  f16a							;   demo	 : play DemoScript through StickA/DemoOn (EOR-ed onto the real
-    133  f16a							;		   SWCHA/INPT4 reads), any real input -> back to the title
-    134  f16a							;   reload	 : LevelConnSpare = $A0 makes TransBody run LoadLevel in a blank
-    135  f16a							;		   frame (like a room change); DropTarget decides the result:
-    136  f16a							;		   0 = the real drop-in (demo), $FF = the title preview.
-    137  f16a							; The demo is the REAL game on the selected stage (so the logo/credits band hook
-    138  f16a							; of the title is off by design); lives are topped up every frame, nothing saves.
-    139  f16a							; ==============================================================================
-    140  f16a		       00 00 00 00*	      .ds	$F200 - *, 0
-    141  f200				   DemoHook
-    142  f200		       a5 dd		      lda	DemoOn
-    143  f202		       d0 3c		      bne	.DHdemo
-    144  f204		       a5 8a		      lda	DropTarget
-    145  f206		       c9 ff		      cmp	#$FF
-    146  f208		       d0 33		      bne	.DHout	; drop-in fall / tally sentinel: not ours
-    147  f20a		       a5 97		      lda	StepsLeft	; title's last input sample (1 = released)
-    148  f20c		       29 17		      and	#$17
-    149  f20e		       c9 17		      cmp	#$17
-    150  f210		       d0 20		      bne	.DHidleReset
-    151  f212		       e6 df		      inc	DemoDur
-    152  f214		       a5 df		      lda	DemoDur
-    153  f216		       c9 96		      cmp	#IDLE_FRAMES
-    154  f218		       90 1e		      bcc	.DHwait
-    155  f21a		       a9 00		      lda	#0
-    156  f21c		       85 df		      sta	DemoDur
-    157  f21e		       e6 de		      inc	DemoPos
-    158  f220		       a5 de		      lda	DemoPos
-    159  f222		       c9 02		      cmp	#2
-    160  f224		       90 12		      bcc	.DHwait
-    161  f226		       a5 a3		      lda	Level
-    162  f228		       09 40		      ora	#$40
-    163  f22a		       85 dd		      sta	DemoOn	; 5 s of nothing: play (remembering the title's stage)
-    164  f22c		       a9 00		      lda	#0
-    165  f22e		       85 a3		      sta	Level	; the demo is scripted on stage 1 whatever is selected
-    166  f230		       f0 59		      beq	DHreload	; always taken
-    167  f232				   .DHidleReset
-    168  f232		       a9 00		      lda	#0
-    169  f234		       85 df		      sta	DemoDur
-    170  f236		       85 de		      sta	DemoPos
-    171  f238				   .DHwait		; a title frame ends with its overscan timer
-    172  f238		       ad 84 02 	      lda	INTIM
-    173  f23b		       d0 fb		      bne	.DHwait
-    174  f23d				   .DHout
-    175  f23d		       4c 58 fc 	      jmp	$FC58
-    176  f240				   .DHdemo
-    177  f240		       a5 8a		      lda	DropTarget
-    178  f242		       c9 ff		      cmp	#$FF
-    179  f244		       f0 6d		      beq	DHabort	; a console switch (REY) already sent us to the title:
-    180  f246							;   only the stage number and the preview are left to fix
-    181  f246		       ad 80 02 	      lda	SWCHA
-    182  f249		       29 f0		      and	#$F0
-    183  f24b		       c9 f0		      cmp	#$F0
-    184  f24d		       d0 64		      bne	DHabort	; stick moved
-    185  f24f		       a5 0c		      lda	INPT4
-    186  f251		       10 60		      bpl	DHabort	; fire
-    187  f253		       ad 82 02 	      lda	SWCHB
-    188  f256		       29 03		      and	#3
-    189  f258		       c9 03		      cmp	#3
-    190  f25a		       d0 57		      bne	DHabort	; SELECT / RESET
-    191  f25c		       a9 03		      lda	#3
-    192  f25e		       85 ac		      sta	PlayerLives	; the demo never loses
-    193  f260		       c6 df		      dec	DemoDur
-    194  f262		       d0 d9		      bne	.DHout	; mid-step: the virtual presses stay
-    195  f264		       a4 de		      ldy	DemoPos
-    196  f266		       b9 dc f2 	      lda	DemoScript,y	; step = duration, presses (D7-D4 = R L D U, D0 = fire)
-    197  f269		       f0 20		      beq	DHloop	; 0 = end of script: restart it
-    198  f26b		       85 df		      sta	DemoDur
-    199  f26d		       b9 dd f2 	      lda	DemoScript+1,y
-    200  f270		       aa		      tax
-    201  f271		       29 f0		      and	#$F0
-    202  f273		       85 dc		      sta	StickA
-    203  f275		       a5 dd		      lda	DemoOn
-    204  f277		       29 7f		      and	#$7F
-    205  f279		       85 dd		      sta	DemoOn
-    206  f27b		       8a		      txa
-    207  f27c		       4a		      lsr		; C = fire
-    208  f27d		       90 06		      bcc	.DHnoFire
-    209  f27f		       a5 dd		      lda	DemoOn
-    210  f281		       09 80		      ora	#$80	; EOR-ed onto INPT4 D7: pressed
-    211  f283		       85 dd		      sta	DemoOn
-    212  f285				   .DHnoFire
-    213  f285		       c8		      iny
-    214  f286		       c8		      iny
-    215  f287		       84 de		      sty	DemoPos
-    216  f289		       d0 b2		      bne	.DHout	; always taken (script < 256 B)
-    217  f28b				   DHloop
-    218  f28b				   DHreload
-    219  f28b		       a5 dd		      lda	DemoOn
-    220  f28d		       29 7f		      and	#$7F
-    221  f28f		       85 dd		      sta	DemoOn	; fire released
-    222  f291		       a9 00		      lda	#0
-    223  f293		       85 dc		      sta	StickA
-    224  f295		       85 de		      sta	DemoPos
-    225  f297		       85 8a		      sta	DropTarget	; 0 -> LoadLevel arms the real drop-in
-    226  f299		       85 f3		      sta	ScoreTh
-    227  f29b		       85 f4		      sta	ScoreHu
-    228  f29d		       85 f5		      sta	ScoreTe
-    229  f29f		       85 f6		      sta	BombX	; the title melody's state byte
-    230  f2a1		       a9 01		      lda	#1
-    231  f2a3		       85 df		      sta	DemoDur	; next frame fetches step 0
-    232  f2a5		       a9 03		      lda	#3
-    233  f2a7		       85 ac		      sta	PlayerLives
-    234  f2a9		       a9 3c		      lda	#TICKS_PER_SEC
-    235  f2ab		       85 ad		      sta	TickCounter
-    236  f2ad		       a9 78		      lda	#120
-    237  f2af		       85 ae		      sta	BarLevel
-    238  f2b1		       d0 22		      bne	DHpend
-    239  f2b3				   DHabort		; back to the title (the REY exit's state)
-    240  f2b3		       a5 dd		      lda	DemoOn
-    241  f2b5		       29 3f		      and	#$3F
-    242  f2b7		       85 a3		      sta	Level	; the stage the player had selected
-    243  f2b9		       a9 00		      lda	#0
-    244  f2bb		       85 dd		      sta	DemoOn
-    245  f2bd		       85 dc		      sta	StickA
-    246  f2bf		       85 de		      sta	DemoPos
-    247  f2c1		       85 df		      sta	DemoDur
-    248  f2c3		       85 f6		      sta	BombX
-    249  f2c5		       85 f7		      sta	BombTimer
-    250  f2c7		       85 f3		      sta	ScoreTh
-    251  f2c9		       85 f4		      sta	ScoreHu
-    252  f2cb		       85 f5		      sta	ScoreTe
-    253  f2cd		       a9 e8		      lda	#%11101000	; SELECT/RESET/UP/DOWN/FIRE count as held: no instant start
-    254  f2cf		       85 97		      sta	StepsLeft
-    255  f2d1		       a9 ff		      lda	#$FF
-    256  f2d3		       85 8a		      sta	DropTarget
-    257  f2d5				   DHpend
-    258  f2d5		       a9 a0		      lda	#$A0
-    259  f2d7		       85 a2		      sta	LevelConnSpare
-    260  f2d9		       4c 07 f1 	      jmp	TBgo
-    261  f2dc
-    262  f2dc							; The script: duration (frames), presses. Presses: $80 right, $40 left, $20 down
-    263  f2dc							; (drops the bomb on its press edge, standing only), $10 up (jet), $01 fire (laser).
-    264  f2dc							; Stage 1 (the pocket under the start): fall in, walk to both walls, drop a bomb,
-    265  f2dc							; fly out over it (the laser fires while flying), hover until it has gone off,
-    266  f2dc							; then glide back to the drop-in spot (X=39, Y=0, facing right) for a seamless loop. The first step covers the drop-in (~72 frames) and the free fall.
-    267  f2dc				   DemoScript
-    268  f2dc		       8c 00		      .byte.b	140, $00	; drop-in + fall to the floor
-    269  f2de		       0c 80		      .byte.b	12, $80	; walk right to the wall
-    270  f2e0		       0e 40		      .byte.b	14, $40	; walk left (faces left)
-    271  f2e2		       03 20		      .byte.b	3, $20	; DOWN: bomb
-    272  f2e4		       02 00		      .byte.b	2, $00
-    273  f2e6		       0e 80		      .byte.b	14, $80	; walk right, away from it
-    274  f2e8		       28 10		      .byte.b	40, $10	; jet up out of the pocket
-    275  f2ea		       1e 90		      .byte.b	30, $90	; up + right
-    276  f2ec		       28 11		      .byte.b	40, $11	; up + FIRE: laser
-    277  f2ee		       23 50		      .byte.b	35, $50	; up + left
-    278  f2f0		       23 90		      .byte.b	35, $90	; up + right
-    279  f2f2		       28 11		      .byte.b	40, $11	; up + FIRE
-    280  f2f4		       1e 10		      .byte.b	30, $10
-    281  f2f6		       27 50		      .byte.b	39, $50	; up + left along the ceiling ...
-    282  f2f8		       06 90		      .byte.b	6, $90	; ... and back right: ends at X=39, facing right, Y=0 --
-    283  f2fa		       0a 10		      .byte.b	10, $10	;   exactly where the next drop-in starts (a seamless loop)
-    284  f2fc		       00		      .byte.b	0	; end: restart the demo
-    285  f2fd
-    286  f2fd		       00 00 00 00*	      .ds	$FBD0 - *, 0
-    287  fbd0		       8d f6 1f 	      sta	$1FF6	; twin of bank0's EnterRoom tramp (bank2 has the jmp)
-    288  fbd3		       00 00 00 00*	      .ds	$FBF8 - *, 0
-    289  fbf8				   ReturnPad
-    290  fbf8		       8d f4 1f 	      sta	$1FF4	; the every-bank ReturnPad contract (bank0 rts at $FBFB)
-    291  fbfb		       00 00 00 00*	      .ds	$FC08 - *, 0
-    292  fc08		       8d f8 1f 	      sta	$1FF8	; twin of CallPad_SaveKey (bank4 serves the jmp at $FC0B)
-    293  fc0b		       00 00 00 00*	      .ds	$FC20 - *, 0
-    294  fc20		       8d f6 1f 	      sta	$1FF6	; twin of LoadLevel (bank2 serves the jmp at $FC23)
-    295  fc23		       00 00 00 00*	      .ds	$FC58 - *, 0
-    296  fc58		       8d f4 1f 	      sta	$1FF4	; bank0 $FC5B = jmp StartFrame
-    297  fc5b		       4c 00 f1 	      jmp	TransBody	; $FC5B: fetched after bank0's `sta $1FF9` at $FC58
-    298  fc5e		       00 00 00 	      .ds	$FC61 - *, 0
-    299  fc61		       4c 5b f1 	      jmp	TransFinish	; $FC61: after bank0's second pad at $FC5E
-    300  fc64					      .ds	$FC64 - *, 0
-    301  fc64		       4c 52 f1 	      jmp	TransAfterSave	; $FC64: after bank0's third pad at $FC61
-    302  fc67
-    303  fc67		       00 00 00 00*	      .ds	$FFFA - *, 0
-    304  fffa		       00 f0		      .word.w	$F000
-    305  fffc		       00 f0		      .word.w	$F000
-    306  fffe		       00 f0		      .word.w	$F000
+    128  f16a
+    129  f16a							; ==============================================================================
+    130  f16a							; DemoHook (attract mode, 2026-11) — runs at the END of every non-plain frame
+    131  f16a							; (title, drop-in, tally, demo), from TransBody. Entered with A != 0.
+    132  f16a							;   title idle  : 300 frames (5 s) with every title input released -> start the demo
+    133  f16a							;   demo	 : play DemoScript through StickA/DemoOn (EOR-ed onto the real
+    134  f16a							;		   SWCHA/INPT4 reads), any real input -> back to the title
+    135  f16a							;   reload	 : LevelConnSpare = $A0 makes TransBody run LoadLevel in a blank
+    136  f16a							;		   frame (like a room change); DropTarget decides the result:
+    137  f16a							;		   0 = the real drop-in (demo), $FF = the title preview.
+    138  f16a							; The demo is the REAL game on the selected stage (so the logo/credits band hook
+    139  f16a							; of the title is off by design); lives are topped up every frame, nothing saves.
+    140  f16a							; ==============================================================================
+    141  f16a		       00 00 00 00*	      .ds	$F200 - *, 0
+    142  f200				   DemoHook
+    143  f200		       a5 dd		      lda	DemoOn
+    144  f202		       d0 3c		      bne	.DHdemo
+    145  f204		       a5 8a		      lda	DropTarget
+    146  f206		       c9 ff		      cmp	#$FF
+    147  f208		       d0 33		      bne	.DHout	; drop-in fall / tally sentinel: not ours
+    148  f20a		       a5 97		      lda	StepsLeft	; title's last input sample (1 = released)
+    149  f20c		       29 17		      and	#$17
+    150  f20e		       c9 17		      cmp	#$17
+    151  f210		       d0 20		      bne	.DHidleReset
+    152  f212		       e6 df		      inc	DemoDur
+    153  f214		       a5 df		      lda	DemoDur
+    154  f216		       c9 96		      cmp	#IDLE_FRAMES
+    155  f218		       90 1e		      bcc	.DHwait
+    156  f21a		       a9 00		      lda	#0
+    157  f21c		       85 df		      sta	DemoDur
+    158  f21e		       e6 de		      inc	DemoPos
+    159  f220		       a5 de		      lda	DemoPos
+    160  f222		       c9 02		      cmp	#2
+    161  f224		       90 12		      bcc	.DHwait
+    162  f226		       a5 a3		      lda	Level
+    163  f228		       09 40		      ora	#$40
+    164  f22a		       85 dd		      sta	DemoOn	; 5 s of nothing: play (remembering the title's stage)
+    165  f22c		       a9 00		      lda	#0
+    166  f22e		       85 a3		      sta	Level	; the demo is scripted on stage 1 whatever is selected
+    167  f230		       f0 59		      beq	DHreload	; always taken
+    168  f232				   .DHidleReset
+    169  f232		       a9 00		      lda	#0
+    170  f234		       85 df		      sta	DemoDur
+    171  f236		       85 de		      sta	DemoPos
+    172  f238				   .DHwait		; a title frame ends with its overscan timer
+    173  f238		       ad 84 02 	      lda	INTIM
+    174  f23b		       d0 fb		      bne	.DHwait
+    175  f23d				   .DHout
+    176  f23d		       4c 58 fc 	      jmp	$FC58
+    177  f240				   .DHdemo
+    178  f240		       a5 8a		      lda	DropTarget
+    179  f242		       c9 ff		      cmp	#$FF
+    180  f244		       f0 6d		      beq	DHabort	; a console switch (REY) already sent us to the title:
+    181  f246							;   only the stage number and the preview are left to fix
+    182  f246		       ad 80 02 	      lda	SWCHA
+    183  f249		       29 f0		      and	#$F0
+    184  f24b		       c9 f0		      cmp	#$F0
+    185  f24d		       d0 64		      bne	DHabort	; stick moved
+    186  f24f		       a5 0c		      lda	INPT4
+    187  f251		       10 60		      bpl	DHabort	; fire
+    188  f253		       ad 82 02 	      lda	SWCHB
+    189  f256		       29 03		      and	#3
+    190  f258		       c9 03		      cmp	#3
+    191  f25a		       d0 57		      bne	DHabort	; SELECT / RESET
+    192  f25c		       a9 03		      lda	#3
+    193  f25e		       85 ac		      sta	PlayerLives	; the demo never loses
+    194  f260		       c6 df		      dec	DemoDur
+    195  f262		       d0 d9		      bne	.DHout	; mid-step: the virtual presses stay
+    196  f264		       a4 de		      ldy	DemoPos
+    197  f266		       b9 dc f2 	      lda	DemoScript,y	; step = duration, presses (D7-D4 = R L D U, D0 = fire)
+    198  f269		       f0 20		      beq	DHloop	; 0 = end of script: restart it
+    199  f26b		       85 df		      sta	DemoDur
+    200  f26d		       b9 dd f2 	      lda	DemoScript+1,y
+    201  f270		       aa		      tax
+    202  f271		       29 f0		      and	#$F0
+    203  f273		       85 dc		      sta	StickA
+    204  f275		       a5 dd		      lda	DemoOn
+    205  f277		       29 7f		      and	#$7F
+    206  f279		       85 dd		      sta	DemoOn
+    207  f27b		       8a		      txa
+    208  f27c		       4a		      lsr		; C = fire
+    209  f27d		       90 06		      bcc	.DHnoFire
+    210  f27f		       a5 dd		      lda	DemoOn
+    211  f281		       09 80		      ora	#$80	; EOR-ed onto INPT4 D7: pressed
+    212  f283		       85 dd		      sta	DemoOn
+    213  f285				   .DHnoFire
+    214  f285		       c8		      iny
+    215  f286		       c8		      iny
+    216  f287		       84 de		      sty	DemoPos
+    217  f289		       d0 b2		      bne	.DHout	; always taken (script < 256 B)
+    218  f28b				   DHloop
+    219  f28b				   DHreload
+    220  f28b		       a5 dd		      lda	DemoOn
+    221  f28d		       29 7f		      and	#$7F
+    222  f28f		       85 dd		      sta	DemoOn	; fire released
+    223  f291		       a9 00		      lda	#0
+    224  f293		       85 dc		      sta	StickA
+    225  f295		       85 de		      sta	DemoPos
+    226  f297		       85 8a		      sta	DropTarget	; 0 -> LoadLevel arms the real drop-in
+    227  f299		       85 f3		      sta	ScoreTh
+    228  f29b		       85 f4		      sta	ScoreHu
+    229  f29d		       85 f5		      sta	ScoreTe
+    230  f29f		       85 f6		      sta	BombX	; the title melody's state byte
+    231  f2a1		       a9 01		      lda	#1
+    232  f2a3		       85 df		      sta	DemoDur	; next frame fetches step 0
+    233  f2a5		       a9 03		      lda	#3
+    234  f2a7		       85 ac		      sta	PlayerLives
+    235  f2a9		       a9 3c		      lda	#TICKS_PER_SEC
+    236  f2ab		       85 ad		      sta	TickCounter
+    237  f2ad		       a9 78		      lda	#120
+    238  f2af		       85 ae		      sta	BarLevel
+    239  f2b1		       d0 22		      bne	DHpend
+    240  f2b3				   DHabort		; back to the title (the REY exit's state)
+    241  f2b3		       a5 dd		      lda	DemoOn
+    242  f2b5		       29 3f		      and	#$3F
+    243  f2b7		       85 a3		      sta	Level	; the stage the player had selected
+    244  f2b9		       a9 00		      lda	#0
+    245  f2bb		       85 dd		      sta	DemoOn
+    246  f2bd		       85 dc		      sta	StickA
+    247  f2bf		       85 de		      sta	DemoPos
+    248  f2c1		       85 df		      sta	DemoDur
+    249  f2c3		       85 f6		      sta	BombX
+    250  f2c5		       85 f7		      sta	BombTimer
+    251  f2c7		       85 f3		      sta	ScoreTh
+    252  f2c9		       85 f4		      sta	ScoreHu
+    253  f2cb		       85 f5		      sta	ScoreTe
+    254  f2cd		       a9 e8		      lda	#%11101000	; SELECT/RESET/UP/DOWN/FIRE count as held: no instant start
+    255  f2cf		       85 97		      sta	StepsLeft
+    256  f2d1		       a9 ff		      lda	#$FF
+    257  f2d3		       85 8a		      sta	DropTarget
+    258  f2d5				   DHpend
+    259  f2d5		       a9 a0		      lda	#$A0
+    260  f2d7		       85 a2		      sta	LevelConnSpare
+    261  f2d9		       4c 07 f1 	      jmp	TBgo
+    262  f2dc
+    263  f2dc							; The script: duration (frames), presses. Presses: $80 right, $40 left, $20 down
+    264  f2dc							; (drops the bomb on its press edge, standing only), $10 up (jet), $01 fire (laser).
+    265  f2dc							; Stage 1 (the pocket under the start): fall in, walk to both walls, drop a bomb,
+    266  f2dc							; fly out over it (the laser fires while flying), hover until it has gone off,
+    267  f2dc							; then glide back to the drop-in spot (X=39, Y=0, facing right) for a seamless loop. The first step covers the drop-in (~72 frames) and the free fall.
+    268  f2dc				   DemoScript
+    269  f2dc		       8c 00		      .byte.b	140, $00	; drop-in + fall to the floor
+    270  f2de		       0c 80		      .byte.b	12, $80	; walk right to the wall
+    271  f2e0		       0e 40		      .byte.b	14, $40	; walk left (faces left)
+    272  f2e2		       03 20		      .byte.b	3, $20	; DOWN: bomb
+    273  f2e4		       02 00		      .byte.b	2, $00
+    274  f2e6		       0e 80		      .byte.b	14, $80	; walk right, away from it
+    275  f2e8		       28 10		      .byte.b	40, $10	; jet up out of the pocket
+    276  f2ea		       1e 90		      .byte.b	30, $90	; up + right
+    277  f2ec		       28 11		      .byte.b	40, $11	; up + FIRE: laser
+    278  f2ee		       23 50		      .byte.b	35, $50	; up + left
+    279  f2f0		       23 90		      .byte.b	35, $90	; up + right
+    280  f2f2		       28 11		      .byte.b	40, $11	; up + FIRE
+    281  f2f4		       1e 10		      .byte.b	30, $10
+    282  f2f6		       27 50		      .byte.b	39, $50	; up + left along the ceiling ...
+    283  f2f8		       06 90		      .byte.b	6, $90	; ... and back right: ends at X=39, facing right, Y=0 --
+    284  f2fa		       0a 10		      .byte.b	10, $10	;   exactly where the next drop-in starts (a seamless loop)
+    285  f2fc		       00		      .byte.b	0	; end: restart the demo
+    286  f2fd
+    287  f2fd		       00 00 00 00*	      .ds	$FBD0 - *, 0
+    288  fbd0		       8d f6 1f 	      sta	BK_ROOMS	; twin of bank0's EnterRoom tramp (bank2 has the jmp)
+    289  fbd3		       00 00 00 00*	      .ds	$FBF8 - *, 0
+    290  fbf8				   ReturnPad
+    291  fbf8		       8d f4 1f 	      sta	BK_GENERAL	; the every-bank ReturnPad contract (bank0 rts at $FBFB)
+    292  fbfb		       00 00 00 00*	      .ds	$FC08 - *, 0
+    293  fc08		       8d f8 1f 	      sta	BK_SAVE	; twin of CallPad_SaveKey (bank4 serves the jmp at $FC0B)
+    294  fc0b		       00 00 00 00*	      .ds	$FC20 - *, 0
+    295  fc20		       8d f6 1f 	      sta	BK_ROOMS	; twin of LoadLevel (bank2 serves the jmp at $FC23)
+    296  fc23		       00 00 00 00*	      .ds	$FC58 - *, 0
+    297  fc58		       8d f4 1f 	      sta	BK_GENERAL	; bank0 $FC5B = jmp StartFrame
+    298  fc5b		       4c 00 f1 	      jmp	TransBody	; $FC5B: fetched after bank0's `sta $1FF9` at $FC58
+    299  fc5e		       00 00 00 	      .ds	$FC61 - *, 0
+    300  fc61		       4c 5b f1 	      jmp	TransFinish	; $FC61: after bank0's second pad at $FC5E
+    301  fc64					      .ds	$FC64 - *, 0
+    302  fc64		       4c 52 f1 	      jmp	TransAfterSave	; $FC64: after bank0's third pad at $FC61
+    303  fc67
+    304  fc67		       00 00 00 00*	      .ds	$FFFA - *, 0
+    305  fffa		       00 f0		      .word.w	$F000
+    306  fffc		       00 f0		      .word.w	$F000
+    307  fffe		       00 f0		      .word.w	$F000
