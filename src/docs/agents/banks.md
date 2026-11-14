@@ -155,6 +155,27 @@ spare); extras for levels 21+ go to bank3's free windows (`$F5CC-$F8B6`, ~0.75 K
 data windows ~2 KB, just enough for the rooms of levels 21-32 (1,975 B) - no margin; compressing the enemy
 records (3 B each) is the lever if the levels grow.
 
+## Decision 2026-11-14 (user): route 3 - the new ROM is designed so code reaches level data by level
+
+The twin-of-bank2 patch (above) is NOT the plan. The new ROM is empty, so bank0 is laid out for this from day one:
+
+- **Level banks carry their own readers.** Banks 5, 6, 7 each hold the level-reading code (the FetchPtr/EnemyDataLo
+  readers and the bodies that use them, today's bank2) plus a share of the level data; a level lives wholly in one
+  bank. Code is duplicated x3 (~2 KB each), data fills the other ~2 KB per bank.
+- **Pads pick the bank.** The eleven level pads in bank0 select the bank with a flags-only test, no register touched:
+  `bit LevelRoomN` (b7 = N, b6 = V) then `bmi`/`bvs` to one of three `sta BK_L5/6/7`. Cost ~12-15 B per pad.
+- **The selector byte is LevelRoomN b7/b6** (no free ZP byte exists, but LevelRoomN is only read in bank2 and a level
+  has <= 63 rooms): readers mask it with `and #$3F`, LoadLevel writes it. Nothing else changes in RAM.
+- **FoldIndirect spawn reads** go through the same selector (a fold pad per level bank) or the spawn X moves into the
+  RAM enemy record; decide in the survey.
+- Extras (the bank3 half) move into the level banks too, so bank3's data windows disappear.
+
+## Lesson: survey the READERS before planning where data lives
+
+2026-11-14: the plan said "levels last, banks 5-7" without tracing which code reads the level data. Data can only be
+read by code that runs in the same bank, so placement of data and placement of its readers must be planned together.
+Every future "move X to bank N" step starts with a reader/caller survey of X.
+
 ## Open questions (answer in the survey)
 
 - Exact size of the level-data service per bank, and whether the enemy-table readers can all use a RAM copy.
