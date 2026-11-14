@@ -132,6 +132,29 @@ ROM layout and fill it**, taking pieces from the old one.
    `test_generator` budgets (per bank), and the usage audit the generator already prints.
 6. **Release gate** (`tools/release.py --tag`) on the final layout.
 
+## Finding 2026-11-14: why the level-data service is not "just move the data"
+
+Measured while preparing step 2 (levels 21-32 do not fit bank2's windows: rooms 3,393 B needed vs 2,019 B):
+
+- Eleven bank0 pads reach level data: `EnterRoom`, `ExitRoomDown/Up/Left/Right`, `StageSlot1`, `LoadLevel`,
+  `BombEnemyBlast`, `LaserHitTest`, `UE_MothTramp` and `FoldIndirect`. Each is a fixed `sta BK_ROOMS` (3 bytes);
+  bank0 has ~4 spare bytes, so no pad can pick a bank by level.
+- Nearly every bank2 body reads enemy or room records through `FetchPtr`/`EnemyDataLo` IN bank2, and
+  `FoldIndirect` (bank0, spawn-X reads of snake/moth/tentacle) is hard-wired to bank2. RAM has no room to copy
+  the records out.
+- So a level bank cannot be a data-only bank: it has to be a **twin of bank2** (same code at the same addresses,
+  other data) with a way to get into it.
+
+Design that fits (not built): bank5 becomes "bank2B" (identical code, data of levels 21-32). Each of the nine
+level-reading pads keeps its `sta BK_ROOMS`; bank2's `jmp body` at pad+3 becomes `jmp Stub_i`, a ~10-byte stub
+in bank2 that tests ONE spare zero-page bit with `bit zp` / `bpl` (no register is touched, so A/X/Y stay as the
+pad contract needs), then `sta BK_ROOMS_B`; bank2B has `jmp body_i` at the byte after that `sta`. Open points: one
+free ZP bit "level >= 21"; the `FoldIndirect` spawn-X readers (twin them through a second fold or move the spawn X
+into the RAM enemy record); bank5's current content (version, transition, demo, ~0.5 KB) moves to bank4 (2.4 KB
+spare); extras for levels 21+ go to bank3's free windows (`$F5CC-$F8B6`, ~0.75 KB, plus gaps). Capacity: bank2B
+data windows ~2 KB, just enough for the rooms of levels 21-32 (1,975 B) - no margin; compressing the enemy
+records (3 B each) is the lever if the levels grow.
+
 ## Open questions (answer in the survey)
 
 - Exact size of the level-data service per bank, and whether the enemy-table readers can all use a RAM copy.
