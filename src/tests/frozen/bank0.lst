@@ -284,17 +284,19 @@
      13  10000 ????		00 04	    BKI_TRANS  =	4	; version header, blank transition frame, attract script
      14  10000 ????		00 06	    BKI_CAVE   =	6	; the generated gameplay cave kernel
      15  10000 ????		00 07	    BKI_PROLOGUE =	7	; cave kernel start-up code
-     16  10000 ????		00 04	    BKI_MODELS =	4	; room models: the shape step + the shape blocks / row pool (shares bank4, plan phase 3)
-     17  10000 ????
-     18  10000 ????		1f f4	    BK_GENERAL =	$1FF4 + BKI_GENERAL
-     19  10000 ????		1f f5	    BK_HUD     =	$1FF4 + BKI_HUD
-     20  10000 ????		1f f6	    BK_ROOMS   =	$1FF4 + BKI_ROOMS
-     21  10000 ????		1f f7	    BK_EXTRAS  =	$1FF4 + BKI_EXTRAS
-     22  10000 ????		1f f8	    BK_SAVE    =	$1FF4 + BKI_SAVE
-     23  10000 ????		1f f8	    BK_TRANS   =	$1FF4 + BKI_TRANS
-     24  10000 ????		1f fa	    BK_CAVE    =	$1FF4 + BKI_CAVE
-     25  10000 ????		1f fb	    BK_PROLOGUE =	$1FF4 + BKI_PROLOGUE
-     26  10000 ????		1f f8	    BK_MODELS  =	$1FF4 + BKI_MODELS
+     16  10000 ????		00 05	    BKI_ROOMS_B =	5	; room bank B: identical code to ROOMS (bank2), the data of the levels past LEVEL_SPLIT
+     17  10000 ????		00 04	    BKI_MODELS =	4	; room models: the shape step + the shape blocks / row pool (shares bank4, plan phase 3)
+     18  10000 ????
+     19  10000 ????		1f f4	    BK_GENERAL =	$1FF4 + BKI_GENERAL
+     20  10000 ????		1f f5	    BK_HUD     =	$1FF4 + BKI_HUD
+     21  10000 ????		1f f6	    BK_ROOMS   =	$1FF4 + BKI_ROOMS
+     22  10000 ????		1f f7	    BK_EXTRAS  =	$1FF4 + BKI_EXTRAS
+     23  10000 ????		1f f8	    BK_SAVE    =	$1FF4 + BKI_SAVE
+     24  10000 ????		1f f8	    BK_TRANS   =	$1FF4 + BKI_TRANS
+     25  10000 ????		1f fa	    BK_CAVE    =	$1FF4 + BKI_CAVE
+     26  10000 ????		1f fb	    BK_PROLOGUE =	$1FF4 + BKI_PROLOGUE
+     27  10000 ????		1f f8	    BK_MODELS  =	$1FF4 + BKI_MODELS
+     28  10000 ????		1f f9	    BK_ROOMS_B =	$1FF4 + BKI_ROOMS_B
 ------- FILE kernel.asm
       4  10000 ????
       5  10000 ????						; ==============================================================================

@@ -8,6 +8,7 @@
 LEVEL_FORMAT = $08
 LEVEL_DATA_STRIDE = 7
 LEVEL_COUNT = 4
+LEVEL_SPLIT = 4   ; levels 1..LEVEL_SPLIT live in room bank A (bank2), the rest in B (bank5)
 
 ; Per-level entry (stride 7, (d) 2026-10-20): miner room/x, both wall
 ; colors, then the level's room-table base and its ROOM COUNT.

@@ -59,6 +59,12 @@ def main() -> None:
     # --- block shape, both banks ------------------------------------------
     for name, src in (("kernel.asm", KERNEL), ("bank2.asm", BANK2)):
         body = block_body(src, "FoldIndirect")
+        if name == "bank2.asm":
+            # room bank A: the read is done by the A/B router (Stub_Fold: bit RoomExits / lda (FetchPtr),Y /
+            # jmp ReturnPad); check_room_banks guards its bytes. The pad half is still `sta BK_ROOMS`.
+            body = [ln.split(";")[0].strip() for ln in body]
+            assert body == ["sta BK_ROOMS", "jmp Stub_Fold"], f"{name}: FoldIndirect body {body}"
+            continue
         assert body == BLOCK, \
             f"{name}: FoldIndirect body {body} != contract {BLOCK}"
 

@@ -202,6 +202,7 @@ BK_HUD                   1ff5              (R )
 BK_MODELS                1ff8                  
 BK_PROLOGUE              1ffb                  
 BK_ROOMS                 1ff6              (R )
+BK_ROOMS_B               1ff9                  
 BK_SAVE                  1ff8              (R )
 BK_TRANS                 1ff8              (R )
 BKI_CAVE                 0006              (R )
@@ -211,6 +212,7 @@ BKI_HUD                  0001              (R )
 BKI_MODELS               0004              (R )
 BKI_PROLOGUE             0007              (R )
 BKI_ROOMS                0002              (R )
+BKI_ROOMS_B              0005              (R )
 BKI_SAVE                 0004              (R )
 BKI_TRANS                0004              (R )
 BombBlinkColors          f5f2              (R )
