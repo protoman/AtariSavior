@@ -306,6 +306,40 @@ FOLD_BYTES = bytes([0x8D, 0xF6, 0x1F, 0xB1, 0xE5, 0x8D, 0xF4, 0x1F, 0x60])
 # 0xE5 = FetchPtr (moved $E0→$E5 in S3.2 to free $E0 for rect4.h)
 
 
+def _bank_bytes(p: Path) -> bytes:
+    """A bank image as the byte-identity guards expect it. Bank2 (room bank A) routes every bank0 pad through an
+    A/B router stub (`jmp Stub_x` at pad+3); the guards compare the pad slot with the BODY, so the stub jumps
+    are folded back to `jmp body` here (check_room_banks guards the stubs themselves)."""
+    data = p.read_bytes()
+    if p.name != "bank2.bin":
+        return data
+    lst = p.with_suffix(".lst")
+    if not lst.exists():
+        return data
+    labels, _ = parse_lst(lst.read_text(errors="replace").splitlines())
+    buf = bytearray(data)
+    for name, addr in labels.items():
+        if not name.startswith("Stub_") or addr < 0xF000:
+            continue
+        off = addr - 0xF000
+        if name == "Stub_Fold":
+            body = None
+        else:
+            k = 6 if name == "Stub_LoadLevel" else 4
+            body = bytes(buf[off + k:off + k + 3])
+            if body[0] != 0x4C:
+                continue
+        pat = bytes((0x4C, addr & 0xFF, addr >> 8))
+        i = bytes(buf).find(pat)
+        while i != -1:
+            if name == "Stub_Fold":
+                buf[i:i + 9] = bytes((0xB1, 0xE5, 0x8D, 0xF4, 0x1F, 0x60, 0, 0, 0))
+            else:
+                buf[i:i + 3] = body
+            i = bytes(buf).find(pat, i + 1)
+    return bytes(buf)
+
+
 def check_fold_block(src: Path) -> None:
     regions: dict[int, bytes] = {}
     off = FOLD_ADDR - 0xF000
@@ -314,7 +348,7 @@ def check_fold_block(src: Path) -> None:
         if not p.exists():
             err(f"bank{idx}.bin missing (fold block check)")
             return
-        data = p.read_bytes()
+        data = _bank_bytes(p)
         if len(data) == 4096:
             regions[idx] = data[off:off + 10]
     if len(regions) < 2:
@@ -385,7 +419,7 @@ def check_moth_tramp(src: Path) -> None:
         if not p.exists():
             err(f"bank{idx}.bin missing (moth tramp check)")
             return
-        data = p.read_bytes()
+        data = _bank_bytes(p)
         if len(data) == 4096:
             banks[idx] = data
     if len(banks) < 2:
@@ -776,7 +810,7 @@ def check_enterroom_tramp(src: Path) -> None:
         if not p.exists():
             err(f"bank{idx}.bin missing (enterroom tramp check)")
             return
-        d = p.read_bytes()
+        d = _bank_bytes(p)
         if len(d) == 4096:
             bins[idx] = d
     if len(bins) < 2:
@@ -822,7 +856,7 @@ def check_blast_tramp(src: Path) -> None:
         if not p.exists():
             err(f"bank{idx}.bin missing (blast tramp check)")
             return
-        d = p.read_bytes()
+        d = _bank_bytes(p)
         if len(d) == 4096:
             bins[idx] = d
     if len(bins) < 2:
@@ -873,7 +907,7 @@ def check_loadlevel_tramp(src: Path) -> None:
         if not p.exists():
             err(f"bank{idx}.bin missing (loadlevel tramp check)")
             return
-        d = p.read_bytes()
+        d = _bank_bytes(p)
         if len(d) == 4096:
             bins[idx] = d
     if len(bins) < 2:
@@ -1610,9 +1644,78 @@ def check_tramp_targets(src: Path) -> None:
                 break  # first non-comment line decides: jmp pair or not a tramp
 
 
+def check_room_banks(src: Path) -> None:
+    """Room banks A (bank2) and B (bank5): same code at the same addresses, other data (banks plan layout v3).
+
+    * every label of A that is not generated level data sits at the same address in B,
+    * the two images differ ONLY in the data windows, the router stub zones, LoadLevelB2 (split offset +
+      RoomExits b7) and the one `lda #ROOMS_B*$80` operand of SetRoomExits,
+    * each router stub in A is `bit RoomExits / bmi *+5 / jmp body / sta BK_ROOMS_B` and B holds `jmp body`
+      10 bytes on (LoadLevel: `lda Level / cmp #LEVEL_SPLIT / bcs`, B at +12; Fold: B at +12 reads the byte),
+    * A's pad slots only jump to stubs (the pad guards fold them back to the bodies, see _bank_bytes).
+    """
+    pa, pb = src / "bank2.bin", src / "bank5.bin"
+    la, lb = src / "bank2.lst", src / "bank5.lst"
+    if not (pa.exists() and pb.exists() and la.exists() and lb.exists()):
+        err("room bank A/B images or listings missing (room-bank check)")
+        return
+    a, b = pa.read_bytes(), pb.read_bytes()
+    labels_a, _ = parse_lst(la.read_text(errors="replace").splitlines())
+    labels_b, _ = parse_lst(lb.read_text(errors="replace").splitlines())
+    for name, addr in labels_a.items():
+        if name.startswith(("LEVEL", "SHAPE_", "M0", "M1", "M2")) or addr < 0xF000 or name in ("ELSE", "ENDIF"):
+            continue
+        if labels_b.get(name) != addr:
+            err(f"room bank label {name}: A ${addr:04X} vs B "
+                f"${labels_b.get(name, -1):04X} (A and B must be byte-identical code)")
+    allowed = []
+    import convert_level as cl
+    for name, end in cl._SPILL_SLOTS:
+        allowed.append((cl._SPILL_ORG[name], end))
+    stub_len = {"Stub_LoadLevel": 15, "Stub_Fold": 17}
+    stubs = {n: ad for n, ad in labels_a.items() if n.startswith("Stub_") and ad >= 0xF000 and n != "Stub_{1}"}
+    for n, ad in stubs.items():
+        allowed.append((ad, ad + stub_len.get(n, 13)))
+    ll, st = labels_a.get("LoadLevelB2"), stubs.get("Stub_EnterRoom")
+    if ll is not None and st is not None:
+        allowed.append((ll, st))
+    sre = labels_a.get("SREb7")
+    if sre is not None:
+        allowed.append((sre + 1, sre + 2))        # the `ora #ROOMS_B*$80` operand
+    bad = [0xF000 + i for i in range(4096)
+           if a[i] != b[i] and not any(lo <= 0xF000 + i < hi for lo, hi in allowed)]
+    if bad:
+        err(f"room banks A and B differ outside the data windows / stub zones at ${bad[0]:04X}"
+            f"..${bad[-1]:04X} ({len(bad)} bytes)")
+    hot_b = banksym.bank_index("ROOMS_B")
+
+    def at(img: bytes, addr: int, n: int) -> bytes:
+        return img[addr - 0xF000:addr - 0xF000 + n]
+
+    for n, ad in stubs.items():
+        if n == "Stub_Fold":
+            ok_a = at(a, ad, 4) == bytes((0x24, 0xDB, 0x30, 0x05)) and at(a, ad + 4, 2) == bytes((0xB1, 0xE5)) \
+                and at(a, ad + 6, 3) == bytes((0x4C, 0xF8, 0xFB)) and at(a, ad + 9, 3) == bytes((0x8D, 0xF4 + hot_b, 0x1F))
+            ok_b = at(b, ad + 12, 5) == bytes((0xB1, 0xE5, 0x4C, 0xF8, 0xFB))
+        elif n == "Stub_LoadLevel":
+            body = labels_a.get("LoadLevelB2", -1)
+            ok_a = at(a, ad, 1) == b"\xA5" and at(a, ad + 2, 1) == b"\xC9" and at(a, ad + 4, 2) == bytes((0xB0, 0x03)) \
+                and at(a, ad + 6, 3) == bytes((0x4C, body & 0xFF, body >> 8)) \
+                and at(a, ad + 9, 3) == bytes((0x8D, 0xF4 + hot_b, 0x1F))
+            ok_b = at(b, ad + 12, 3) == bytes((0x4C, body & 0xFF, body >> 8))
+        else:
+            ok_a = at(a, ad, 4) == bytes((0x24, 0xDB, 0x30, 0x03)) and at(a, ad + 4, 1) == b"\x4C" \
+                and at(a, ad + 7, 3) == bytes((0x8D, 0xF4 + hot_b, 0x1F))
+            body = at(a, ad + 4, 3)
+            ok_b = at(b, ad + 10, 3) == body
+        if not (ok_a and ok_b):
+            err(f"room-bank router {n} ${ad:04X}: A {at(a, ad, 12).hex()} / B +10..: {at(b, ad + 10, 5).hex()} "
+                "is not the stub shape (bit RoomExits / bmi / jmp body / sta BK_ROOMS_B ; B: jmp body)")
+
+
 # Banks that hold CODE (pads, ReturnPad); the level banks and the empty banks carry only the boot stub.
 _CODE_BANKS = sorted({banksym.bank_index(r) for r in
-                      ("GENERAL", "HUD", "ROOMS", "EXTRAS", "SAVE", "TRANS", "MODELS")})
+                      ("GENERAL", "HUD", "ROOMS", "ROOMS_B", "EXTRAS", "SAVE", "TRANS", "MODELS")})
 
 
 def check_callpads(src: Path) -> None:
@@ -1632,7 +1735,7 @@ def check_callpads(src: Path) -> None:
         if not p.exists():
             err(f"bank{idx}.bin missing (callpad check)")
             return
-        data = p.read_bytes()
+        data = _bank_bytes(p)
         if len(data) == 4096:
             banks[idx] = data
     if len(banks) != len(_CODE_BANKS):
@@ -2536,11 +2639,20 @@ def check_level_window(src: Path) -> None:
     lst = src / "bank2.lst"
     if lst.exists():
         labels, _ = parse_lst(lst.read_text(errors="replace").splitlines())
-    slots = bank2_data_slots(bank2_p.read_text(encoding="utf-8"))
+    text2 = bank2_p.read_text(encoding="utf-8")
+    # A/B room banks: the spill includes sit inside `IF ROOMS_B / include B / ELSE / include A / ENDIF`;
+    # check both variants (A = bank2, B = bank5, same slots).
+    pat = re.compile(r'[ \t]*IF ROOMS_B\s*\n([ \t]*include "[^"]*"[^\n]*\n)[ \t]*ELSE\s*\n([ \t]*include "[^"]*"[^\n]*\n)[ \t]*ENDIF[ \t]*\n')
+    for variant, pick in (("A", 2), ("B", 1)):
+        _check_window_variant(src, variant, pat.sub(lambda m: m.group(pick), text2), labels)
+
+
+def _check_window_variant(src: Path, variant: str, bank2_text: str, labels: dict) -> None:
+    slots = bank2_data_slots(bank2_text)
     if not slots:
         err("no include-block data slots found in bank2.asm")
         return
-    print("window fit map (bank2 data slots):")
+    print(f"window fit map (room bank {variant} data slots):")
     for s in slots:
         s["files"] = flatten_includes(s["files"], src)   # #27b spill lists
         sizes, missing = [], False
@@ -2672,6 +2784,7 @@ def main() -> int:
     check_bank3_entry(src)
     check_tramp_targets(src)
     check_callpads(src)
+    check_room_banks(src)
     import os as _os  # noqa: PLC0415
     _stage = _os.environ.get("STAGE_FILE")
     if _stage and Path(_stage).exists():

@@ -13,6 +13,7 @@ BKI_SAVE      = 4       ; save-to-cartridge (I2C)
 BKI_TRANS     = 4       ; version header, blank transition frame, attract script
 BKI_CAVE      = 6       ; the generated gameplay cave kernel
 BKI_PROLOGUE  = 7       ; cave kernel start-up code
+BKI_ROOMS_B   = 5       ; room bank B: identical code to ROOMS (bank2), the data of the levels past LEVEL_SPLIT
 BKI_MODELS    = 4       ; room models: the shape step + the shape blocks / row pool (shares bank4, plan phase 3)
 
 BK_GENERAL    = $1FF4 + BKI_GENERAL
@@ -24,3 +25,4 @@ BK_TRANS      = $1FF4 + BKI_TRANS
 BK_CAVE       = $1FF4 + BKI_CAVE
 BK_PROLOGUE   = $1FF4 + BKI_PROLOGUE
 BK_MODELS     = $1FF4 + BKI_MODELS
+BK_ROOMS_B    = $1FF4 + BKI_ROOMS_B

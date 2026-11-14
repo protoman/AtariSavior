@@ -1,6 +1,9 @@
     processor 6502
     include "colors.inc"            ; NC_xx colour bytes for this TV (tools/gen_colors.py)
     include "banks.inc"             ; BK_* bank selectors by role (docs/agents/banks.md)
+    IFNCONST ROOMS_B
+ROOMS_B = 0                     ; 1 when bank5.asm assembles this file as the room bank B (levels past LEVEL_SPLIT)
+    ENDIF
 ; ==============================================================================
 ; Bank2 stub — selects bank0, jumps to GameStart
 ; ==============================================================================
@@ -137,6 +140,29 @@ MinerY = $A6
 LevelStartRoom = $A7             ; b7 = KeyHeld (loaded with the level entry)
 ; --- LoadLevelB2 (MOVED here, C2 2026-10-20) — hand-copies, check_equ_sync ---
 Level = $A3                      ; current level index (kernel decl $A3)
+
+; ==============================================================================
+; A/B ROOM-BANK ROUTER (banks plan layout v3, docs/agents/banks.md). Two identical room banks: A (bank2) holds
+; levels 1..LEVEL_SPLIT, B (bank5, this file assembled with ROOMS_B = 1) the rest. Every bank0 pad that reaches
+; level data keeps `sta BK_ROOMS` (= A); A's slot at pad+3 is `jmp Stub_x`. The stub tests RoomExits b7
+; ("this level is in B", set by B's LoadLevelB2 / SetRoomExits, cleared by A's) with flags only - A/X/Y are
+; untouched - and either jumps to the body here or `sta BK_ROOMS_B`, after which the fetch 10 bytes on comes
+; from B, which holds `jmp body` at the same address. A and B are byte-identical EXCEPT the stub zones and
+; the generated data windows.
+; ==============================================================================
+    MAC RSTUB                   ; {1} = stub name, {2} = body
+Stub_{1}:
+    IF ROOMS_B
+    .ds 10, 0
+    jmp {2}
+    ELSE
+    bit RoomExits
+    bmi *+5
+    jmp {2}
+    sta BK_ROOMS_B
+    .ds 3, 0
+    ENDIF
+    ENDM
 LevelStartX = $A8                ; level start x (kernel constant 39 = cell 4)
 LevelStartY = $A9                ; level start y (kernel constant 24)
 Hover = $9C                      ; respawn hover flag — cleared on stage entry
@@ -875,14 +901,22 @@ EnemyOffTable:
 ; moth / LWC / LHT / the bomb blast, all of which read them in-bank.
 ; ------------------------------------------------------------------------------
     .ds $F307 - *, 0
+    IF ROOMS_B
+    include "generated/spill_B_F307.asm"
+    ELSE
     include "generated/spill_F307.asm"
+    ENDIF
     .ds $F450 - *, 0            ; C7: the only cross-bank call in the room load
 ERBlocksPad:
     sta BK_EXTRAS                   ; bank3 B3RoomBlocks MUST start at $F453 (the
                                 ;   fetch at +3 comes from bank3) — guard:
                                 ;   verify_build.check_bank3_entry
     .ds $F453 - *, 0            ; data slot START (never fetched in bank2)
+    IF ROOMS_B
+    include "generated/spill_B_F453.asm"
+    ELSE
     include "generated/spill_F453.asm"
+    ENDIF
     .ds $F600 - *, 0            ; Phase 4 LWC patch-strip setup+test (out-of-
                                 ; line: the pre-TallyEntry fill is ~0B)
 ; ColOff/ColMask stay HERE (LWC .LWpSetup and the moth patrol read them; a
@@ -961,6 +995,8 @@ FooterPtr6 = $EA
 ; color, wall color 2, block base word (RoomShapes), room count n. The
 ; start room / start x / start y / miner y are kernel constants (0/32/24/84).
 ; ==============================================================================
+    .ds $F632 - *, 0
+    RSTUB Blast, BombEnemyBlastBody
     .ds $F640 - *, 0
 LoadLevelB2:
     ; Stage leave/reload/advance: walls return + bombs refill to 5
@@ -1006,6 +1042,17 @@ LoadLevelB2:
     asl                         ; *8
     sec
     sbc Level                   ; *7
+    IF ROOMS_B
+    sec                         ; B's LevelDataTable starts at level LEVEL_SPLIT + 1
+    sbc #LEVEL_SPLIT*7
+    nop                         ; (4 bytes, like A's four nops: A and B stay byte-identical past here)
+    ENDIF
+    IF ROOMS_B == 0
+    nop                         ; (same length as B's 4-byte split correction: A and B stay
+    nop                         ;  byte-identical past this point)
+    nop
+    nop
+    ENDIF
     tay                         ; Y = Level * 7
     lda #<LevelDataTable
     sta FetchPtr
@@ -1064,12 +1111,28 @@ LoadLevelB2:
     ; the RoomPositions / RoomCounts / enemy-record bases from it
     lda (FetchPtr),Y
     sta LevelRoomN
+    IF ROOMS_B
+    sec                         ; RoomExits b7 = 1: this level's data is in B (the stubs test it); b0/b1
+    ror RoomExits               ;   are re-derived by SetRoomExits at the top of EnterRoomB2
+    nop
+    ELSE
+    lsr RoomExits               ; b7 = 0: A
+    asl RoomExits
+    ENDIF
     jmp LF_TailSwap             ; bank0: EnterRoom + placement + jmp DropArm
+    RSTUB EnterRoom, EnterRoomB2
+    RSTUB ExitDown, ExitDownB2
+    RSTUB ExitUp, ExitUpB2
+    RSTUB ExitLeft, ExitLeftB2
 
     .ds $F700 - *, 0
 ; --- Level-data spill 1 (bugs.md 27): fill gap $F767..$F800 (153B).
     ; levels_index first — it defines ROOM_NONE for the table includes.
-    include "generated/spill_F767.asm"           ; #27b: index + level files, placed by convert_level
+    IF ROOMS_B
+    include "generated/spill_B_F767.asm"
+    ELSE
+    include "generated/spill_F767.asm"
+    ENDIF
 
 
 ; ------------------------------------------------------------------------------
@@ -1097,8 +1160,40 @@ ColMask:
 ; C7 (2026-10-20): the $F8B7 window — HotOverlapBody moved to bank3 (it walks
 ; the shape/extras stream, which lives there). Slot only.
 ; ------------------------------------------------------------------------------
+    .ds $F87C - *, 0
+Stub_LoadLevel:
+    IF ROOMS_B
+    .ds 12, 0
+    jmp LoadLevelB2
+    ELSE
+    lda Level
+    cmp #LEVEL_SPLIT
+    bcs *+5
+    jmp LoadLevelB2
+    sta BK_ROOMS_B
+    .ds 3, 0
+    ENDIF
+Stub_Fold:
+    IF ROOMS_B
+    .ds 12, 0
+    lda (FetchPtr),Y
+    jmp $FBF8
+    ELSE
+    bit RoomExits
+    bmi *+7
+    lda (FetchPtr),Y
+    jmp $FBF8
+    sta BK_ROOMS_B
+    .ds 5, 0
+    ENDIF
+    RSTUB ExitRight, ExitRightB2
+    RSTUB StageSlot1, StageSlot1B2
     .ds $F8B7 - *, 0
+    IF ROOMS_B
+    include "generated/spill_B_F8B7.asm"
+    ELSE
     include "generated/spill_F8B7.asm"
+    ENDIF
 
 ; ------------------------------------------------------------------------------
 ; C7 (2026-10-20): the $F9D9 window — PhaseBlink/PhRec/BuildColupF/BCFDarkRun
@@ -1106,7 +1201,11 @@ ColMask:
 ; they walk the shape/extras stream. Slot only.
 ; ------------------------------------------------------------------------------
     .ds $F9D9 - *, 0
+    IF ROOMS_B
+    include "generated/spill_B_F9D9.asm"
+    ELSE
     include "generated/spill_F9D9.asm"
+    ENDIF
 
 ; ==============================================================================
 ; StageSlot1 — the Phase 5 second-GRP1-slot stager, MOVED here from bank0's
@@ -1354,7 +1453,7 @@ MinerRef:
                                  ;   model2 asym data +49B pushed the window —
                                  ;   growth past this pin fails the build)
     sta BK_ROOMS
-    jmp $F010                    ; EnterRoomB2 — this half fetched after bank0's sta
+    jmp Stub_EnterRoom           ; -> A/B room-bank router (body: EnterRoomB2 $F010) — fetched after bank0's sta
     .ds $FBD6 - *, 0            ; TitleSequenceFold twin (kernel.asm same
                                  ;   address — jmp operand fetched here after
                                  ;   bank0's sta $1FF6, so bytes must match)
@@ -1369,17 +1468,17 @@ MinerRef:
 ; ------------------------------------------------------------------------------
     .ds $FBD9 - *, 0
     .byte 0,0,0                 ; $FBD9-$FBDB — bank0 `sta $1FF6` is fetched there
-    jmp ExitDownB2              ; $FBDC
-    jmp ExitUpB2                ; $FBDF
-    jmp ExitLeftB2              ; $FBE2
-    jmp ExitRightB2             ; $FBE5
+    jmp Stub_ExitDown           ; $FBDC -> ExitDownB2 via the A/B router
+    jmp Stub_ExitUp             ; $FBDF
+    jmp Stub_ExitLeft           ; $FBE2
+    jmp Stub_ExitRight          ; $FBE5
 ; ------------------------------------------------------------------------------
 ; StageSlot1 pad half (2026-10-22): bank0's `sta $1FF6` sits at $FBE5, so the
 ; post-switch fetch lands at $FBE8 = `jmp StageSlot1B2` (the body above).
 ; bank0's $FBE5-$FBE7 stay dead there (same split contract as the exit pads).
 ; ------------------------------------------------------------------------------
     .ds $FBE8 - *, 0
-    jmp StageSlot1B2            ; $FBE8
+    jmp Stub_StageSlot1         ; $FBE8 -> StageSlot1B2
 ; ------------------------------------------------------------------------------
 ; CallPad_BuildColupF's bank2 image RETIRED 2026-10-20 (chunk 4): the corridor
 ; pads are split now, so bank0's `sta $1FF7` at $FC17 pairs with BANK3's `jmp`
@@ -1388,6 +1487,8 @@ MinerRef:
 ; twin here would be a broken image (its +3 lands on fill), so it is gone
 ; rather than left as a trap.
 ; ------------------------------------------------------------------------------
+    .ds $FBEB - *, 0
+    RSTUB Moth, MothRoutine
     .ds $FBF8 - *, 0
 ReturnPad:
     sta BK_GENERAL                   ; the `rts` at $FBFB is served by bank0
@@ -1422,12 +1523,14 @@ SetRoomExits:
     ldx #3                      ; east
     jsr ExitFind
     rol RoomExits
+    lda RoomExits
+SREb7:
+    ora #ROOMS_B*$80             ; b7 = which room bank this code runs in (the A/B stubs read it; A 0, B 1)
+    sta RoomExits
     rts
-    .ds $FC1A - *, 0            ; C7: CallPad_BuildColupF's +3 image is BANK3's
-                                ;   now (bank0 runs `sta $1FF7` at $FC17); the
-                                ;   3 bytes here stay fill.
+; (the $FC17 pad's +3 image at $FC1A is BANK3's; the bytes here are the LaserHit stub zone above)
     .ds $FC23 - *, 0
-    jmp LoadLevelB2             ; $FC23
+    jmp Stub_LoadLevel          ; $FC23 -> LoadLevelB2
 LF_TailSwap:
     sta BK_GENERAL                   ; $FC26 — bank0 serves the `jmp LF_B0Tail`
                                 ; $FC29-: bank0's jmp operand is fetched from bank0; these bytes never
@@ -1600,7 +1703,11 @@ ExitPendingB2:
     ; PhaseBlink). Slot only; BombEnemyBlastBody stays PINNED at $FD87.
     ; ------------------------------------------------------------------
     .ds $FCB8 - *, 0
+    IF ROOMS_B
+    include "generated/spill_B_FCB8.asm"
+    ELSE
     include "generated/spill_FCB8.asm"
+    ENDIF
 
     .ds $FD87 - *, 0
 ; BombEnemyBlast body — kill first live enemy |dcol| < 2 (any Y). Type check:
@@ -1687,7 +1794,7 @@ BombEnemyBlastBody:
 
     .ds $FDD8 - *, 0
     sta BK_ROOMS                ; sta $1FF6 in the old layout (twin)
-    .byte $4C, $87, $FD         ; jmp $FD87 (twin — fetched post-switch)
+    jmp Stub_Blast              ; (was jmp $FD87 BombEnemyBlastBody) — fetched post-switch
 
 ; S1Fin - every StageSlot1B2 exit lands here. Slot 0's REFP1 is written NOW (TIA
 ; writes work from any bank): the miner mirrors per MinerRef, every other object
@@ -1837,7 +1944,7 @@ EBLCellCheck:
                                 ; (shifted +$10 with kernel's tables)
 LaserHitTest:
     sta BK_ROOMS                   ; dead in bank2 (entry arrives at $FE89)
-    jmp LaserHitTestBody        ; == $FF00 — operand guard vs bank0 literal
+    jmp Stub_LaserHit           ; -> LaserHitTestBody ($FF00)
 
 ; ------------------------------------------------------------------------------
 ; OvShutBand MOVED to bank0 (repack chunk 4, 2026-10-20) with PHMOverlay and
@@ -1861,17 +1968,22 @@ LaserHitTest:
 ; C7 (2026-10-20): HOVHotPfGate moved to bank3 with the rest of the hot
 ; walk (it needs ColOff/ColMask and the PF buffers of that walk).
     .ds $FE9C - *, 0
+    RSTUB LaserHit, LaserHitTestBody
+    .ds $FEA9 - *, 0
+    IF ROOMS_B
+    include "generated/spill_B_FE9C.asm"
+    ELSE
     include "generated/spill_FE9C.asm"
+    ENDIF
     .ds $FEF0 - *, 0
 UE_MothTramp:
     sta BK_ROOMS
-    jmp MothRoutine
+    jmp Stub_Moth                ; -> MothRoutine via the A/B router
     .ds $FEF6 - *, 0
 FoldIndirect:
     sta BK_ROOMS
-    lda (FetchPtr),Y
-    sta BK_GENERAL
-    rts
+    jmp Stub_Fold                ; A: the read happens in the router (RoomExits b7 picks A or B);
+                                 ;   bank0's own `lda (FetchPtr),Y / sta BK_GENERAL / rts` is not fetched here
 
 ; ------------------------------------------------------------------------------
 ; LaserHitTestBody — MOVED from bank0 (S5.4, entry tramp $FE86 -> `jmp $FF00`).
@@ -1976,7 +2088,11 @@ LaserClampDone:
 ; hotspot mirrors — never code, never data).
 ; ------------------------------------------------------------------------------
     .ds $FF59 - *, 0
+    IF ROOMS_B
+    include "generated/spill_B_FF59.asm"
+    ELSE
     include "generated/spill_FF59.asm"
+    ENDIF
     .ds $FFE6 - *, 0
 
 ; Type-offset table (copy of kernel EnemyOffTable: enemy index * 3; 2026-10-21
