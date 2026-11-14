@@ -170,6 +170,53 @@ The twin-of-bank2 patch (above) is NOT the plan. The new ROM is empty, so bank0 
   RAM enemy record; decide in the survey.
 - Extras (the bank3 half) move into the level banks too, so bank3's data windows disappear.
 
+## Layout v2 (2026-11-14, awaiting user approval; supersedes "Target layout" and the route-3 sketch above)
+
+Measured from the 2026-11-14 build (`bank2.lst`/`bank3.lst`, label spans; code = non-data bytes):
+
+| Quantity | Bytes |
+|---|---|
+| bank2 total used / of which room data (20 levels) | 3,312 / 1,558 -> code ~1,750 |
+| bank3 total used / of which extras data (20 levels) | 2,305 / ~900 -> code ~1,400 |
+| 32-level data: rooms + index + extras | 3,393 + ~230 + 2,155 = ~5,780 |
+
+**Why "copy all of bank2 into each level bank" does NOT work:** reader code ~1,750 + extras reader ~330 = ~2,080 B
+per level bank leaves ~1,900 B of data room per bank, 5,700 B for three banks, against 5,780 B needed. No margin
+and whole-level granularity wastes more. Rejected.
+
+**What works: a THIN level service in each level bank, everything else reads through a fold.**
+
+- *Level service* (identical code in banks 5, 6, 7, at the same addresses, each with its share of the data):
+  `EnterRoomB2` (+`EBLER` loops), `LoadLevelB2`, the exit scan (`ExitScanB2`/`ExitDirB2`/`ExitFind`/`ExitPendingB2`,
+  `SetRoomExits`), `ExtrasLoad`/`B3Meta`/`B3RoomBlocks`, and a read fold. Estimate ~1,000 B (sum of the label spans
+  above: 230 + 130 + ~300 + ~330), + boot stub, vectors, ReturnPad ~100 B. Data room per level bank ~3.0 KB,
+  9.0 KB for three, against 5.8 KB needed: **~3 KB margin** (even after whole-level granularity, ~0.3 KB per bank).
+- *Entering the service:* the level pads in bank0 pick the bank by `bit LevelRoomN` (b7/b6) + `bmi`/`bvs`
+  (flags only, A/X/Y untouched), ~12-15 B per pad.
+- *Reading enemy/room bytes from gameplay code* (moth walk, laser tip/clamp, blast, stage slot staging, miner):
+  these stop reading ROM with `lda (FetchPtr),Y` and use a read fold: pad in the code bank does the same bit-test,
+  `sta BK_L5/6/7`; the level bank holds `lda (FetchPtr),Y / sta BK_<caller> / rts` at the next address. One fold
+  per caller bank (bank0 already has `FoldIndirect`). Cost ~40 cycles per byte; the moth walk keeps its INTIM gate.
+- *Everything else* moves to the code zone in the order the user gave:
+
+| Bank | Zone | Holds | Est. used |
+|---|---|---|---|
+| 0 | general | main loop, input, physics, collision, sound, positioning, fold pads, level pads | 4.0 KB (full) |
+| 1 | cave | cave kernel (now bank6) + VBL prologue (now bank7) | 3.5 KB |
+| 2 | gameplay | moth, laser, blast, stage slot, miner, raft, bomb wall marks, strip blast, phase/hcrunch/hot/dark/colour walkers | ~3.3 KB |
+| 3 | HUD | HUD, score, bars, title, level select | ~2.5 KB |
+| 4 | other + models | save-to-cartridge, version, transition, attract, then shape blocks/row pool | ~2.4 KB (1.6 KB spare) |
+| 5, 6, 7 | levels | boot stub + level service + data; converter fills 5, then 6, then 7 | ~3.0 KB data each |
+
+Sizes of banks 2/3 are sums of today's label spans (code only); the ~14 KB of code plus ~1 KB of models fit in
+banks 0-4 (20 KB) with ~4.8 KB spare.
+
+**Three gates that decide whether this holds (each is cheap; build the 3-level-bank service last):**
+1. *Reader inventory:* list every `FetchPtr`/`EnemyDataLo`/table read in bank2/bank3 code (94 lines in bank2) and
+   mark it "in the service" or "needs the read fold". Fixes the service size (target <= 1.2 KB).
+2. *Frame cost:* count fold reads per frame in the heaviest rooms (`test_frame_all_rooms` gate, 280 lines).
+3. *Spare-bit check:* `LevelRoomN` readers all mask `#$3F` (readers are bank2-only; grep proves it).
+
 ## Lesson: survey the READERS before planning where data lives
 
 2026-11-14: the plan said "levels last, banks 5-7" without tracing which code reads the level data. Data can only be
