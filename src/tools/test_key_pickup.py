@@ -58,12 +58,13 @@ assert "LevelStartRoom = $A7" in B2, \
 # Touch-to-open: the M1 (left door) strip opens only when the player's box
 # overlaps it AND KeyHeld (not by merely holding the key). The overlay
 # cluster lives in bank0 since repack chunk 4 (2026-10-20).
-ov = K[K.index(".OvM1block:"):K.index(".OvM1no:")]
+O4 = (SRC / "bank4.asm").read_text()      # layout v3: the overlay cluster lives in bank 4
+ov = O4[O4.index(".OvM1block:"):O4.index(".OvM1no:")]
 assert "lda LevelStartRoom" in ov and "ora #$10" in ov, \
     "OvM1Block must key-unlock the left door (b4) on touch"
 # Right door = ball strip; a MetaB b7 strip unlocks (b3) on touch while
 # KeyHeld (tile 11/vcrunch is gone, so every b7 strip is a door now).
-sh = K[K.index("OvShutBand:"):K.index(".OSBm1:")]
+sh = O4[O4.index("OvShutBand:"):O4.index(".OSBm1:")]
 assert "lda LevelStartRoom" in sh and "ora #$08" in sh, \
     "OvShutBand must key-unlock a right door (b3) on touch"
 assert "cmp #$ff" not in sh, "the retired VcrBand gate still in OvShutBand"

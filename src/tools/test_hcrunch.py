@@ -150,7 +150,7 @@ def run_frames(n):
         poke()
         while True:
             W.step()
-            if W.mem.bank == 6 and W.mpu.pc == HUD_JMP:
+            if W.mem.bank == 1 and W.mpu.pc == HUD_JMP:
                 r = W.mem.ram
                 samples.append((r[PF0_B1], r[PF1_B1], r[PF2_B1],
                                 r[I_DEAD], r[I_LIVES]))
@@ -314,7 +314,7 @@ def main() -> None:
         W.mem.swcha = 0x7F
         while True:
             W.step()
-            if W.mem.bank == 6 and W.mpu.pc == HUD_JMP:
+            if W.mem.bank == 1 and W.mpu.pc == HUD_JMP:
                 if tuple(r[a] for a in (PF0_B1, PF1_B1, PF2_B1)) != P_TRIPLE[1]:
                     fails.append(f"spent: frame {fr}: band1 prefix grew again")
                     break

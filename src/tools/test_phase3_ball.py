@@ -69,15 +69,15 @@ def run(rom: Path, band1: int = 0xFF) -> dict:
              for i in range(len(blob) // 4096)]
     # MetaA band mask: band1 parameterized for the partial-mask run
     mask = 0x07 if band1 else 0x05
-    banks[3][(EXTRAS + 1) & 0xFFF] = mask          # MetaA
-    banks[3][(EXTRAS + 2) & 0xFFF] = META_B_POKE   # MetaB (ball col)
+    banks[5][(EXTRAS + 1) & 0xFFF] = mask          # MetaA
+    banks[5][(EXTRAS + 2) & 0xFFF] = META_B_POKE   # MetaB (ball col)
     # C5: the loader ALSO derives the band gates from the SIDE-0 patch bytes
     # (row b7-6 | side b4 | col b3-0) and ORs them into MetaA, so the patch
     # rows must agree with the poked mask (row 0 + row 1 for the full run,
     # rows 0 + 2 for the band-1-partial run).
     prow = (0, 1) if band1 else (0, 2)
-    banks[3][(EXTRAS + 3) & 0xFFF] = prow[0] << 6
-    banks[3][(EXTRAS + 4) & 0xFFF] = prow[1] << 6
+    banks[5][(EXTRAS + 3) & 0xFFF] = prow[0] << 6
+    banks[5][(EXTRAS + 4) & 0xFFF] = prow[1] << 6
     respbl_temp = []
 
     class ProbeMem(Mem):
@@ -128,7 +128,7 @@ def run(rom: Path, band1: int = 0xFF) -> dict:
             mem.swchb = 0xFE if frame in (1, 2) else 0xFF
 
     enabl = [(f, v) for f, b, a, v in mem.log
-             if f >= 2 and b in (0, 6) and a == ENABL]   # 2026-11: the band gates run in the bank6 kernel
+             if f >= 2 and b in (0, 1) and a == ENABL]   # 2026-11: the band gates run in the bank6 kernel
     respbl = {f for f, b, a, v in mem.log
               if f >= 2 and b == 0 and a == RESBL}
     hmbll = {f for f, b, a, v in mem.log if f >= 2 and b == 0 and a == HMBL}

@@ -81,7 +81,7 @@ def measure(con, fire, frames=90):
     seen, info = [0], {}
 
     def gi(self, a):
-        if (a & 0xFFFF) == 0x284 and self.bank == 6 and not seen[0]:
+        if (a & 0xFFFF) == 0x284 and self.bank == 1 and not seen[0]:
             seen[0] = 1
             t0, iv, v = self.timer
             info["vbl"] = self._now() - t0

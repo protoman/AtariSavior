@@ -2,7 +2,7 @@
 """The bank6 cave kernel on the REAL ROM: every sprite row on its own scanline, no repeated
 row at the band changes, the 262-line contract, playfield store phases, water line.
 
-The ROM runs normally up to bank0's dispatch (`sta $1FFA`); there the harness overwrites the
+The ROM runs normally up to bank0's dispatch (`sta $1FF5`); there the harness overwrites the
 bytes the VBL staged (player frame + RoomY, the two GRP1 objects, tide, door, water) with a
 scenario, so the kernel sees arbitrary inputs with the game's real art and tables. Every
 frame is rendered line by line with tools/tia_render.py (VDELP latches included) and the byte
@@ -76,7 +76,7 @@ def hooked(con):
     keep = {}
 
     def si(self, a, v):
-        if (a & 0xFFFF) == 0x1FFA and self.bank == 0 and self.scn is not None:
+        if (a & 0xFFFF) == 0x1FF5 and self.bank == 0 and self.scn is not None:
             keep.clear()
             for name in ("RoomY", "Grp0Ptr", "ObjBase", "ObjTop", "ObjBase1", "ObjTop1",
                          "ObjX1", "ObjRefs", "CollisionX", "CollisionCellY", "BombPacked",
@@ -84,7 +84,7 @@ def hooked(con):
                 keep[Z[name]] = self.ram[Z[name]]
             keep[(Z["Grp0Ptr"] + 1) & 0x7F] = self.ram[(Z["Grp0Ptr"] + 1) & 0x7F]
             apply(self, self.scn)
-        elif (a & 0xFFFF) == 0x1FF5 and self.bank == 6 and keep:
+        elif (a & 0xFFFF) == 0x1FF6 and self.bank == 1 and keep:
             for k, val in keep.items():
                 self.ram[k] = val
             keep.clear()

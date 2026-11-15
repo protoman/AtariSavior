@@ -46,7 +46,7 @@ from test_cell_map import Mem, parse_labels  # noqa: E402
 # ROM-byte reads come from the FROZEN bank images + label set (AGENTS rule:
 # never live src/bank*.bin / src/*.lst from a test).
 for _i in range(8):
-    setattr(_CM, f"BANK{_i}", (FROZEN / f"bank{_i}.bin").read_bytes())
+    setattr(_CM, f"BANK{_i}", (FROZEN / f"bank{ {0:0,1:2,2:6,3:5,4:4,5:7,6:1,7:3}[_i] }.bin").read_bytes())
 Mem = _CM.Mem
 
 # kernel EQUs (read from the frozen bank2 listing via its hand copies)

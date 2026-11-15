@@ -168,7 +168,7 @@ def run(rom: Path) -> dict:
             # console RESET pulses (intro 2026-10-06): f1 leaves $FD intro,
             # f4 hits TitleWork RESET -> game start (same as sim)
             mem.swchb = 0xFE if frame in (1, 4) else 0xFF
-        if bk == 6 and pc == PC_ROW and frame >= 0:
+        if bk == 1 and pc == PC_ROW and frame >= 0:
             cave_rows += 1
             ctrlpf_at_row.append((frame, mem.last.get(CTRLPF)))
             enabl_at_row.append((frame, mem.last.get(ENABL)))

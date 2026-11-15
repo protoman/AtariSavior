@@ -40,7 +40,7 @@ ROOMS = SRC / "rooms"
 # mixes the test-owned level layout with live labels → EnterRoom reads the
 # wrong table and the run never returns.)
 for _i in range(8):
-    setattr(_CM, f"BANK{_i}", (SRC / f"bank{_i}.bin").read_bytes())
+    setattr(_CM, f"BANK{_i}", (SRC / f"bank{ {0:0,1:2,2:6,3:5,4:4,5:7,6:1,7:3}[_i] }.bin").read_bytes())
 Mem = _CM.Mem
 
 need0 = {"EnterRoom", "RoomBandColor", "LevelPFDataLo", "LevelPFDataHi",

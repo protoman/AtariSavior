@@ -203,7 +203,7 @@ def step():
     if mem.bank == 0 and mpu.pc == PC_LOSECALL:
         counts["losecall"] += 1
         loses.append(frame)
-    if mem.bank == 3:      # C7: bank3 owns the hot walker
+    if mem.bank == 5:      # C7: bank3 owns the hot walker
         if mpu.pc == PC_HOV_BEQCNT:
             counts["beqdone"] += 1
         elif mpu.pc == PC_HOV_BMI:
@@ -220,7 +220,7 @@ def step():
         hits.append((frame, mem.ram[I_CCX], mem.ram[I_CCY],
                      mem.ram[I_CEX], mem.ram[I_CEFY],
                      mem.ram[I_DEAD], mem.ram[I_ROOMX], mem.ram[I_ROOMY]))
-    if mem.bank == 3 and mpu.pc == PC_HOV:
+    if mem.bank == 5 and mpu.pc == PC_HOV:
         hovs.append((frame, (mem.ram[I_DEAD] >> 5) & 1, mem.ram[I_DEAD],
                      mem.ram[I_CCX], mem.ram[I_CCY], mem.ram[I_TEMP]))
         if len(hovs) == 1:

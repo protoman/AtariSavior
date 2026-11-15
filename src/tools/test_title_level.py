@@ -30,7 +30,7 @@ SRC = ROOT
 FROZEN = SRC / "tests" / "frozen"
 
 for _i in range(8):
-    setattr(_CM, f"BANK{_i}", (FROZEN / f"bank{_i}.bin").read_bytes())
+    setattr(_CM, f"BANK{_i}", (FROZEN / f"bank{ {0:0,1:2,2:6,3:5,4:4,5:7,6:1,7:3}[_i] }.bin").read_bytes())
 Mem = _CM.Mem
 
 L0 = parse_labels(FROZEN / "bank0.lst", {"TitleBcd", "ScoreTe"})

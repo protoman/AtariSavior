@@ -38,7 +38,7 @@ FROZEN = SRC / "tests" / "frozen"
 # Frozen ROM image + labels (AGENTS test-data rule). Mutate the image copy so
 # the staged enemy record can be authored in place.
 for _i in range(8):
-    setattr(_CM, f"BANK{_i}", bytearray((FROZEN / f"bank{_i}.bin").read_bytes()))
+    setattr(_CM, f"BANK{_i}", bytearray((FROZEN / f"bank{ {0:0,1:2,2:6,3:5,4:4,5:7,6:1,7:3}[_i] }.bin").read_bytes()))
 Mem = _CM.Mem
 BANKS = {i: getattr(_CM, f"BANK{i}") for i in range(4)}
 
@@ -81,9 +81,9 @@ def run_case(enemy_x: int, enemy_y: int, room_y: int, tip_arg: int,
     # Enemy record: overwrite record 0 of level 1's table in the image copy
     # (2026-10-21: 3 B — type|dir b7, x, y; dir unused here).
     rec = L2["LEVEL1_EnemyDataTable"] - 0xF000
-    BANKS[6][rec + 0] = enemy_type
-    BANKS[6][rec + 1] = enemy_x & 0xFF
-    BANKS[6][rec + 2] = enemy_y & 0xFF
+    BANKS[2][rec + 0] = enemy_type
+    BANKS[2][rec + 1] = enemy_x & 0xFF
+    BANKS[2][rec + 2] = enemy_y & 0xFF
 
     _zp(mem, "EnemyDataLo", L2["LEVEL1_EnemyDataTable"] & 0xFF)
     _zp(mem, "EnemyDataHi", L2["LEVEL1_EnemyDataTable"] >> 8)

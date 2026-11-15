@@ -346,3 +346,10 @@ Every future "move X to bank N" step starts with a reader/caller survey of X.
   bank 6 / 7 = room bank A / B (old bank2 assembled with `ROOMS_B = 0 / 1`). Bank0 of the new ROM has 316 B free (227 contiguous).
   The new ROM boots and `tools/playbot.py --rom-dir newrom` finishes levels 1-3. Left: the switch-over (build.sh -> newrom,
   verify_build / tests / frozen banks follow the role map), then more rooms per level.
+- **2026-11-14: SWITCH-OVER done.** `newrom/` is the ROM now: `bankN.asm` at the `src/` root IS physical bank N (roles in `banks.inc`),
+  the old `kernel.asm` / `bank1-7.asm` / `banks.inc` live in `oldrom/` (history kept via `git mv`, nothing deleted). `build.sh` assembles
+  banks 5, 6 (level data), syncs the literals (`--sync-hof`, `--sync`: `LEVEL_DATA_ADDR` from `bank6.lst`, `LEVEL_COUNT` into banks
+  0/2/4), then bank 0, `--sync-overscan` (bank 2's fold pad), the generated cave bank 1, then 2, 3, 4, 7. `verify_build.py` and the tools
+  follow the role map (`B_HUD`, `B_GAME`, `B_ROOMS`, ... = `banksym.bank_index`). `tests/frozen/` is re-frozen on the new layout
+  (`tools/freeze_test_banks.sh`); tests that share `test_cell_map` still call the OLD role names `BANK1..BANK7` (BANK1 = HUD ...),
+  `Mem.bank` is the PHYSICAL bank. Bug caught on the way: the bank 4 copy of `ColMask` had only 12 of its 20 entries.
