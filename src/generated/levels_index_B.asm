@@ -163,7 +163,7 @@ SHAPE_M125 = 125
 ;   it in-bank, so record walkers and records share a bank. This bank
 ;   keeps the counts byte's b5-0 ORDINAL and the 3 B/room columns.
 ; BAND_COLOR = $84 — the single bottom-band color (every
-; bottom_band room must resolve to it; bank2.asm carries the EQU and
+; bottom_band room must resolve to it; bank6.asm carries the EQU and
 ; test_level_bank asserts the pair).
 LevelDataTable:
   .byte LEVEL24_MINER_ROOM, LEVEL24_MINER_X, LEVEL24_WALL_COLOR, LEVEL24_WALL_COLOR2
