@@ -32,7 +32,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 KERNEL = (ROOT / "bank0.asm").read_text(encoding="utf-8")
-BANK1 = (ROOT / "bank2.asm").read_text(encoding="utf-8")
+BANK1 = (ROOT / "bank3.asm").read_text(encoding="utf-8")
 BANK2 = (ROOT / "bank6.asm").read_text(encoding="utf-8")
 
 MASK_SPEC = [0x10, 0x20, 0x40, 0x80,

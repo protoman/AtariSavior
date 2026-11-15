@@ -55,7 +55,7 @@ def loader_run(records, dark=0x00):
     assert not missing, f"frozen bank6.lst missing {sorted(missing)} — re-freeze"
 
     mem = Mem()
-    mem.bank = 2
+    mem.bank = 6
     r = mem.ram
     rec = 0x180                      # RAM window FetchPtr reads (no stack)
     for i, (typ, dir_) in enumerate(records):

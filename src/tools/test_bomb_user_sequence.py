@@ -49,7 +49,7 @@ def lst_labels(path):
 
 
 L0 = lst_labels(FROZEN / "bank0.lst")
-L1 = lst_labels(FROZEN / "bank2.lst")
+L1 = lst_labels(FROZEN / "bank3.lst")   # BombMarkWalls: gameplay bank
 L2 = lst_labels(FROZEN / "bank6.lst")
 L3 = lst_labels(FROZEN / "bank5.lst")   # C7: extras
 L7 = lst_labels(FROZEN / "bank4.lst")   # 2026-11-10: shape blocks + row pool
@@ -170,8 +170,8 @@ def load_room(room):
     pf9, a_rr = shape_pf(model), L3["RoomNoStream"]   # C11: no stream in a shape
     # C5: the meta pair comes from the room's extras record (level 1 room 0 =
     # model 0 is the async room, ordinal 1 -> +1/+2). C4: no rect cache.
-    mem.ram[I_PF0LO] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
-    mem.ram[I_PF0HI] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
+    mem.ram[I_PF0LO] = BANKS[5][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
+    mem.ram[I_PF0HI] = BANKS[5][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     for i, dst in enumerate((0xC3, 0xC6, 0xC9)):
@@ -211,7 +211,7 @@ def drop_bomb(tag, bombx, roomx, y=70):
     while bmw is None and frame < limit:
         pin(y)
         step()
-        if mem.bank == 1 and mpu.pc == PC_BMW:
+        if mem.bank == 3 and mpu.pc == PC_BMW:
             bmw = frame
     if bmw is None:
         watch = False

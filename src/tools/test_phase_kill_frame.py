@@ -295,7 +295,7 @@ def main():
                  "(staging broken — test proves nothing)")
 
     # ---- ROM: the VCS3 entry image is gone ------------------------------
-    img = BANKS[2][0xE57:0xE5A]
+    img = BANKS[6][0xE57:0xE5A]
     if img == bytes((0x4C, 0x80, 0xFD)):
         sys.exit("FAIL: bank2 $FE57 still holds jmp $FD80 (VCS3 tramp)")
 

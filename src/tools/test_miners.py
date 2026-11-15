@@ -33,7 +33,7 @@ REC = 0xFFD0
 
 
 def labels(bank, names):
-    got = parse_labels(FROZEN / f"bank{bank}.lst", set(names))
+    got = parse_labels(FROZEN / f"bank{ {0:0,1:2,2:6,3:5,4:4,5:7,6:1,7:3}[bank] }.lst", set(names))
     miss = set(names) - got.keys()
     if miss:
         sys.exit(f"frozen bank{bank}.lst labels missing: {sorted(miss)}")
@@ -99,7 +99,7 @@ for byte, want_lsr, want_room in ((0x01, 0x10, 0x01), (0x41, 0x50, 0x01),
     mem = CM.Mem()
     poke(mem, L2, "Level", 0)
     poke(mem, L2, "DropTarget", 0)
-    run(mem, 2, L2["LoadLevelB2"], L2["LF_TailSwap"])
+    run(mem, 6, L2["LoadLevelB2"], L2["LF_TailSwap"])
     bank2[entry] = saved
     CM.BANK2 = bytes(bank2)
     lsr = peek(mem, L2, "LevelStartRoom")
@@ -191,7 +191,7 @@ def entry_dead(lsr, room=6):
     poke(mem, L2, "EnemyDeadMask", 0)
     mem.ram[L2["FetchPtr"] - 0x80] = REC & 0xFF
     mem.ram[L2["FetchPtr"] + 1 - 0x80] = REC >> 8
-    run(mem, 2, L2["EBLER_Loop"], L2["EBLER_Done"])
+    run(mem, 6, L2["EBLER_Loop"], L2["EBLER_Done"])
     return peek(mem, L2, "EnemyDeadMask")
 
 
@@ -213,7 +213,7 @@ poke(mem, L2, "CollisionX", 100)
 poke(mem, L2, "PlayerDir", 1)
 mem.ram[L2["FetchPtr"] - 0x80] = REC & 0xFF
 mem.ram[L2["FetchPtr"] + 1 - 0x80] = REC >> 8
-run(mem, 2, L2["LaserTipEnemy"], L2["LaserWallClamp"])
+run(mem, 6, L2["LaserTipEnemy"], L2["LaserWallClamp"])
 assert peek(mem, L2, "EnemyDeadMask") == 0, "the laser killed an extra miner"
 mem = CM.Mem()
 poke(mem, L2, "EnemyCount", 1)
@@ -222,7 +222,7 @@ poke(mem, L2, "EnemyDataHi", REC >> 8)
 poke(mem, L2, "EnemyRamX", 100)
 poke(mem, L2, "EnemyRamY", 60)
 poke(mem, L2, "BombX", 100)
-run(mem, 2, L2["BombEnemyBlastBody"], RTS_SENTINEL)
+run(mem, 6, L2["BombEnemyBlastBody"], RTS_SENTINEL)
 assert peek(mem, L2, "EnemyDeadMask") == 0, "a bomb killed an extra miner"
 
 print("test_miners: OK (seed, primary/extra rescue, last-one tally, re-entry, "

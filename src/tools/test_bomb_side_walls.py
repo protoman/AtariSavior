@@ -32,7 +32,7 @@ FROZEN = ROOT / "tests" / "frozen"
 L0 = parse_labels(FROZEN / "bank0.lst", {"BombX", "LineCount", "EnemyDeadMask",
                                          "CollisionX", "BombPacked", "PF0Buf",
                                          "PF1Buf", "PF2Buf"})
-L1 = parse_labels(FROZEN / "bank2.lst", {"BombMarkWalls"})
+L1 = parse_labels(FROZEN / "bank3.lst", {"BombMarkWalls"})
 for lab, names in ((L0, ("BombX", "LineCount", "EnemyDeadMask", "PF0Buf",
                          "PF1Buf", "PF2Buf")), (L1, ("BombMarkWalls",))):
     miss = [n for n in names if n not in lab]
@@ -53,7 +53,7 @@ def bmw(bomb_x, exits, *, pf=None, meta=(0, 0), line_count=0):
     r[L0["EnemyDeadMask"] - 0x80] = 0
     for addr, val in (pf or {}).items():
         r[addr - 0x80] = val
-    mem.bank = 1
+    mem.bank = 3
     mpu = MPU(memory=mem)
     mpu.pc = L1["BombMarkWalls"]
     mpu.a = mpu.x = mpu.y = 0
@@ -133,7 +133,7 @@ for room, want in ((0, 0b10), (1, 0b00), (2, 0b01), (3, 0b11)):
     r[0xA1 - 0x80] = N                           # LevelRoomN
     r[0x98 - 0x80] = room                        # RoomNo
     r[ROOMEXITS] = 0xFF
-    mem.bank = 2
+    mem.bank = 6
     mpu = MPU(memory=mem)
     mpu.pc = L2["SetRoomExits"]
     mpu.sp = 0xFD

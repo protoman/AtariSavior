@@ -62,20 +62,20 @@ done
 python3 "$DIR/tools/convert_level.py" --levels "$DIR/generated/levels.asm" "${LEVELS[@]}"
 python3 "$DIR/tools/verify_build.py" --precheck "$DIR"
 cd "$DIR"
-# C2 (2026-10-20): single pass, same order as build.sh — bank2 (which now owns
-# the level data AND its walkers), the HOF literal, bank0, bank1, bank3.
-dasm bank6.asm -f3 -obank2.bin -lbank2.lst
+# Layout v3 (docs/agents/banks.md): same order as build.sh; the file number is the physical bank.
+INC="-I. -Igenerated"
+dasm bank5.asm -f3 $INC -obank5.bin -lbank5.lst
+dasm bank6.asm -f3 $INC -obank6.bin -lbank6.lst
 python3 "$DIR/tools/verify_build.py" --sync-hof "$DIR"
 python3 "$DIR/tools/verify_build.py" --sync "$DIR"
-dasm bank0.asm -f3 -obank0.bin -lbank0.lst -s/tmp/opencode/frozen_symbols.asm
+dasm bank0.asm -f3 $INC -obank0.bin -lbank0.lst -sgenerated/symbols.asm
 python3 "$DIR/tools/verify_build.py" --sync-overscan "$DIR"
-dasm bank2.asm -f3 -obank1.bin -lbank1.lst
-dasm bank5.asm -f3 -obank3.bin -lbank3.lst
-# banks plan (2026-11-14): the room models live in bank4 and room bank B (bank5) is bank2's code with the
-# other levels' data - both depend on the staged test stage, so they are rebuilt here too.
-dasm bank4.asm -f3 -I. -Igenerated -obank4.bin -lbank4.lst
-dasm bank7.asm -f3 -I. -Igenerated -obank5.bin -lbank5.lst
-for i in 0 1 2 3 4 5; do
+python3 "$DIR/tools/gen_bank6_equs.py" "$DIR"
+python3 "$DIR/tools/cave_kernel_gen.py" --real "$DIR/generated" "$DIR/bank0.asm" > /dev/null
+for b in 1 2 3 4 7; do
+    dasm "bank$b.asm" -f3 $INC -o"bank$b.bin" -l"bank$b.lst" > /dev/null
+done
+for i in 0 1 2 3 4 5 6 7; do
     SIZE=$(wc -c < "bank${i}.bin")
     [ "$SIZE" -lt 4096 ] && printf '\0%.0s' $(seq 1 $((4096 - SIZE))) >> "bank${i}.bin"
 done
@@ -83,8 +83,8 @@ python3 "$DIR/tools/verify_build.py" "$DIR"
 
 echo "freeze: capturing bank images + labels into src/tests/frozen/ ..."
 mkdir -p "$DIR/tests/frozen"
-cp bank0.bin bank2.bin bank6.bin bank5.bin bank4.bin bank7.bin bank1.bin bank3.bin "$DIR/tests/frozen/"
-cp bank0.lst bank2.lst bank6.lst bank5.lst bank4.lst bank7.lst bank1.lst bank3.lst "$DIR/tests/frozen/"
+cp bank[0-7].bin "$DIR/tests/frozen/"
+cp bank[0-7].lst "$DIR/tests/frozen/"
 
 # The test-owned convert outputs must match the test-owned rooms, or
 # test_editor_roundtrip compares fresh conversions against a stale snapshot

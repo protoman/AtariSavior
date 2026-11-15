@@ -34,7 +34,7 @@ REC = 0xFFD0                      # 3 bytes patched into the frozen bank2 image
 
 
 def labels(bank, names):
-    got = parse_labels(FROZEN / f"bank{bank}.lst", set(names))
+    got = parse_labels(FROZEN / f"bank{ {0:0,1:2,2:6,3:5,4:4,5:7,6:1,7:3}[bank] }.lst", set(names))
     miss = set(names) - got.keys()
     if miss:
         sys.exit(f"frozen bank{bank}.lst labels missing: {sorted(miss)}")
@@ -131,7 +131,7 @@ for taken, want in ((0x04, 1), (0x00, 0), (0x0B, 0)):
     poke(mem, L2, "EnemyDeadMask", 0)
     mem.ram[L2["FetchPtr"] - 0x80] = REC & 0xFF
     mem.ram[L2["FetchPtr"] + 1 - 0x80] = REC >> 8
-    run(mem, 2, L2["EBLER_Loop"], L2["EBLER_Done"])
+    run(mem, 6, L2["EBLER_Loop"], L2["EBLER_Done"])
     got = peek(mem, L2, "EnemyDeadMask")
     assert got == want, (f"EBLER with LevelStartRoom=${taken:02X} (room 6 -> bit "
                          f"$04): EnemyDeadMask=${got:02X} want ${want:02X} - a "
@@ -144,7 +144,7 @@ poke(mem, L2, "LevelStartRoom", 0x0F)
 poke(mem, L2, "EnemyDeadMask", 0)
 mem.ram[L2["FetchPtr"] - 0x80] = REC & 0xFF
 mem.ram[L2["FetchPtr"] + 1 - 0x80] = REC >> 8
-run(mem, 2, L2["EBLER_Loop"], L2["EBLER_Done"])
+run(mem, 6, L2["EBLER_Loop"], L2["EBLER_Done"])
 assert peek(mem, L2, "EnemyDeadMask") == 0, "a bat was pre-marked dead"
 
 # --- 3. pickups are not targets: laser and blast pass through keys and cells ---
@@ -165,7 +165,7 @@ for rtype in (CELL, 6, 1):
     # LaserTipEnemy runs on to the wall clamp when it finds nothing; stop at
     # the clamp entry (what matters is whether the kill mark was written).
     clamp = labels(2, ["LaserWallClamp"])["LaserWallClamp"]
-    run(mem, 2, L2b["LaserTipEnemy"], clamp)
+    run(mem, 6, L2b["LaserTipEnemy"], clamp)
     dead = peek(mem, L2b, "EnemyDeadMask")
     want = 1 if rtype == 1 else 0
     assert dead == want, (f"laser tip vs record type {rtype}: EnemyDeadMask="
@@ -176,7 +176,7 @@ for rtype in (CELL, 6, 1):
     poke(mem, L2b, "EnemyRamY", 60)
     poke(mem, L2b, "BombX", 100)
     poke(mem, L2b, "EnemyDeadMask", 0)
-    run(mem, 2, L2b["BombEnemyBlastBody"], RTS_SENTINEL)
+    run(mem, 6, L2b["BombEnemyBlastBody"], RTS_SENTINEL)
     dead = peek(mem, L2b, "EnemyDeadMask")
     assert dead == want, (f"bomb blast vs record type {rtype}: EnemyDeadMask="
                           f"${dead:02X} want ${want:02X}")

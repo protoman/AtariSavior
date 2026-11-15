@@ -199,8 +199,8 @@ def load_room(room):
     pf9, a_rr = shape_pf(model), L3["RoomNoStream"]   # C11: no stream in a shape
     # C5: MetaA/MetaB live in the level's AsyncExtras record (level 1 room 0
     # is the async room, ordinal 1 -> +1/+2).
-    mem.ram[I_PF0LO] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
-    mem.ram[I_PF0HI] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
+    mem.ram[I_PF0LO] = BANKS[5][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
+    mem.ram[I_PF0HI] = BANKS[5][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     # ROM: C3 row-pool expansion of the shape's 3 indices
@@ -214,7 +214,7 @@ def load_room(room):
 
 def meta_a(room):
     """MetaA = the room extras record's +1 (C5: the pair left the block)."""
-    return BANKS[3][L3["LEVEL1_AsyncExtras"] + 1 - 0xF000]
+    return BANKS[5][L3["LEVEL1_AsyncExtras"] + 1 - 0xF000]
 
 
 CASE_Y = (24, 45, 96)      # 24 = spawn/band0, 45 = straddle, 96 = band 2
@@ -295,8 +295,8 @@ def main() -> None:
                         pack = mem.ram[I_PACK]
                         if pack and m1x is not None:
                             bt, bb = rows
-                            if pack & BANKS[2][OV_HEAD - 0xF000 + bt] & \
-                                    BANKS[2][OV_TAIL - 0xF000 + bb]:
+                            if pack & BANKS[6][OV_HEAD - 0xF000 + bt] & \
+                                    BANKS[6][OV_TAIL - 0xF000 + bb]:
                                 pl = 18 + (pack >> 4) * 2
                                 d = tip >> 2
                                 if 0 <= d - pl <= 1:

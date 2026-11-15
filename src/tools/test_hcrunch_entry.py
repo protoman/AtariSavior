@@ -47,7 +47,7 @@ def load(ordinal: int):
     r[L["Level"] - 0x80] = LEVEL_IDX
     r[L["LevelConnSpare"] - 0x80] = ordinal
     r[L["EnemyRamP"] - 0x80] = SENTINEL_P
-    mem.bank = 3
+    mem.bank = 5
     mpu = MPU(memory=mem)
     mpu.pc = L["ExtrasLoad"]
     mpu.a = mpu.x = mpu.y = 0

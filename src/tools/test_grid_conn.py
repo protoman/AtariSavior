@@ -180,7 +180,7 @@ def run_exit(mem: Mem, handler: str, room: int, positions: list[int],
     _zp(mem, "LevelConnSpare", 0)      # no room change pending
     _zp(mem, "RoomY", room_y)
     _zp(mem, "RoomX", room_x)
-    mem.bank = 2
+    mem.bank = 6
     mpu = MPU(memory=mem)
     mpu.pc = L2[handler]
     mpu.a = mpu.x = mpu.y = 0

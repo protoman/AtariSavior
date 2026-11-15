@@ -90,7 +90,7 @@ def add(score, amt_dec, lives):
     mem.ram[SC_TE] = pack(score % 100)
     mem.ram[LIVES] = lives
     mpu.a = pack(amt_dec)                  # AddScore takes the amount in A
-    mpu.pc, mpu.sp, mem.bank = PC_ENTRY, 0xFF, 1
+    mpu.pc, mpu.sp, mem.bank = PC_ENTRY, 0xFF, 2
     for _ in range(500):
         if mpu.pc == PC_RETURN:
             return ((mem.ram[SC_TH], mem.ram[SC_HU], mem.ram[SC_TE]),

@@ -824,6 +824,7 @@ OvDoorLocked:                   ; bank0's DoorLocked, inlined
 
 ColOff:     .byte 0,0,0,0, 4,4,4,4,4,4,4,4, 8,8,8,8,8,8,8,8
 ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
+            .byte $01,$02,$04,$08,$10,$20,$40,$80
 ; OvHead/OvTail/M1OffTab moved here from the overlay cluster (2026-11-11: the ball-strip
 ; hot kill needed their 10 bytes; they are data, position-free, but keep OvHead/OvTail adjacent -
 ; test_async_band3 reads them as one 8-byte signature).

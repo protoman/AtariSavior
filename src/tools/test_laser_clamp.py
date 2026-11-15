@@ -50,8 +50,8 @@ for _l in ((FROZEN / "bank5.lst").read_text(errors="replace").splitlines()
         else:
             _M0RR = int(_m.group(1), 16)
 assert _EX is not None and _M0RR is not None, "bank3 level labels missing"
-BANKS[3][_EX + 1 - 0xF000] = 0
-BANKS[3][_EX + 2 - 0xF000] = 0
+BANKS[5][_EX + 1 - 0xF000] = 0
+BANKS[5][_EX + 2 - 0xF000] = 0
 BANKS[4][_M0RR - 0xF000] = 0                  # hot count = 0 (shapes live in bank4)
 
 # bank0 labels (addresses move every commit)
@@ -139,7 +139,7 @@ mpu = MPU(memory=mem)
 
 
 def rom2(addr):
-    return BANKS[2][addr - 0xF000]
+    return BANKS[6][addr - 0xF000]
 
 
 def src_bit(src_col):

@@ -53,7 +53,7 @@ def run(meta_b: int) -> int:
                       ("EnemyDeadMask", 0), ("BombPacked", 0),
                       ("LineCount", PACK)):
         r[L[name] - 0x80] = val
-    mem.bank = 3
+    mem.bank = 5
     mpu = MPU(memory=mem)
     mpu.pc = L["HotOverlapBody"]
     mpu.a = mpu.x = mpu.y = 0

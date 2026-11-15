@@ -66,7 +66,7 @@ def run_band(lives, key):
     r[Z["BombX"]] = 0
     r[Z["Level"]] = 0
     r[Z["TickCounter"]] = 30
-    mem.bank = 1
+    mem.bank = 2
     mpu = MPU(memory=mem)
     mpu.pc, mpu.sp, mpu.a, mpu.x, mpu.y = L1["MenuMain"], 0xFD, 0, 0, 0
     for _ in range(200000):

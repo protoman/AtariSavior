@@ -81,9 +81,9 @@ def run_case(enemy_x: int, enemy_y: int, room_y: int, tip_arg: int,
     # Enemy record: overwrite record 0 of level 1's table in the image copy
     # (2026-10-21: 3 B — type|dir b7, x, y; dir unused here).
     rec = L2["LEVEL1_EnemyDataTable"] - 0xF000
-    BANKS[2][rec + 0] = enemy_type
-    BANKS[2][rec + 1] = enemy_x & 0xFF
-    BANKS[2][rec + 2] = enemy_y & 0xFF
+    BANKS[6][rec + 0] = enemy_type
+    BANKS[6][rec + 1] = enemy_x & 0xFF
+    BANKS[6][rec + 2] = enemy_y & 0xFF
 
     _zp(mem, "EnemyDataLo", L2["LEVEL1_EnemyDataTable"] & 0xFF)
     _zp(mem, "EnemyDataHi", L2["LEVEL1_EnemyDataTable"] >> 8)
@@ -99,7 +99,7 @@ def run_case(enemy_x: int, enemy_y: int, room_y: int, tip_arg: int,
     mem.ram[PF0_BUF - 0x80:PF0_BUF - 0x80 + 9] = (
         b"\xff" * 9 if stub_solid else b"\x00" * 9)
 
-    mem.bank = 2
+    mem.bank = 6
     mpu = MPU(memory=mem)
     mpu.pc = L2["LaserHitTestBody"]
     mpu.a = mpu.x = mpu.y = 0

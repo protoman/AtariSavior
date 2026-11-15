@@ -271,33 +271,34 @@
 ------- FILE banks.inc LEVEL 2 PASS 2
       0  10000 ????				       include	"banks.inc"	; BK_* bank selectors by role (docs/agents/banks.md)
       1  10000 ????						; ==============================================================================
-      2  10000 ????						; Bank selectors by ROLE (docs/agents/banks.md). Code never writes a literal $1FF4-$1FFB: it writes
-      3  10000 ????						; the selector of the bank that holds the ROLE it wants (`sta BK_ROOMS`), so the physical bank
-      4  10000 ????						; number of every role is decided HERE and nowhere else. The F4 hotspot of physical bank n is $1FF4+n.
-      5  10000 ????						;
-      6  10000 ????						; BKI_x = the physical bank (0-7) that holds role x. OLD layout (what build.sh assembles today):
-      7  10000 ????						; ==============================================================================
-      8  10000 ????		00 00	    BKI_GENERAL =	0	; main loop, input, physics, collision, sound, the fold pads
-      9  10000 ????		00 01	    BKI_HUD    =	1	; HUD, title and level select, raft, bomb wall marks, strip blast
-     10  10000 ????		00 02	    BKI_ROOMS  =	2	; level room half: room readers, exits, laser, moth, blast + the room tables
-     11  10000 ????		00 03	    BKI_EXTRAS =	3	; level extras half: phase/hcrunch/hot/dark walkers + the extras data
-     12  10000 ????		00 04	    BKI_SAVE   =	4	; save-to-cartridge (I2C)
-     13  10000 ????		00 04	    BKI_TRANS  =	4	; version header, blank transition frame, attract script
-     14  10000 ????		00 06	    BKI_CAVE   =	6	; the generated gameplay cave kernel
-     15  10000 ????		00 07	    BKI_PROLOGUE =	7	; cave kernel start-up code
-     16  10000 ????		00 05	    BKI_ROOMS_B =	5	; room bank B: identical code to ROOMS (bank2), the data of the levels past LEVEL_SPLIT
-     17  10000 ????		00 04	    BKI_MODELS =	4	; room models: the shape step + the shape blocks / row pool (shares bank4, plan phase 3)
-     18  10000 ????
-     19  10000 ????		1f f4	    BK_GENERAL =	$1FF4 + BKI_GENERAL
-     20  10000 ????		1f f5	    BK_HUD     =	$1FF4 + BKI_HUD
-     21  10000 ????		1f f6	    BK_ROOMS   =	$1FF4 + BKI_ROOMS
-     22  10000 ????		1f f7	    BK_EXTRAS  =	$1FF4 + BKI_EXTRAS
-     23  10000 ????		1f f8	    BK_SAVE    =	$1FF4 + BKI_SAVE
-     24  10000 ????		1f f8	    BK_TRANS   =	$1FF4 + BKI_TRANS
-     25  10000 ????		1f fa	    BK_CAVE    =	$1FF4 + BKI_CAVE
-     26  10000 ????		1f fb	    BK_PROLOGUE =	$1FF4 + BKI_PROLOGUE
-     27  10000 ????		1f f8	    BK_MODELS  =	$1FF4 + BKI_MODELS
-     28  10000 ????		1f f9	    BK_ROOMS_B =	$1FF4 + BKI_ROOMS_B
+      2  10000 ????						; NEW ROM bank selectors by ROLE (docs/agents/banks.md, Layout v3). BKI_x = the physical bank of role x.
+      3  10000 ????						; The new ROM is built from newrom/ (tools/build_newrom.sh); this file shadows src/banks.inc there.
+      4  10000 ????						; ==============================================================================
+      5  10000 ????		00 00	    BKI_GENERAL =	0	; main loop, input, physics, collision, sound, the fold pads
+      6  10000 ????		00 01	    BKI_CAVE   =	1	; the generated gameplay cave kernel (+ its prologue)
+      7  10000 ????		00 02	    BKI_HUD    =	2	; HUD, title, level select
+      8  10000 ????		00 03	    BKI_GAMEPLAY =	3	; raft, bomb wall marks, strip blast, stage band, colour build
+      9  10000 ????		00 04	    BKI_SAVE   =	4	; save-to-cartridge (I2C)
+     10  10000 ????		00 04	    BKI_TRANS  =	4	; version header, blank transition frame, attract script
+     11  10000 ????		00 04	    BKI_MODELS =	4	; room models: shape step + shape blocks / row pool
+     12  10000 ????		00 04	    BKI_OVERLAY =	4	; asym-patch collision overlay cluster (placed when bank 4 is filled)
+     13  10000 ????		00 05	    BKI_EXTRAS =	5	; extras walkers + extras data of all 32 levels
+     14  10000 ????		00 06	    BKI_ROOMS  =	6	; room bank A: room code + room data
+     15  10000 ????		00 07	    BKI_ROOMS_B =	7	; room bank B: same code, the levels past LEVEL_SPLIT
+     16  10000 ????		00 03	    BKI_PROLOGUE =	3	; cave kernel start-up code (does not fit in the cave bank: 2 KB tables + 1.7 KB code)
+     17  10000 ????
+     18  10000 ????		1f f4	    BK_GENERAL =	$1FF4 + BKI_GENERAL
+     19  10000 ????		1f f5	    BK_CAVE    =	$1FF4 + BKI_CAVE
+     20  10000 ????		1f f6	    BK_HUD     =	$1FF4 + BKI_HUD
+     21  10000 ????		1f f7	    BK_GAMEPLAY =	$1FF4 + BKI_GAMEPLAY
+     22  10000 ????		1f f8	    BK_SAVE    =	$1FF4 + BKI_SAVE
+     23  10000 ????		1f f8	    BK_TRANS   =	$1FF4 + BKI_TRANS
+     24  10000 ????		1f f8	    BK_MODELS  =	$1FF4 + BKI_MODELS
+     25  10000 ????		1f f8	    BK_OVERLAY =	$1FF4 + BKI_OVERLAY
+     26  10000 ????		1f f9	    BK_EXTRAS  =	$1FF4 + BKI_EXTRAS
+     27  10000 ????		1f fa	    BK_ROOMS   =	$1FF4 + BKI_ROOMS
+     28  10000 ????		1f fb	    BK_ROOMS_B =	$1FF4 + BKI_ROOMS_B
+     29  10000 ????		1f f7	    BK_PROLOGUE =	$1FF4 + BKI_PROLOGUE
 ------- FILE bank4.asm
       5  f000					      org	$F000
       6  f000							; The power-up pad every bank carries: `lda #0 / sta $1FF4` selects bank0, whose
@@ -785,7 +786,7 @@
     488  f456					      org	$F453 + 3
     489  f456		       4c 60 f4 	      jmp	ShapeStep7
     490  f459					      org	$F453 + 6
-    491  f459		       8d f7 1f 	      sta	BK_EXTRAS
+    491  f459		       8d f9 1f 	      sta	BK_EXTRAS
     492  f460					      org	$F460
     493  f460				   ShapeStep7
     494  f460		       a5 99		      lda	RoomPF0Lo
@@ -823,7 +824,7 @@
 ------- FILE generated/spill_bank3_shapes.asm LEVEL 2 PASS 2
       0  f4c0					      include	"generated/spill_bank3_shapes.asm"
       1  f4c0							; Generated by convert_level.py --levels (C12 2026-10-21).
-      2  f4c0							; Include list for BANK3's $F5CC SHAPE window — see bank3.asm.
+      2  f4c0							; Include list for BANK3's $F5CC SHAPE window — see bank5.asm.
 ------- FILE generated/models_data.asm LEVEL 3 PASS 2
       0  f4c0					      include	"generated/models_data.asm"
       1  f4c0							; Generated by convert_level.py --levels. Do not edit by hand.
@@ -924,26 +925,28 @@
     533  f526							;   return $FBF8: this `sta $1FF4` selects bank0, whose `rts` at $FBFB returns
     534  f526							;	    to the caller (bank0's ReturnPad is the same two instructions)
     535  f526							; ------------------------------------------------------------------------------
-    536  f526		       00 00 00 00*	      .ds	$FBD0 - *, 0
-    537  fbd0		       8d f6 1f 	      sta	BK_ROOMS	; twin of bank0's EnterRoom pad (the transition frame jumps here)
-    538  fbd3		       00 00 00 00*	      .ds	$FBF8 - *, 0
-    539  fbf8				   ReturnPad
-    540  fbf8		       8d f4 1f 	      sta	BK_GENERAL
-    541  fbfb		       00 00 00 00*	      .ds	$FC08 - *, 0
-    542  fc08		       8d f8 1f 	      sta	BK_SAVE	; twin of CallPad_SaveKey (the `jmp` below is fetched after it)
-    543  fc0b					      .ds	$FC0B - *, 0
-    544  fc0b		       4c 85 f1 	      jmp	SkService
-    545  fc0e		       00 00 00 00*	      .ds	$FC20 - *, 0
-    546  fc20		       8d f6 1f 	      sta	BK_ROOMS	; twin of LoadLevel (bank2 serves the jmp at $FC23)
-    547  fc23		       00 00 00 00*	      .ds	$FC58 - *, 0
-    548  fc58		       8d f4 1f 	      sta	BK_GENERAL	; bank0 $FC5B = jmp StartFrame
-    549  fc5b		       4c 83 fc 	      jmp	TransBody	; $FC5B: fetched after bank0's `sta BK_TRANS` pad at $FC58
-    550  fc5e		       00 00 00 	      .ds	$FC61 - *, 0
-    551  fc61		       4c de fc 	      jmp	TransFinish	; $FC61: after bank0's second pad at $FC5E
-    552  fc64					      .ds	$FC64 - *, 0
-    553  fc64		       4c d5 fc 	      jmp	TransAfterSave	; $FC64: after bank0's third pad at $FC61
-    554  fc67		       00 00 00 00*	      .ds	$FC70 - *, 0
-    555  fc70				   RomVersion
+    536  f526		       00 00 00 00*	      .ds	$F9BF - *, 0
+    537  f9bf		       4c ea fd 	      jmp	PHMOverlay	; OverlayTramp hop (bank0 `sta BK_OVERLAY` at $F9BC)
+    538  f9c2		       00 00 00 00*	      .ds	$FBD0 - *, 0
+    539  fbd0		       8d fa 1f 	      sta	BK_ROOMS	; twin of bank0's EnterRoom pad (the transition frame jumps here)
+    540  fbd3		       00 00 00 00*	      .ds	$FBF8 - *, 0
+    541  fbf8				   ReturnPad
+    542  fbf8		       8d f4 1f 	      sta	BK_GENERAL
+    543  fbfb		       00 00 00 00*	      .ds	$FC08 - *, 0
+    544  fc08		       8d f8 1f 	      sta	BK_SAVE	; twin of CallPad_SaveKey (the `jmp` below is fetched after it)
+    545  fc0b					      .ds	$FC0B - *, 0
+    546  fc0b		       4c 85 f1 	      jmp	SkService
+    547  fc0e		       00 00 00 00*	      .ds	$FC20 - *, 0
+    548  fc20		       8d fa 1f 	      sta	BK_ROOMS	; twin of LoadLevel (bank2 serves the jmp at $FC23)
+    549  fc23		       00 00 00 00*	      .ds	$FC58 - *, 0
+    550  fc58		       8d f4 1f 	      sta	BK_GENERAL	; bank0 $FC5B = jmp StartFrame
+    551  fc5b		       4c 83 fc 	      jmp	TransBody	; $FC5B: fetched after bank0's `sta BK_TRANS` pad at $FC58
+    552  fc5e		       00 00 00 	      .ds	$FC61 - *, 0
+    553  fc61		       4c de fc 	      jmp	TransFinish	; $FC61: after bank0's second pad at $FC5E
+    554  fc64					      .ds	$FC64 - *, 0
+    555  fc64		       4c d5 fc 	      jmp	TransAfterSave	; $FC64: after bank0's third pad at $FC61
+    556  fc67		       00 00 00 00*	      .ds	$FC70 - *, 0
+    557  fc70				   RomVersion
 ------- FILE version.asm LEVEL 2 PASS 2
       0  fc70					      include	"version.asm"
       1  fc70							; generated by build.sh from VERSION - do not edit
@@ -1207,8 +1210,288 @@
     254  fde9		       00		      .byte.b	0	; end: restart the demo
     255  fdea
 ------- FILE bank4.asm
-    558  fdea
-    559  fdea		       00 00 00 00*	      .ds	$FFFA - *, 0
-    560  fffa		       00 f0		      .word.w	$F000
-    561  fffc		       00 f0		      .word.w	$F000
-    562  fffe		       00 f0		      .word.w	$F000
+    560  fdea
+    561  fdea							; ==============================================================================
+    562  fdea							; Phase 4 asym-patch collision overlay cluster - moved here from bank0 (the bank0 reserve of >= 200 B).
+    563  fdea							; Entered from bank0's OverlayTramp: `sta BK_OVERLAY` at $F9BC, then the `jmp PHMOverlay` fetched at $F9BF
+    564  fdea							; (below). Exits are `jmp ReturnPad` ($FBF8: sta BK_GENERAL, bank0's rts at $FBFB = the PHM caller; flags kept).
+    565  fdea							; DoorLocked is inlined (OvDoorLocked); its hot tail is the HotOverlapFlag twin pad at $FFEC
+    566  fdea							; (`sta BK_EXTRAS`, the extras bank serves `jmp HotOverlapBody` at $FFEF and ends through ReturnPad).
+    567  fdea							; ColOff/ColMask are copies (bank0 keeps the pair for the PHM walk); OvHead/OvTail/M1OffTab live only here.
+    568  fdea							; ==============================================================================
+    569  fdea		       00 80	   RoomX      =	$80
+    570  fdea		       00 82	   PlayerDir  =	$82
+    571  fdea		       00 84	   LineCount  =	$84
+    572  fdea		       00 88	   Temp       =	$88
+    573  fdea		       00 8b	   CollisionX =	$8B
+    574  fdea		       00 8d	   CollisionCellY =	$8D
+    575  fdea		       00 8f	   CollisionEndY =	$8F
+    576  fdea		       00 92	   RectCount  =	$92
+    577  fdea		       00 99	   RoomPF0Lo  =	$99
+    578  fdea		       00 9a	   RoomPF0Hi  =	$9A
+    579  fdea		       00 a7	   LevelStartRoom =	$A7
+    580  fdea		       00 ba	   EnemyDeadMask =	$BA
+    581  fdea		       00 c3	   PF0Buf     =	$C3
+    582  fdea		       00 07	   PLAYER_WIDTH =	7
+    583  fdea				   PHMOverlay
+    584  fdea							; LineCount packed: b4-b7 = right_col+1, b0-2 = bands with the painted
+    585  fdea							; ball-strip ($ff BandTab entries). D6 envelope: ONE right column
+    586  fdea							; [BallX-7, BallX] px, BallX = 87+8*rc — overlay is additive (cells
+    587  fdea							; painted only where the mirrored cell is open, never hot).
+    588  fdea							; Exact visible_left (same math as PHM's prologue), then px overlap of
+    589  fdea							; [vl, vl+6] (PLAYER_WIDTH=7 lit) with the patch column, then band x rows.
+    590  fdea		       38		      sec
+    591  fdeb		       a5 80		      lda	RoomX
+    592  fded		       e5 82		      sbc	PlayerDir
+    593  fdef		       c9 0f		      cmp	#15
+    594  fdf1		       b0 06		      bcs	.Ov7
+    595  fdf3		       38		      sec
+    596  fdf4		       e9 04		      sbc	#4
+    597  fdf6		       4c fb fd 	      jmp	.OvVL
+    598  fdf9				   .Ov7
+    599  fdf9		       e9 07		      sbc	#7
+    600  fdfb				   .OvVL
+    601  fdfb		       18		      clc
+    602  fdfc		       65 82		      adc	PlayerDir	; A = visible_left px
+    603  fdfe		       85 8b		      sta	CollisionX	; walk temps are free on the miss path
+    604  fe00		       a5 84		      lda	LineCount
+    605  fe02		       4a		      lsr
+    606  fe03		       4a		      lsr
+    607  fe04		       4a		      lsr
+    608  fe05		       4a		      lsr		; n = right_col+1 (1..10)
+    609  fe06		       f0 1e		      beq	.OvClear	; 2026-10-23: n = 0 means this room has NO ball
+    610  fe08							;   column. Without this the test invented a
+    611  fe08							;   phantom ball at x79 (BallX = 79 + 8n) and a
+    612  fe08							;   player standing near it was routed to the
+    613  fe08							;   shutter/right-door path, so the LEFT (M1)
+    614  fe08							;   door test never ran — the door never blocked.
+    615  fe08		       0a		      asl
+    616  fe09		       0a		      asl
+    617  fe0a		       0a		      asl		; 8n
+    618  fe0b		       18		      clc
+    619  fe0c		       69 4f		      adc	#79	; BallX = 79+8n = 87+8*rc (patch right edge)
+    620  fe0e		       85 92		      sta	RectCount	; scratch (NOT CollisionCellX): the prologue
+    621  fe10							; box must survive for HotOverlapFlag — OvM1Block
+    622  fe10							; funnels block hits there for hot-death. Scratch
+    623  fe10							; = RectCount ($92): free after the cell walk,
+    624  fe10							; RowIdx re-inits at kernel entry. NEVER Temp —
+    625  fe10							; CheckP0Left/Right read the joystick in Temp
+    626  fe10							; AFTER this physics call (Temp scratch here
+    627  fe10							; left D3=0 = phantom right-press = drift bug).
+    628  fe10		       a5 8b		      lda	CollisionX
+    629  fe12		       c5 92		      cmp	RectCount	; vl vs BallX
+    630  fe14		       f0 02		      beq	.OvT2
+    631  fe16		       b0 0e		      bcs	.OvClear	; vl > BallX → player fully right of patch
+    632  fe18				   .OvT2		; (vl < BallX falls through)
+    633  fe18		       a5 92		      lda	RectCount
+    634  fe1a		       38		      sec
+    635  fe1b		       e9 0d		      sbc	#13	; BallX-13 (lit span is 7px, not 8: [vl,vl+6])
+    636  fe1d		       c5 8b		      cmp	CollisionX	; vs vl: overlap iff BallX-13 <= vl
+    637  fe1f		       f0 02		      beq	.OvBand
+    638  fe21		       b0 03		      bcs	.OvClear	; BallX-13 > vl: no overlap (2026-11-14: order swapped so the miss falls
+    639  fe23							;   straight into OvM1Block - the `jmp` is gone, -3 B in a full bank)
+    640  fe23				   .OvBand
+    641  fe23		       4c 9b fe 	      jmp	OvShutBand	; band overlap → shutter kill / strip solid
+    642  fe26				   .OvClear
+    643  fe26							; right-strip miss → M1 (left) strip test (OvM1Block follows);
+    644  fe26							; IT returns with C set/clear.
+    645  fe26							; Shutter rooms: miss here = player left of
+    646  fe26							; the VISIBLE right-half block → passable
+    647  fe26							; (kill follows the drawn block only, async
+    648  fe26							; ruling 2026-10-14 — no left mirror)
+    649  fe26
+    650  fe26				   OvM1Block
+    651  fe26							; Phase 4 M1 (left strip) collision overlay. Entered by JMP from
+    652  fe26							; PHMOverlay's .OvClear — 0 pushes; both exits rts to the PHM caller.
+    653  fe26							; In: CollisionX = vl, CollisionCellY/EndY =
+    654  fe26							; player row range (survive the right tests — do NOT clobber the
+    655  fe26							; prologue box: CellX/EndX/CellY/EndY must stay intact, the block
+    656  fe26							; path hands them to HotOverlapFlag). Scratch = RectCount ($92; M1X,
+    657  fe26							; then ℓ math — see PHMOverlay note). Kill-aware
+    658  fe26							; (EnemyDeadMask b4); a row blocks iff its PF cell at col ℓ is open —
+    659  fe26							; the wall-hide envelope guarantees open ⟺ patched (every band at ℓ
+    660  fe26							; is wall or M1-patched, never plain-open).
+    661  fe26		       a5 ba		      lda	EnemyDeadMask
+    662  fe28		       29 10		      and	#$10	; b4 = M1 strip destroyed → transparent
+    663  fe2a		       d0 6b		      bne	.OvM1no
+    664  fe2c		       a5 99		      lda	RoomPF0Lo	; staged MetaA ($99)
+    665  fe2e		       29 01		      and	#$01	; Phase 5: b0 = M1 strip on the RIGHT half
+    666  fe30		       aa		      tax		;   (door band mask is $02 → b0 free)
+    667  fe31		       a5 99		      lda	RoomPF0Lo	; reload MetaA
+    668  fe33		       4a		      lsr
+    669  fe34		       4a		      lsr
+    670  fe35		       4a		      lsr
+    671  fe36		       4a		      lsr		; m1_col+1 (0 = no M1 patch)
+    672  fe37		       f0 5e		      beq	.OvM1no
+    673  fe39		       0a		      asl
+    674  fe3a		       0a		      asl
+    675  fe3b		       0a		      asl		; 8*(m1_col+1)
+    676  fe3c		       18		      clc
+    677  fe3d		       7d 0d ff 	      adc	M1OffTab,X	; -1 (left, $FF) / +79 (right, $4f) → the
+    678  fe40							;   side's M1X (7+8*col / 87+8*col) — MUST
+    679  fe40							;   match B3StageBand's staging (its own twin)
+    680  fe40		       85 92		      sta	RectCount	; scratch M1X (EndX = prologue min col is
+    681  fe42							; CollisionEndX — kept intact for HotOverlapFlag)
+    682  fe42							; --- contact test: the door is a solid 8 px block [M1X-7, M1X] --------
+    683  fe42							; The player box is 7 lit px [vl, vl+6], so the block must fire as soon
+    684  fe42							; as the boxes TOUCH: vl in [M1X-13, M1X]. Both sides are right-justified
+    685  fe42							; (the M1 is drawn [x-7, x]), so the same window covers a left-wall door
+    686  fe42							; approached from its right and a right-wall one from its left.
+    687  fe42							; Two earlier shapes were wrong and are recorded here so they stay dead:
+    688  fe42							;  - one-sided [M1X-12, M1X] blocked, but the LEFT door read the wrong PF
+    689  fe42							;    register (the old (M1X-7)>>3 cell) and never fired;
+    690  fe42							;  - [M1X-6, M1X] (span the strip's last px) fired only after the player
+    691  fe42							;    had walked 7 px INTO the art: "I can enter inside it, but I can't
+    692  fe42							;    pass its right side" — the block plane sat one tile right of the
+    693  fe42							;    drawing (user report 2026-10-23).
+    694  fe42							; 2026-10-25 (user, level 7 room 1: "half the player can move inside the
+    695  fe42							; wall"): below argument 15 SetObjectXPos strobes RESM1 inside HBLANK, so
+    696  fe42							; the strip is DRAWN 3 px right of [M1X-7, M1X] - the same clamp that makes
+    697  fe42							; the player's visible edge RoomX-4 (not -7) under x=15. The col-0 strip
+    698  fe42							; (M1X 7) occupies [3,10]; test the box edge 3 px closer. vl < 3 (the
+    699  fe42							; player at the screen edge) borrows: that is still contact.
+    700  fe42		       a5 92		      lda	RectCount
+    701  fe44		       c9 0e		      cmp	#14	; M1X >= 14 (argument >= 15): no clamp
+    702  fe46		       a5 8b		      lda	CollisionX	; vl = the box's left edge (lda keeps C)
+    703  fe48		       b0 04		      bcs	.OvM1Cmp
+    704  fe4a		       e9 02		      sbc	#2	; C clear: A - 3
+    705  fe4c		       90 0d		      bcc	.OvM1Band
+    706  fe4e				   .OvM1Cmp
+    707  fe4e		       c5 92		      cmp	RectCount	; M1X = the strip column
+    708  fe50		       f0 09		      beq	.OvM1Band	; the column is the box's left edge
+    709  fe52		       b0 43		      bcs	.OvM1no	; vl > M1X → the strip is left of the box
+    710  fe54		       18		      clc
+    711  fe55		       69 0d		      adc	#PLAYER_WIDTH + 6	; vl + 13 = box right edge + the strip's 7 px
+    712  fe57		       c5 92		      cmp	RectCount
+    713  fe59		       90 3c		      bcc	.OvM1no	; vl + 13 < M1X → no contact with [M1X-7, M1X]
+    714  fe5b				   .OvM1Band
+    715  fe5b							; 2026-10-23: ℓ is the PF CELL of the strip (ColOff/ColMask are indexed by
+    716  fe5b							; x>>2, 20 cells = the 80 px half, mirrored) - it was (M1X-7)>>3, which
+    717  fe5b							; pointed one register off for a left strip: a door at col 7 (x=63, cell
+    718  fe5b							; 15, PF2 bit 3) was looked up as cell 7 (PF1 bit 4), the live $FC has that
+    719  fe5b							; bit set, so the scan read a WALL and called the door passable.
+    720  fe5b		       a5 92		      lda	RectCount
+    721  fe5d		       4a		      lsr
+    722  fe5e		       4a		      lsr		; ℓ = M1X / 4 = the PF cell (0..19 left half)
+    723  fe5f		       c9 14		      cmp	#20	; the 80 px half = 20 PF cells (mirrored)
+    724  fe61		       90 05		      bcc	.OvM1Cell
+    725  fe63		       49 ff		      eor	#$FF	; right half: A = 255 - ℓ (one's complement)
+    726  fe65		       38		      sec
+    727  fe66		       69 27		      adc	#39	; 255 - ℓ + 40 = 295 - ℓ = 39 - ℓ (mod 256)
+    728  fe68							; reflect mapping (test_cell_map.visible_range).
+    729  fe68							; Was `eor #%00011111` = 31 - ℓ, off by 8 cells:
+    730  fe68							; the level-4 room 3 door (M1X 103, cell 25)
+    731  fe68							; read cell 6, a WALL, and returned clc — the
+    732  fe68							; player walked through it (2026-10-23 trace:
+    733  fe68							; 268 overlaps, all .OvM1no, X=6 at $FAA6).
+    734  fe68				   .OvM1Cell
+    735  fe68		       aa		      tax		; X = ℓ (PHM callers preserve X themselves)
+    736  fe69		       a5 8d		      lda	CollisionCellY
+    737  fe6b		       85 92		      sta	RectCount	; $92 walk temp — free after the cell walk
+    738  fe6d							; (RowIdx re-inits at kernel entry)
+    739  fe6d				   .OvM1Row
+    740  fe6d		       a5 92		      lda	RectCount
+    741  fe6f		       18		      clc
+    742  fe70		       7d dd fe 	      adc	ColOff,X	; PF0/PF1/PF2 group offset (0/3/6)
+    743  fe73		       a8		      tay
+    744  fe74		       b9 c3 00 	      lda	PF0Buf,Y	; same cell read as PlayerHitsMap
+    745  fe77		       3d f1 fe 	      and	ColMask,X
+    746  fe7a		       f0 0a		      beq	.OvM1block	; open → patch cell active in this row
+    747  fe7c		       a5 92		      lda	RectCount
+    748  fe7e		       c5 8f		      cmp	CollisionEndY
+    749  fe80		       f0 15		      beq	.OvM1no
+    750  fe82		       e6 92		      inc	RectCount
+    751  fe84		       d0 e7		      bne	.OvM1Row	; row never wraps to 0
+    752  fe86				   .OvM1block
+    753  fe86							; Blocked by the M1 cell: run the hot check too — convert emits the
+    754  fe86							; M1 patch cell as a hot rect on the hot band (mask $00, never dies
+    755  fe86							; with a wall), so touching the block on a hot band = death, exactly
+    756  fe86							; like a hot PF wall. Off-band / non-hot: body finds no rect → sec,
+    757  fe86							; still blocked. b4 (strip destroyed) never reaches here (.OvM1no).
+    758  fe86							; Phase 5 key: touching the M1 strip (left door) while KeyHeld removes
+    759  fe86							; it (b4) — touch, not mere possession.
+    760  fe86		       a5 a7		      lda	LevelStartRoom
+    761  fe88		       30 03		      bmi	.OvM1unlock
+    762  fe8a		       4c d0 fe 	      jmp	OvDoorLocked	; locked: blocks in a cold room too (fill)
+    763  fe8d				   .OvM1unlock
+    764  fe8d		       a5 ba		      lda	EnemyDeadMask
+    765  fe8f		       09 10		      ora	#$10	; b4 = M1 strip (left door) destroyed
+    766  fe91		       85 ba		      sta	EnemyDeadMask
+    767  fe93		       18		      clc
+    768  fe94		       4c f8 fb 	      jmp	ReturnPad	; passable (bank0 caller)
+    769  fe97				   .OvM1no
+    770  fe97		       18		      clc
+    771  fe98		       4c f8 fb 	      jmp	ReturnPad
+    772  fe9b
+    773  fe9b							; ------------------------------------------------------------------------------
+    774  fe9b							; OvShutBand — right-column strip on the PHMOverlay miss path. Entered from
+    775  fe9b							; PHMOverlay .OvBand (right-column + player-band overlap). MetaB b7 marks a
+    776  fe9b							; LOCKED_DOOR right strip; b7 clear is a plain D6 strip. A plain strip is
+    777  fe9b							; solid. A door strip is solid until the key is held, then the touch
+    778  fe9b							; destroys it (EnemyDeadMask b3) and the walk passes (Phase 5).
+    779  fe9b							; Kill follows the VISIBLE right-half block only (async ruling 2026-10-14 —
+    780  fe9b							; no left mirror). The retired vcrunch kill test is gone.
+    781  fe9b							; ------------------------------------------------------------------------------
+    782  fe9b				   OvShutBand
+    783  fe9b		       a6 8d		      ldx	CollisionCellY
+    784  fe9d		       bd 05 ff 	      lda	OvHead,X	; bits >= row
+    785  fea0		       a6 8f		      ldx	CollisionEndY
+    786  fea2		       3d 09 ff 	      and	OvTail,X	; bits <= row
+    787  fea5		       25 84		      and	LineCount	; active-band mask (b0-2)
+    788  fea7		       f0 24		      beq	.OSBm1	; not in a painted band → M1 strip test
+    789  fea9		       29 02		      and	#$02	; b1 = the box overlaps the strip's band 2 (the hot band)
+    790  feab		       aa		      tax		;   X = 2 / 0 (PHM callers preserve X themselves)
+    791  feac		       a5 9a		      lda	RoomPF0Hi	; staged MetaB ($9A)
+    792  feae		       10 0d		      bpl	.OSBsolid	; b7=0: plain D6 strip → solid
+    793  feb0		       a5 a7		      lda	LevelStartRoom	; KeyHeld?
+    794  feb2		       10 09		      bpl	.OSBsolid	; no key → locked (solid)
+    795  feb4		       a5 ba		      lda	EnemyDeadMask	; key held: the touch destroys the strip
+    796  feb6		       09 08		      ora	#$08	; b3 = ball strip (right door) destroyed
+    797  feb8		       85 ba		      sta	EnemyDeadMask
+    798  feba		       4c cd fe 	      jmp	.OSBm1	; passable (strip blanked next B3StageBand)
+    799  febd				   .OSBsolid
+    800  febd							; User 2026-11-11 (level 9 room 1): "all elements (PF or simulating PF) in a hot band
+    801  febd							; should kill on touch" - the ball strip is drawn in the hot colours there, so touching
+    802  febd							; it on the hot band is HotBump (Temp b7), like the M1 block and a hot PF wall.
+    803  febd		       8a		      txa
+    804  febe		       f0 09		      beq	.OSBsolidRet	; not on the hot band
+    805  fec0		       24 9a		      bit	RoomPF0Hi	; MetaB: V = b6 hot room
+    806  fec2		       50 05		      bvc	.OSBsolidRet
+    807  fec4		       06 88		      asl	Temp
+    808  fec6		       38		      sec
+    809  fec7		       66 88		      ror	Temp	; Temp b7 = HotBump: UpdateP0Vertical turns it into LoseLife
+    810  fec9				   .OSBsolidRet
+    811  fec9		       38		      sec
+    812  feca		       4c f8 fb 	      jmp	ReturnPad
+    813  fecd				   .OSBm1
+    814  fecd		       4c 26 fe 	      jmp	OvM1Block
+    815  fed0
+    816  fed0				   OvDoorLocked 		; bank0's DoorLocked, inlined
+    817  fed0		       a5 9a		      lda	RoomPF0Hi	; staged MetaB
+    818  fed2		       29 40		      and	#$40	; b6 = hot shape
+    819  fed4		       d0 04		      bne	.ODLhot
+    820  fed6		       38		      sec		; cold room: the door is simply solid
+    821  fed7		       4c f8 fb 	      jmp	ReturnPad
+    822  feda				   .ODLhot
+    823  feda		       4c ec ff 	      jmp	$FFEC	; hot band: the overlap body owns the hit (C=1)
+    824  fedd
+    825  fedd		       00 00 00 00*ColOff     .byte.b	0,0,0,0, 4,4,4,4,4,4,4,4, 8,8,8,8,8,8,8,8
+    826  fef1		       10 20 40 80*ColMask    .byte.b	$10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
+    827  fefd		       01 02 04 08*	      .byte.b	$01,$02,$04,$08,$10,$20,$40,$80
+    828  ff05							; OvHead/OvTail/M1OffTab moved here from the overlay cluster (2026-11-11: the ball-strip
+    829  ff05							; hot kill needed their 10 bytes; they are data, position-free, but keep OvHead/OvTail adjacent -
+    830  ff05							; test_async_band3 reads them as one 8-byte signature).
+    831  ff05				   OvHead
+    832  ff05		       0f 0e 0c 08	      .byte.b	15,14,12,8	; rows 0..3 -> mask bits >= row (4 bands)
+    833  ff09				   OvTail
+    834  ff09		       01 03 07 0f	      .byte.b	1,3,7,15	; rows 0..3 -> mask bits <= row
+    835  ff0d				   M1OffTab		; MetaA b0 -> M1 x-offset.
+    836  ff0d		       ff 4f		      .byte.b	$ff, $4f	; B3StageBand has the twin.
+    837  ff0f
+    838  ff0f		       00 00 00 00*	      .ds	$FFEC - *, 0
+    839  ffec		       8d f9 1f 	      sta	BK_EXTRAS	; twin of bank0's HotOverlapFlag (the extras bank serves the jmp at $FFEF)
+    840  ffef
+    841  ffef		       00 00 00 00*	      .ds	$FFFA - *, 0
+    842  fffa		       00 f0		      .word.w	$F000
+    843  fffc		       00 f0		      .word.w	$F000
+    844  fffe		       00 f0		      .word.w	$F000

@@ -83,7 +83,7 @@ def run(mask_hot: bool = True, box=(5, 1, 4, 1), dead_mask: int = 0,
     # PF row 1, display col 4 -> PF1Buf + 1, bit 7 (ColMask[4] = $80).
     # N=4: stride 4 -> PF1Buf = PF0Buf+4, row 1 = +5 (was +4 with stride 3).
     r[L2["PF0Buf"] + 4 + 1 - 0x80] = pf_row1
-    mem.bank = 3              # C7: the hot walkers live in bank3
+    mem.bank = 5              # C7: the hot walkers live in bank3
     mpu = MPU(memory=mem)
     mpu.pc = L2["HotOverlapBody"]
     mpu.a = mpu.x = mpu.y = 0

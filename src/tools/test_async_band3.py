@@ -72,7 +72,7 @@ def stage(meta_a, meta_b):
     r[Z["RoomRectsLo"]] = 0x00          # hot record stream: count 0 -> done
     r[Z["RoomRectsHi"]] = 0x00
     mpu = MPU(memory=mem)
-    mem.bank = 3
+    mem.bank = 5
     mpu.pc = L3["B3StageBand"]
     mpu.a = mpu.x = mpu.y = 0
     mpu.sp = 0xFD
@@ -127,7 +127,8 @@ def main() -> int:
 
     # --- case 5: the collision tables carry 4 bands ---------------------
     sig = bytes([15, 14, 12, 8, 1, 3, 7, 15])     # OvHead 0-3, OvTail 0-3
-    assert BANK0.find(sig) >= 0, (
+    from test_cell_map import BANK4
+    assert BANK4.find(sig) >= 0, (
         "kernel OvHead/OvTail are not the 4-band pair 15,14,12,8 / 1,3,7,15 — "
         "a 3-row table makes a band-3 strip pass-through (X=3 reads past it)")
     from test_cell_map import BANK2

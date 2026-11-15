@@ -25,7 +25,7 @@ L0 = parse_labels(FROZEN / "bank0.lst", {
     "vyLo", "vyHi", "Temp", "PlayerBombs", "UpdateEnemies", "EnemyCount",
     "EnemyDataLo", "EnemyDataHi", "EnemyDeadMask", "UEDispatch", "UE_Next"})
 OBJ_RAFT_TYPE = 7
-L1 = parse_labels(FROZEN / "bank2.lst", {"RaftBody"})
+L1 = parse_labels(FROZEN / "bank3.lst", {"RaftBody"})
 missing = ({"EnemyRamX", "EnemyRamY", "EnemyRamD", "EnemyRamP", "RoomX",
             "RoomY", "vyLo", "vyHi"} - L0.keys()) | ({"RaftBody"} - L1.keys())
 if missing:
@@ -61,7 +61,7 @@ def run(x, dir_right=True, parity=1, lead=0, room_x=None, room_y=None,
         vyhi=0, pf0=0, pf1=0, pf2=0, slot=0, bombs=0):
     """One RaftBody frame. `lead` seeds the elements ahead of the raft."""
     mem = Mem()
-    mem.bank = 1                   # RaftBody lives in bank1 (CallPad target)
+    mem.bank = 3                   # RaftBody lives in the gameplay bank (CallPad target)
     r = mem.ram
     r[X["EnemyRamX"] + slot] = x
     r[X["EnemyRamY"] + slot] = 0x00        # junk: RaftBody must overwrite it
@@ -114,10 +114,10 @@ def integration() -> None:
     see it (a $F82C tramp with no bank1 twin jumped into the body's own bytes).
     """
     b0 = (FROZEN / "bank0.bin").read_bytes()
-    b1 = (FROZEN / "bank2.bin").read_bytes()
+    b1 = (FROZEN / "bank3.bin").read_bytes()
     a = b0[TRAMP - 0xF000:TRAMP - 0xF000 + 6]
     b = b1[TRAMP - 0xF000:TRAMP - 0xF000 + 6]
-    assert a == b and a[:3] == bytes([0x8D, 0xF5, 0x1F]), (
+    assert a == b and a[:3] == bytes([0x8D, 0xF7, 0x1F]), (
         f"raft tramp ${TRAMP:04X} not twinned: bank0 {a.hex()} bank1 {b.hex()} "
         "(the jmp is fetched from bank1 after sta $1FF5)")
     assert a[3:6] == bytes([0x4C, RAFT & 0xFF, RAFT >> 8]), (
@@ -369,7 +369,7 @@ def main() -> int:
         mem[0x1FE] = RTS_SENTINEL >> 8
         for _ in range(4000):
             mpu.step()
-            if mem.bank == 1 and mpu.pc == RAFT:
+            if mem.bank == 3 and mpu.pc == RAFT:
                 return True
             if mpu.pc == L0["UE_Next"]:
                 return False

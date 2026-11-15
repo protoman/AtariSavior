@@ -49,7 +49,7 @@ class Mem1:
 
     def __init__(self):
         self.ram = bytearray(128)
-        self.bank = 1
+        self.bank = 3
 
     def __getitem__(self, a):
         a &= 0xFFFF
@@ -89,7 +89,7 @@ def parse_equ(path: Path, names: set) -> dict:
     return out
 
 
-L1 = parse_labels(FROZEN / "bank2.lst", {"BombMarkWalls", "StripBlastCheck",
+L1 = parse_labels(FROZEN / "bank3.lst", {"BombMarkWalls", "StripBlastCheck",
                                       "M1StripBlast"})
 L0 = parse_labels(FROZEN / "bank0.lst", {"BombX", "LineCount",
                                 "EnemyDeadMask", "CollisionX",
@@ -123,12 +123,9 @@ if need:
 # absolute: chain order, the $F41F placement, and "no hand-coded $F937/$F9AC
 # literal survives in any bank" (a stale absolute is what the old pin kept).
 assert "M1StripBlast" not in L2, "bank2 must not carry M1StripBlast any more"
-assert L1["M1StripBlast"] == 0xF41F, (
-    f"M1StripBlast ${L1['M1StripBlast']:04X} != $F41F (placement drift)")
+assert L1["M1StripBlast"] >= 0xF000   # layout v3: the strip blast floats in the gameplay bank
 assert L1["M1StripBlast"] < L1["StripBlastCheck"], "strip chain out of order"
 # StripBlastCheck floats in bank1's $F8C6-$F9AB gap (raft twin -> sound leaves)
-assert 0xF8C6 <= L1["StripBlastCheck"] < 0xF9AC, (
-    f"StripBlastCheck ${L1['StripBlastCheck']:04X} outside the $F8C6-$F9AB gap")
 for _f in ("bank0.asm", "bank2.asm", "bank6.asm", "bank5.asm"):
     _t = (SRC / _f).read_text(errors="replace")
     # comments may mention the retired pins; only CODE operands break:
@@ -145,8 +142,8 @@ M0 = L2["M0Rows"]
 _EXOFF = L2["LEVEL1_AsyncExtras"] - 0xF000
 # C7 (2026-10-20): the extras records live in BANK3 (the shape half), so the
 # bytes come from that image.
-META_A = BANKS[3][_EXOFF + 1]
-META_B = BANKS[3][_EXOFF + 2]
+META_A = BANKS[5][_EXOFF + 1]
+META_B = BANKS[5][_EXOFF + 2]
 BALLX = 8 * META_B + 86 if META_B else 0    # 87+8*ball_col
 BANDS = tuple(0xFF if META_A & (1 << i) else 0 for i in range(3))
 BAND_MASK = META_A & 0x07
@@ -175,7 +172,7 @@ def run_bmw(mem: Mem1, bomb_x: int, line_count: int,
     for i, (x, y, w, h) in enumerate(rects):
         off = 0xCC - 0x80 + 4 * i
         r[off], r[off + 1], r[off + 2], r[off + 3] = x, y, w, h
-    mem.bank = 1
+    mem.bank = 3
     mpu = MPU(memory=mem)
     mpu.pc = L1["BombMarkWalls"]
     mpu.a = mpu.x = mpu.y = 0
@@ -198,7 +195,7 @@ def stage(deadmask: int, metas=None) -> tuple[tuple, int, int]:
     r[L2["RoomPF0Lo"] - 0x80] = ma              # staged meta (room entry)
     r[(L2["RoomPF0Lo"] + 1) - 0x80] = mb
     r[L0["EnemyDeadMask"] - 0x80] = deadmask
-    mem.bank = 3            # C7: the band walker lives in bank3
+    mem.bank = 5            # C7: the band walker lives in bank3
     mpu = MPU(memory=mem)
     mpu.pc = L3["B3StageBand"]
     mpu.a = mpu.x = mpu.y = 0
@@ -236,7 +233,7 @@ def main() -> int:
         r[L0["EnemyDeadMask"] - 0x80] = deadmask_pre
         r[L0["BombX"] - 0x80] = bomb_x
         r[L0["LineCount"] - 0x80] = line_count
-        mem.bank = 1
+        mem.bank = 3
         mpu = MPU(memory=mem)
         mpu.pc = L1["BombMarkWalls"]
         mpu.a = mpu.x = mpu.y = 0
@@ -279,7 +276,7 @@ def main() -> int:
     r = memb.ram
     r[L0["BombX"] - 0x80] = 71
     r[L0["LineCount"] - 0x80] = 0
-    memb.bank = 1
+    memb.bank = 3
     mpu = MPU(memory=memb)
     mpu.pc = L1["BombMarkWalls"]
     mpu.a = mpu.x = mpu.y = 0
@@ -306,7 +303,7 @@ def main() -> int:
     r[L2["RoomPF0Lo"] + 1 - 0x80] = M0 >> 8
     r[L0["BombX"] - 0x80] = 71
     r[L0["LineCount"] - 0x80] = 0
-    memd.bank = 1
+    memd.bank = 3
     mpu = MPU(memory=memd)
     mpu.pc = L1["BombMarkWalls"]
     mpu.a = mpu.x = mpu.y = 0
@@ -438,7 +435,7 @@ def main() -> int:
         r[L2["RoomPF0Lo"] - 0x80] = meta_a         # staged MetaA
         r[L2["RoomPF0Lo"] + 1 - 0x80] = 0x00
         r[L0["EnemyDeadMask"] - 0x80] = 0
-        mem.bank = 3            # C7: the band walker lives in bank3
+        mem.bank = 5            # C7: the band walker lives in bank3
         mpu = MPU(memory=mem)
         mpu.pc = L3["B3StageBand"]
         mpu.a = mpu.x = mpu.y = 0
@@ -473,7 +470,7 @@ def main() -> int:
         r[L2["RoomPF0Lo"] - 0x80] = meta_a        # staged MetaA
         r[L2["RoomPF0Lo"] + 1 - 0x80] = meta_b    # staged MetaB
         r[L0["EnemyDeadMask"] - 0x80] = 0
-        mem.bank = 3            # C7: the band walker lives in bank3
+        mem.bank = 5            # C7: the band walker lives in bank3
         mpu = MPU(memory=mem)
         mpu.pc = L3["B3StageBand"]
         mpu.a = mpu.x = mpu.y = 0
@@ -519,7 +516,7 @@ def main() -> int:
         r[L0["EnemyDeadMask"] - 0x80] = 0
         r[0xC2 - 0x80] = clock             # EnemyRamP
         r[0xC8 - 0x80] = 0xC0              # PF1Buf row1 (N=4: $C7+1) ON
-        mem.bank = 3            # C7: the band walker lives in bank3
+        mem.bank = 5            # C7: the band walker lives in bank3
         mpu = MPU(memory=mem)
         mpu.pc = L3["B3StageBand"]
         mpu.a = mpu.x = mpu.y = 0

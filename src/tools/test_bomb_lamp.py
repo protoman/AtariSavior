@@ -68,7 +68,7 @@ def run(records, ram_x, dead_mask=0, bomb_x=BOMB_X):
         CM.BANK2[off + 3 * i:off + 3 * i + 3] = bytes((t, x, 0))
     try:
         mem = Mem()                   # frozen banks; bank=2 for the body
-        mem.bank = 2
+        mem.bank = 6
         r = mem.ram
         r[Z["EnemyDataLo"]] = SCRATCH & 0xFF
         r[Z["EnemyDataHi"]] = SCRATCH >> 8

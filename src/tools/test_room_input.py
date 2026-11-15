@@ -54,7 +54,7 @@ class MemJoystick(_CM.Mem):
 def enter_tail(swcha: int) -> tuple[int, int]:
     """Run bank2.EBLER_Done; return (Temp, bank)."""
     mem = MemJoystick(swcha)
-    mem.bank = 2
+    mem.bank = 6
     mpu = MPU(memory=mem)
     mpu.pc = L2["EBLER_Done"]
     mpu.a = mpu.x = mpu.y = 0

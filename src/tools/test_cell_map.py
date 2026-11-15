@@ -131,8 +131,10 @@ class Mem:
     def __getitem__(self, a):
         a &= 0xFFFF
         if 0xF000 <= a <= 0xFFFF:
-            return {0: BANK0, 1: BANK1, 2: BANK2, 3: BANK3,
-                                      4: BANK4, 5: BANK5, 6: BANK6, 7: BANK7}.get(self.bank, BANK0)[a - 0xF000]
+            # self.bank is the PHYSICAL bank (layout v3); BANKn keep their old role names:
+            # 1 HUD, 2 rooms A, 3 extras, 5 rooms B, 6 cave, 7 prologue+gameplay
+            return {0: BANK0, 2: BANK1, 6: BANK2, 5: BANK3,
+                    4: BANK4, 7: BANK5, 1: BANK6, 3: BANK7}.get(self.bank, BANK0)[a - 0xF000]
         if 0x80 <= a <= 0xFF or 0x180 <= a <= 0x1FF:
             return self.ram[a & 0x7F]
         return 0
@@ -245,7 +247,7 @@ def run_moth(mem: Mem, lo: int, hi: int, top: int, bot: int,
     entry); return True = HIT. Asserts the exit wiring contract: HIT flips
     EnemyRamD ($00->$01, MothBitTable[0]) and must NOT commit Temp;
     MISS commits Temp to EnemyRamX[0] and leaves the dir bit."""
-    mem.bank = 2
+    mem.bank = 6
     r = mem.ram
     r[L0["CollisionEndX"] - 0x80] = lo
     r[L0["CollisionCellX"] - 0x80] = hi

@@ -107,7 +107,7 @@ def call_stage_slot1(*, ys, xs, types, miner=False, miner_y=0, flicker=0):
         sys.exit(f"StageSlot1 never returned (pc=${mpu.pc:04X}, "
                  f"bank={mem.bank}, banks seen={sorted(mem.banks)})")
     assert mem.bank == 0, "the pad must switch back to bank0 (ReturnPad)"
-    assert 2 in mem.banks, ("bank2 never executed — the $FBE5 pad / $FBE8 jmp "
+    assert 6 in mem.banks, ("bank2 never executed — the $FBE5 pad / $FBE8 jmp "
                             "half is broken")
     return dict(base1=r[Z["ObjBase1"]], top1=r[Z["ObjTop1"]],
                 x1=r[Z["ObjX1"]], flicker=r[Z["FlickerFrame"]],

@@ -120,7 +120,7 @@ def fit_offsets():
         ds, cs = set(), set()
         for x in xs:
             mem = TimedMem()
-            mem.bank = 1
+            mem.bank = 2
             run(L1["SetObjectXPos_b1"], (x, sel, 0),
                 lambda m: m.pc == RTS_SENTINEL, mem)
             res = next((e for e in mem.log if e[2] == RESP0 + sel), None)
@@ -153,7 +153,7 @@ def run_band(lives, key):
     r[Z["BombX"]] = 0
     r[Z["Level"]] = 0
     r[Z["TickCounter"]] = 30
-    mem.bank = 1
+    mem.bank = 2
     run(L1["MenuMain"], (0, 0, 0), lambda m: m.pc == 0xFC70, mem)
     return mem.log
 

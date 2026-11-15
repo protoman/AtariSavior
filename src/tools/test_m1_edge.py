@@ -24,7 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
-from test_cell_map import Mem, RTS_SENTINEL, parse_labels, BANK0  # noqa: E402
+from test_cell_map import Mem, RTS_SENTINEL, parse_labels, BANK4  # noqa: E402
 from py65.devices.mpu6502 import MPU  # noqa: E402
 
 FROZEN = ROOT / "tests" / "frozen"
@@ -33,7 +33,7 @@ C_FLAG = 0x01
 NEED = {"OvM1Block", "PF0Buf", "RoomPF0Lo", "RoomPF0Hi",
         "EnemyDeadMask", "LevelStartRoom", "CollisionX", "CollisionCellY",
         "CollisionEndY", "RectCount"}
-L0 = parse_labels(FROZEN / "bank0.lst", NEED)
+L0 = parse_labels(FROZEN / "bank4.lst", NEED)   # overlay cluster: bank 4
 missing = NEED - L0.keys()
 if missing:
     sys.exit(f"frozen labels missing: {sorted(missing)}")
@@ -45,10 +45,10 @@ _SIG = bytes([0, 0, 0, 0] + [4] * 8 + [8] * 8
              + [0x10, 0x20, 0x40, 0x80, 0x80, 0x40, 0x20, 0x10,
                 0x08, 0x04, 0x02, 0x01, 0x01, 0x02, 0x04, 0x08,
                 0x10, 0x20, 0x40, 0x80])
-_at = BANK0.find(_SIG)
-assert _at >= 0, "ColOff/ColMask pair not found in the frozen bank0"
-COLOFF = list(BANK0[_at:_at + 20])
-COLMASK = list(BANK0[_at + 20:_at + 40])
+_at = BANK4.find(_SIG)
+assert _at >= 0, "ColOff/ColMask pair not found in the frozen bank4"
+COLOFF = list(BANK4[_at:_at + 20])
+COLMASK = list(BANK4[_at + 20:_at + 40])
 Z = {k: v & 0x7F for k, v in L0.items() if 0x80 <= v <= 0xFF}
 
 
@@ -79,6 +79,7 @@ def call_ovm1(meta_a, open_cells, meta_b=0x00, dead=0x00, key=False,
     r[Z["CollisionEndY"]] = end_y
     r[Z["RectCount"]] = 0
 
+    mem.bank = 4                           # the overlay cluster lives in bank 4
     mpu = MPU(memory=mem)
     mpu.pc = L0["OvM1Block"]
     mpu.a = mpu.x = mpu.y = 0

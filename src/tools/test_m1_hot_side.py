@@ -69,7 +69,7 @@ def hot(meta_a, m1_cell, roomx, min_col, max_col):
     mpu.sp = 0xFD
     mem[0x1FF] = 0x01
     mem[0x1FE] = 0x00
-    mem.bank = 3
+    mem.bank = 5
     for _ in range(900):
         mpu.step()
         if mem.bank == 0 or mpu.pc == RTS_SENTINEL:   # reached ReturnPad
