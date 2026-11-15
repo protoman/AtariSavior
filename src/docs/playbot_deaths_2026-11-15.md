@@ -1,65 +1,508 @@
 # Playbot deaths — all 32 levels, new ROM (commit 9cbaa7f), 2026-11-15
 
-Run: `tools/playbot.py` on every level, live stage (484 rooms), NTSC. All 32 levels finish (tally reached).
-12 deaths in 10 levels. Re-run with `--log` for the last 48 frames of each (deterministic: same frames as the
-earlier run before the bomb change, so none of this is caused by the bomb staging or the bank reorg).
+Run: `tools/playbot.py` on every level, live stage (484 rooms), NTSC, all 32 levels reach the tally.
+Pictures: `tools/playbot_deaths_report.py <logs>` (`#` wall, `.` air, `=` hot-rock row, `P` player,
+`s` snake, `m` moth, `b` bat, `p` spider, `M` miner; one character = 8 px wide, 12 px high; the room is the
+model's left half plus its mirror). The bot is deterministic: the deaths of the first run happened on the same
+frames before today's bomb change, so none of them comes from the bomb staging or the bank reorg.
 
-## Summary
+## Result
 
-| # | Cause | Deaths | Forced? |
-|---|-------|--------|---------|
-| A | Bot free-falls down a shaft (no input) onto an enemy waiting at the bottom | 8 | no — steering sideways avoids it |
-| B | Bot steps toward a moth that wandered next to it | 1 | no |
-| C | Bot arrives from below at an x where the room's snake starts | 1 | no — a different arrival x avoids it |
-| D | Bot waits inside a phase wall's span; wall switches on | 1 | no |
-| E | Bot flies diagonally with its feet in the hot band (probable; not confirmed) | 1 | no (to be confirmed) |
+| | First run | After the playbot changes |
+|---|---|---|
+| Levels finished | 32/32 | 32/32 |
+| Deaths | 12 in 10 levels | 9 in 8 levels |
 
-None of the 12 looks like a game bug. All are bot weaknesses; the playbot's own `killer()` labelled four of them "?"
-because the snake sat 23 px below (its window is 22), so those four are really snakes.
+| Cause (first run) | Deaths | Now |
+|---|---|---|
+| A. Free fall down a shaft onto an enemy waiting at the bottom | 8 (L3, 17, 18 x2, 22, 28, 29, 32) | **still 7** (L3, 17, 18 x2, 28, 29 + L32 moth); L22 fixed by the arrival/phase changes |
+| B. Walked into a moth that drifted next to the bot (L20) | 1 | fixed |
+| C. Arrived from below next to the room's snake (L25) | 1 | fixed (the router prefers another arrival column) |
+| D. Waited inside a phase wall's span (L26) | 1 | fixed (also: the 8-bit clock wraps at 256, so the wall comes on up to 15 frames before a mod-90 phase says) |
+| E. Feet in the hot-rock band (L22 room 14, probable) | 1 | fixed (no death there now) |
+| new: moth rising under the bot, L15 room 6 | - | 1 |
 
-## Detail
+## What changed in the bot (tools/playbot.py)
+- phase walls: never stop inside a wall's span; start crossing only when the OFF window is long enough, counting the clock wrap;
+- hot band: keep the 22-px box 6 px higher in a band directly above a hot middle band;
+- router: arrival cells within 20 px of a hazard enemy's start cost 200 extra, so another column wins when there is one;
+- moths/snakes ahead: back off to 16 px, turn with one tap, then hold and fire (the laser needs the enemy in front);
+- before a drop, wait up to 300 frames while an enemy is under the shaft (does not help: see below).
 
-### A. Falling onto an enemy at the bottom of a shaft (8)
-The bot crosses a band edge downward (`edge (room, 2, c) -> (room, 3, c)`) with the stick released, so it falls at a
-constant 1-2 px/frame straight down column x = 55 (23, 39, 71 elsewhere) and lands on an enemy patrolling the floor
-(snakes at y = 120, moths at y = 50 / 122). In every trace the enemy is 2-5 px off the bot's x and the bot never steers.
+## Why class A is still open
+All remaining snake deaths are the same pattern: a one-column shaft whose floor is patrolled by a snake that stays
+within 20 px of the column. The snake moves ~0.1 px/frame, so waiting does not clear it, and the sprite touches it at
+y = 98 while the shaft walls still stop any sideways step (the box is clear of the walls only from y = 108). A side column
+exists in none of these rooms (I tried: it also stranded the bot in a dead end on levels 18, 22 and 28 and was removed).
+A human has the same problem unless he shoots or bombs the snake first. Options, not done: (1) let the bot drop a
+bomb from a ledge above, (2) lower itself to the shaft mouth and fire at the snake when the laser row lines up,
+(3) treat it as FORCED (the bot already has ), (4) make the generator keep floor patrols out from under a
+one-column shaft. Your call.
 
-| Level | Frame | Room | x, y at death | Enemy |
-|---|---|---|---|---|
-| 3  | 1064 | 2  | 39, 100 | moth at (39, 122) |
-| 17 | 2929 | 12 | 71, 97  | snake at (67, 120) (labelled "?") |
-| 18 | 3220 | 12 | 55, 97  | snake at (52, 120) (labelled "?") |
-| 18 | 3655 | 17 | 55, 98  | snake at (50, 120) |
-| 22 | 1562 | 11 | 55, 98  | snake at (53, 120) + snake at (69, 84) |
-| 28 | 3195 | 15 | 55, 98  | snake at (52, 120) |
-| 29 | 7159 | 15 | 23, 97  | snake at (20, 120) (labelled "?") |
-| 32 | 3699 | 18 | 55, 28  | moth at (55, 50), mid-air |
+### Remaining deaths (9)
 
-A human would nudge left/right during the 8+ frames of the fall. Bot fix: steer away from any enemy whose x is within
-~14 px of the drop column, or wait at the top for it to patrol away (the bot already has `--safe` to retry an edge).
+#### Level 3, room 2 (frame 1557): moth
 
-### B. Level 20, frame 2214, room 11 (moth)
-The bot stands still at (55, 48) for 30+ frames waiting at an edge; a moth wanders to (47, 46), 8 px left. On the
-last frame the bot presses LEFT (`sw $BF`) — straight into it. Bot error: it moved toward an enemy 8 px away.
+- model 109 "Shape n+S+Ladder+wideFloor", bottom_band=False
+- player at x=39 y=92 (the frame before the life was lost), bot doing: `edge (1, 2, 4)->(1, 3, 4)`
+- enemies in that frame: bat (55,49), moth (39,114)
+- facts: moth at dx=+0 dy=+22
 
-### C. Level 25, frame 1377, room 6 (snake)
-The bot climbs out of room 10 at x = 71 and arrives at the bottom of room 6 (y = 122). Enemies reset to their authored
-positions on entry, and the snake starts at x = 67 on the floor, 4 px from the arrival column: contact on the first
-frame. Entering at another x within the link width avoids it. Generator note (optional): a floor patrol that starts
-under a link arrival column makes the entry a coin toss for a player who does not pick the column.
+```
+    ########.##.########   <- band 0
+    ########.##.########
+    ########.##.########
+    #..................#   <- band 1
+    #.....b............#
+    #..................#
+    ##...###....###...##   <- band 2
+    ##...###....###...##
+    ##..P###....###...##
+    ##................##   <- band 3
+    ##..m.............##
+    ##................##
+```
 
-### D. Level 26, frame 2852, room 10 (phase wall)
-The bot waits at (24, 36) for 8+ frames while the phase wall at cell 2 cycles; its span (x 4..32 in band 1) contains the
-bot, and the wall turns on (clock 22/90) while it is inside. The wait position must be outside the span.
+#### Level 15, room 6 (frame 2457): ?
 
-### E. Level 22, frame 4338, room 14 (no enemy in the room) — probable, not confirmed
-The bot enters room 14 from above at (47, 0) and flies right and down to (71, 14). The room is model 95
-("Shape n+H+2Gap+HotGate+wideCeil", `mid_band_type` 1: the middle band is hot rock) and the global phase bit `dm` is
-on ($20). At y = 14 the 22 px sprite already reaches y = 36, the top of band 1, whose cells 4-5 (x 64..95) are hot rock.
-So it most likely burned its feet on the hot band while the gate was on. The bot's explainer only knows the hot band
-when the *top* of the sprite is in it (`band_of(y) == 1`), which is why it printed `?`. I did not replay this one
-with the sprite box to prove it; if you want, I can check the ROM's hot-rock overlap rect against this position.
+- model 64 "Shape N+H+wideTop", bottom_band=False
+- player at x=45 y=21 (the frame before the life was lost), bot doing: `edge (5, 0, 5)->(5, 0, 4)`
+- enemies in that frame: miner (79,99), moth (47,44)
+- facts: moth at dx=+2 dy=+23
 
-## What was not looked at
-- No Stella run; all from the py65 playbot.
-- Whether level 25 / the A-class shafts are fair for a human at normal speed (they are for any steering input).
+```
+    ###....#....#....###   <- band 0
+    ###....#....#....###
+    ###..P.#....#....###
+    ....................   <- band 1
+    .....m..............
+    ....................
+    ########....########   <- band 2
+    ########....########
+    ########.M..########
+    ####################   <- band 3
+    ####################
+    ####################
+```
+
+#### Level 17, room 12 (frame 3493): snake
+
+- model 11 "Shape S+H+Ladder", bottom_band=False
+- player at x=71 y=98 (the frame before the life was lost), bot doing: `edge (11, 2, 8)->(11, 3, 8)`
+- enemies in that frame: miner (39,99), snake (70,120)
+- facts: miner at dx=-32 dy=+1; snake at dx=-1 dy=+22
+
+```
+    ####################   <- band 0
+    ####################
+    ####################
+    ....................   <- band 1
+    ....................
+    ....................
+    ##...###....###...##   <- band 2
+    ##...###....###...##
+    ##..M###....###...##
+    ########P...########   <- band 3
+    ########s...########
+    ########....########
+```
+
+#### Level 18, room 12 (frame 4109): snake
+
+- model 18 "Shape S+H+2Gap+Pillars", bottom_band=False
+- player at x=55 y=98 (the frame before the life was lost), bot doing: `edge (11, 2, 6)->(11, 3, 6)`
+- enemies in that frame: miner (79,99), snake (49,120)
+- facts: miner at dx=+24 dy=+1; snake at dx=-6 dy=+22
+
+```
+    ####################   <- band 0
+    ####################
+    ####################
+    ....................   <- band 1
+    ....................
+    ....................
+    ##.....#....#.....##   <- band 2
+    ##.....#....#.....##
+    ##.....#.M..#.....##
+    ###.##P######.##.###   <- band 3
+    ###.##s######.##.###
+    ###.##.######.##.###
+```
+
+#### Level 18, room 17 (frame 5175): snake
+
+- model 89 "Shape n+S+2Gap+Ladder+wideCeil", bottom_band=False
+- player at x=55 y=98 (the frame before the life was lost), bot doing: `edge (16, 2, 6)->(16, 3, 6)`
+- enemies in that frame: snake (50,120), snake (7,48)
+- facts: snake at dx=-5 dy=+22
+
+```
+    ##................##   <- band 0
+    ##................##
+    ##................##
+    #..................#   <- band 1
+    s..................#
+    #..................#
+    ##...#.#....#.#...##   <- band 2
+    ##...#.#....#.#...##
+    ##...#.#....#.#...##
+    ###.##P######.##.###   <- band 3
+    ###.##s######.##.###
+    ###.##.######.##.###
+```
+
+#### Level 22, room 11 (frame 2742): snake
+
+- model 33 "Shape n+S+H+2Gap+Ladder", bottom_band=False
+- player at x=55 y=104 (the frame before the life was lost), bot doing: `edge (10, 2, 6)->(10, 3, 6)`
+- enemies in that frame: snake (47,120), snake (65,84)
+- facts: snake at dx=-8 dy=+16; snake at dx=+10 dy=-20
+
+```
+    ###.############.###   <- band 0
+    ###.############.###
+    ###.############.###
+    ....................   <- band 1
+    ....................
+    ....................
+    ##...#.#....#.#...##   <- band 2
+    ##...#.#s...#.#...##
+    ##...#.#....#.#...##
+    ###.##P######.##.###   <- band 3
+    ###.#s.######.##.###
+    ###.##.######.##.###
+```
+
+#### Level 28, room 15 (frame 3827): snake
+
+- model 89 "Shape n+S+2Gap+Ladder+wideCeil", bottom_band=False
+- player at x=55 y=98 (the frame before the life was lost), bot doing: `edge (14, 2, 6)->(14, 3, 6)`
+- enemies in that frame: snake (53,120), snake (10,48)
+- facts: snake at dx=-2 dy=+22
+
+```
+    ##................##   <- band 0
+    ##................##
+    ##................##
+    #..................#   <- band 1
+    #s.................#
+    #..................#
+    ##...#.#....#.#...##   <- band 2
+    ##...#.#....#.#...##
+    ##...#.#....#.#...##
+    ###.##P######.##.###   <- band 3
+    ###.##s######.##.###
+    ###.##.######.##.###
+```
+
+#### Level 29, room 15 (frame 8143): snake
+
+- model 111 "Shape n+S+H+Pillars+wideFloor", bottom_band=False
+- player at x=23 y=98 (the frame before the life was lost), bot doing: `edge (14, 2, 2)->(14, 3, 2)`
+- enemies in that frame: moth (39,54), snake (18,120)
+- facts: snake at dx=-5 dy=+22
+
+```
+    ########.##.########   <- band 0
+    ########.##.########
+    ########.##.########
+    ....................   <- band 1
+    ....................
+    ....m...............
+    ##.....#....#.....##   <- band 2
+    ##.....#....#.....##
+    ##.....#....#.....##
+    ##P...............##   <- band 3
+    ##s...............##
+    ##................##
+```
+
+#### Level 32, room 18 (frame 4295): moth
+
+- model 75 "Shape N+s+2Gap+Profile1", bottom_band=False
+- player at x=55 y=32 (the frame before the life was lost), bot doing: `edge (17, 0, 6)->(17, 1, 6)`
+- enemies in that frame: miner (39,99), moth (55,54)
+- facts: moth at dx=+0 dy=+22
+
+```
+    ###.##.######.##.###   <- band 0
+    ###.##.######.##.###
+    ###.##.######.##.###
+    #.....P..##........#   <- band 1
+    #........##........#
+    #.....m..##........#
+    ###..##########..###   <- band 2
+    ###..##########..###
+    ###.M##########..###
+    ###.############.###   <- band 3
+    ###.############.###
+    ###.############.###
+```
+
+
+### First run, all 12 deaths (before the playbot changes) (12)
+
+#### Level 3, room 2 (frame 1064): moth
+
+- model 109 "Shape n+S+Ladder+wideFloor", bottom_band=False
+- player at x=39 y=100 (the frame before the life was lost), bot doing: `edge (1, 2, 4)->(1, 3, 4)`
+- enemies in that frame: bat (55,49), moth (39,122)
+- facts: moth at dx=+0 dy=+22
+
+```
+    ########.##.########   <- band 0
+    ########.##.########
+    ########.##.########
+    #..................#   <- band 1
+    #.....b............#
+    #..................#
+    ##...###....###...##   <- band 2
+    ##...###....###...##
+    ##...###....###...##
+    ##..P.............##   <- band 3
+    ##..m.............##
+    ##................##
+```
+
+#### Level 17, room 12 (frame 2929): ?
+
+- model 11 "Shape S+H+Ladder", bottom_band=False
+- player at x=71 y=97 (the frame before the life was lost), bot doing: `edge (11, 2, 8)->(11, 3, 8)`
+- enemies in that frame: miner (39,99), snake (67,120)
+- facts: miner at dx=-32 dy=+2; snake at dx=-4 dy=+23
+
+```
+    ####################   <- band 0
+    ####################
+    ####################
+    ....................   <- band 1
+    ....................
+    ....................
+    ##...###....###...##   <- band 2
+    ##...###....###...##
+    ##..M###....###...##
+    ########P...########   <- band 3
+    ########s...########
+    ########....########
+```
+
+#### Level 18, room 12 (frame 3220): ?
+
+- model 18 "Shape S+H+2Gap+Pillars", bottom_band=False
+- player at x=55 y=97 (the frame before the life was lost), bot doing: `edge (11, 2, 6)->(11, 3, 6)`
+- enemies in that frame: miner (79,99), snake (52,120)
+- facts: miner at dx=+24 dy=+2; snake at dx=-3 dy=+23
+
+```
+    ####################   <- band 0
+    ####################
+    ####################
+    ....................   <- band 1
+    ....................
+    ....................
+    ##.....#....#.....##   <- band 2
+    ##.....#....#.....##
+    ##.....#.M..#.....##
+    ###.##P######.##.###   <- band 3
+    ###.##s######.##.###
+    ###.##.######.##.###
+```
+
+#### Level 18, room 17 (frame 3655): snake
+
+- model 89 "Shape n+S+2Gap+Ladder+wideCeil", bottom_band=False
+- player at x=55 y=98 (the frame before the life was lost), bot doing: `edge (16, 2, 6)->(16, 3, 6)`
+- enemies in that frame: snake (50,120), snake (7,48)
+- facts: snake at dx=-5 dy=+22
+
+```
+    ##................##   <- band 0
+    ##................##
+    ##................##
+    #..................#   <- band 1
+    s..................#
+    #..................#
+    ##...#.#....#.#...##   <- band 2
+    ##...#.#....#.#...##
+    ##...#.#....#.#...##
+    ###.##P######.##.###   <- band 3
+    ###.##s######.##.###
+    ###.##.######.##.###
+```
+
+#### Level 20, room 11 (frame 2214): moth
+
+- model 13 "Shape N+H+2Gap+Ladder", bottom_band=False
+- player at x=55 y=48 (the frame before the life was lost), bot doing: `edge (10, 1, 5)->(10, 1, 4)`
+- enemies in that frame: 14 (143,84), moth (47,46)
+- facts: moth at dx=-8 dy=-2
+
+```
+    ###.##.######.##.###   <- band 0
+    ###.##.######.##.###
+    ###.##.######.##.###
+    ....................   <- band 1
+    .....mP.............
+    ....................
+    ##...#.#....#.#...##   <- band 2
+    ##...#.#....#.#..?##
+    ##...#.#....#.#...##
+    ####################   <- band 3
+    ####################
+    ####################
+```
+
+#### Level 22, room 11 (frame 1562): snake/snake
+
+- model 33 "Shape n+S+H+2Gap+Ladder", bottom_band=False
+- player at x=55 y=98 (the frame before the life was lost), bot doing: `edge (10, 2, 6)->(10, 3, 6)`
+- enemies in that frame: snake (53,120), snake (69,84)
+- facts: snake at dx=-2 dy=+22; snake at dx=+14 dy=-14
+
+```
+    ###.############.###   <- band 0
+    ###.############.###
+    ###.############.###
+    ....................   <- band 1
+    ....................
+    ....................
+    ##...#.#....#.#...##   <- band 2
+    ##...#.#s...#.#...##
+    ##...#.#....#.#...##
+    ###.##P######.##.###   <- band 3
+    ###.##s######.##.###
+    ###.##.######.##.###
+```
+
+#### Level 22, room 14 (frame 4338): ?
+
+- model 96 "Shape n+H+2Gap+HotGate+wideCeil" (hot middle band), bottom_band=False
+- player at x=71 y=14 (the frame before the life was lost), bot doing: `edge (13, 0, 8)->(13, 0, 9)`
+- enemies in that frame: none
+
+```
+    ##................##   <- band 0
+    ##................##
+    ##......P.........##
+    ....==.======.==....   <- band 1
+    ....==.======.==....
+    ....==.======.==....
+    ###.##.######.##.###   <- band 2
+    ###.##.######.##.###
+    ###.##.######.##.###
+    ####################   <- band 3
+    ####################
+    ####################
+```
+
+#### Level 25, room 6 (frame 1377): snake
+
+- model 44 "Shape N+s+H", bottom_band=False
+- player at x=71 y=122 (the frame before the life was lost), bot doing: `edge (5, 3, 8)->(5, 2, 8)`
+- enemies in that frame: 14 (95,12), snake (67,120)
+- facts: snake at dx=-4 dy=-2
+
+```
+    ########....########   <- band 0
+    ########...?########
+    ########....########
+    ....................   <- band 1
+    ....................
+    ....................
+    ########....########   <- band 2
+    ########....########
+    ########....########
+    ########.##.########   <- band 3
+    ########s##.########
+    ########P##.########
+```
+
+#### Level 26, room 10 (frame 2852): phase wall
+
+- model 47 "Shape s+H+2Gap", bottom_band=False
+- player at x=24 y=36 (the frame before the life was lost), bot doing: `edge (9, 1, 3)->(9, 1, 2)`
+- enemies in that frame: none
+- feature cells (band, col, type): [[1, 2, 10]]
+- facts: phase wall cell 2: ON (clock 22/90)
+
+```
+    ####################   <- band 0
+    ####################
+    ####################
+    ...P................   <- band 1
+    ....................
+    ....................
+    ###.##.######.##.###   <- band 2
+    ###.##.######.##.###
+    ###.##.######.##.###
+    ###.############.###   <- band 3
+    ###.############.###
+    ###.############.###
+```
+
+#### Level 28, room 15 (frame 3195): snake
+
+- model 89 "Shape n+S+2Gap+Ladder+wideCeil", bottom_band=False
+- player at x=55 y=98 (the frame before the life was lost), bot doing: `edge (14, 2, 6)->(14, 3, 6)`
+- enemies in that frame: snake (52,120), snake (9,48)
+- facts: snake at dx=-3 dy=+22
+
+```
+    ##................##   <- band 0
+    ##................##
+    ##................##
+    #..................#   <- band 1
+    #s.................#
+    #..................#
+    ##...#.#....#.#...##   <- band 2
+    ##...#.#....#.#...##
+    ##...#.#....#.#...##
+    ###.##P######.##.###   <- band 3
+    ###.##s######.##.###
+    ###.##.######.##.###
+```
+
+#### Level 29, room 15 (frame 7159): ?
+
+- model 111 "Shape n+S+H+Pillars+wideFloor", bottom_band=False
+- player at x=23 y=97 (the frame before the life was lost), bot doing: `edge (14, 2, 2)->(14, 3, 2)`
+- enemies in that frame: moth (39,42), snake (20,120)
+- facts: snake at dx=-3 dy=+23
+
+```
+    ########.##.########   <- band 0
+    ########.##.########
+    ########.##.########
+    ....................   <- band 1
+    ....m...............
+    ....................
+    ##.....#....#.....##   <- band 2
+    ##.....#....#.....##
+    ##.....#....#.....##
+    ##P...............##   <- band 3
+    ##s...............##
+    ##................##
+```
+
+#### Level 32, room 18 (frame 3699): moth
+
+- model 75 "Shape N+s+2Gap+Profile1", bottom_band=False
+- player at x=55 y=28 (the frame before the life was lost), bot doing: `edge (17, 0, 6)->(17, 1, 6)`
+- enemies in that frame: miner (39,99), moth (55,50)
+- facts: moth at dx=+0 dy=+22
+
+```
+    ###.##.######.##.###   <- band 0
+    ###.##.######.##.###
+    ###.##.######.##.###
+    #.....P..##........#   <- band 1
+    #.....m..##........#
+    #........##........#
+    ###..##########..###   <- band 2
+    ###..##########..###
+    ###.M##########..###
+    ###.############.###   <- band 3
+    ###.############.###
+    ###.############.###
+```
+

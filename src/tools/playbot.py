@@ -44,7 +44,7 @@ NAMES = ("RoomX", "RoomY", "RoomNo", "DropTarget", "Level", "PlayerLives",
          "MinerX", "MinerY", "LevelStartRoom", "BarLevel", "PlayerBombs",
          "StartFrame", "PF0Buf", "PF1Buf", "PF2Buf", "vyHi", "RoomRectsLo",
          "RoomRectsHi", "RoomPF0Lo", "RoomPF0Hi", "LevelConnSpare", "LevelPFDataLo",
-         "LevelPFDataHi", "LevelRoomN", "EnemyRamX", "EnemyRamY", "EnemyRamD", "TickCounter")
+         "LevelPFDataHi", "LevelRoomN", "EnemyRamX", "EnemyRamY", "EnemyRamD", "TickCounter", "PlayerDir")
 BANDS = 4
 BAND_PX = 36
 PLAYER_H = 22
@@ -271,8 +271,27 @@ class Level:
                     out_dx = -1 if nf < 10 else 1
                     if not (nr == ri and nb == b and nf - f == out_dx):
                         continue
+                risk = 0
+                if nr != ri:
+                    # arriving in another room: EnterRoom puts every enemy back on its authored
+                    # spot, so a patroller starting near the arrival column is hit on the first
+                    # frame (level 25 room 6: snake at x 67, arrival x 71). Prefer another column.
+                    risk = self.arrival_risk(nr, nb, nf)
                 yield (nr, nb, nf), (1 if strip else 0), \
-                    (SR.DANGER if (nb, nf) in gd else 0)
+                    (SR.DANGER if (nb, nf) in gd else 0) + risk
+
+    ARRIVAL_RISK = 200       # about 200 cells of detour; a hazard-free column always wins
+
+    def arrival_risk(self, room, band, cell):
+        """ARRIVAL_RISK when a hazard enemy of `room` starts within 20 px of cell `cell` in `band`."""
+        px = 8 * cell + 4
+        for e in self.rooms[room].get("enemies") or []:
+            if e.get("type") not in (0, 1, 2, 3, 4):
+                continue
+            eb = min(BANDS - 1, int(round(e["y"] * 12)) // BAND_PX)
+            if eb == band and abs(int(e["x"] * 4) + 3 - px) <= 20:
+                return self.ARRIVAL_RISK
+        return 0
 
     def route(self, start, goal):
         """Cheapest cell path start -> goal (a bomb strip or a spider zone costs
@@ -496,6 +515,10 @@ class Pilot:
                    and o.get("room_y") == me.get("room_y", 0) + 1
                    for o in self.lv.rooms):
                 hi = min(hi, 4)
+        room_ = self.lv.rooms[self.c.r("RoomNo")]
+        if band + 1 == 1 and self.lv.models[room_["model_id"]].get("mid_band_type"):
+            hi = min(hi, 6)            # the hot row is right below: the 22-px box must not
+                                       # reach it (level 22 room 14: feet in the rock at y 14)
         if self.hi_override is not None:
             hi = self.hi_override
         crow = self.crunch_band(self.lv.rooms[self.c.r("RoomNo")])
@@ -523,10 +546,20 @@ class Pilot:
                 continue
             for cell in (col, 19 - col):
                 lo, hi = 8 * cell, 8 * cell + 8
-                ahead = (lo - x) if dx > 0 else (x - hi)
-                if -4 <= ahead <= 26:
-                    ph = c.ram[0xC2 & 0x7F] % 90
-                    if ph < 45 or ph > 62:        # ON, or OFF with < 28 frames left
+                if x - 7 < hi and x > lo:
+                    continue                      # already inside the span: waiting here is the
+                                                  # crush (level 26 room 10: stopped at x 24) - go on
+                ahead = (lo - x) if dx > 0 else (x - hi - 7)
+                if -4 <= ahead <= 20:
+                    raw = c.ram[0xC2 & 0x7F]
+                    ph = raw % 90
+                    need = max(ahead, 0) + 22     # walk to the wall + cross it (8 + 7 px) + margin
+                                                  # (<= 42 of the 45 OFF frames, so a window exists)
+                    # the 8-bit clock wraps 255 -> 0 and 256 is not a multiple of 90: the wall
+                    # switches ON at the wrap, so the OFF window ends there if that comes first
+                    # (level 9 room 3: raw 255 = phase 75, the wall came on 15 frames early)
+                    left = min(90 - ph, 256 - raw)
+                    if ph < 45 or left < need:        # ON, or OFF with too few frames left
                         return True
         return False
 
@@ -657,8 +690,19 @@ class Pilot:
                     # that do not patrol (stationary bats) never come to us.
                     dx_ = self.threat_dx
                     sw = self.altitude(band)
-                    if abs(dx_) > 28 and self.c.frames % 6 == 0:
-                        sw = (RIGHT if x_t > x else LEFT) & sw
+                    toward = RIGHT if dx_ > 0 else LEFT
+                    away = LEFT if dx_ > 0 else RIGHT
+                    facing_ok = self.c.r("PlayerDir") == (0 if dx_ > 0 else 1)   # 0 right, 1 left
+                    if abs(dx_) > 28:
+                        if self.c.frames % 6 == 0:
+                            sw = (RIGHT if x_t > x else LEFT) & sw
+                    elif not facing_ok:
+                        # the held laser needs the enemy IN FRONT (level 20: it stood facing away).
+                        # Back off to 16 px first, then one tap turns him: hysteresis, or the
+                        # turn and the back-off alternate every frame (level 22: 1700 frames)
+                        sw = (away if abs(dx_) < 16 else toward) & sw
+                    elif abs(dx_) < 7:
+                        sw = away & sw        # facing it but it is on top of us
             else:
                 # the 22-px box still overlaps the band above/below: sideways
                 # now would crush him in a wall edge (the spawn at RoomY 24)
@@ -875,6 +919,8 @@ class Pilot:
         if not self.to_x(x_for_cell(f0), b0):
             return False
         top = BAND_PX * b1 + 4
+        if b1 > b0:
+            self.wait_clear_below(x_for_cell(f0), b0)
         for _ in range(200):
             y = c.r("RoomY")
             if band_of(y) == b1 and (b1 < b0 and y <= BAND_PX * b1 + 14 or b1 > b0):
@@ -887,6 +933,31 @@ class Pilot:
                 sw &= RIGHT if c.r("RoomX") < x_for_cell(f0) else LEFT
             self.step(sw)
         return False
+
+    def hazard_below(self, x, y, band=None):
+        """A live hazard enemy within 20 px of column x, level with or below y (the drop lands on it).
+        With `band`: only one standing in that landing band (an enemy two bands down is not our drop)."""
+        c = self.c
+        recs = self.lv.rooms[c.r("RoomNo")].get("enemies") or []
+        mask = c.ram[0xBA & 0x7F]
+        for i in range(min(3, c.r("EnemyCount"), len(recs))):
+            if mask >> i & 1 or recs[i]["type"] not in (0, 1, 2, 3, 4):
+                continue
+            ex = c.ram[(c.lab["EnemyRamX"] & 0x7F) + i]
+            ey = c.ram[(c.lab["EnemyRamY"] & 0x7F) + i]
+            if band is not None and not BAND_PX * band - 12 <= ey < BAND_PX * (band + 1) + 22:
+                continue
+            if abs(ex - x) <= 20 and ey >= y - 12:
+                return True
+        return False
+
+    def wait_clear_below(self, x, band, maxf=300):
+        """Hold at the top of a drop while an enemy sits under the shaft (it patrols away).
+        Falling takes ~10 frames at 1-2 px/frame, so a clear column now stays clear."""
+        for _ in range(maxf):
+            if not self.hazard_below(x, self.c.r("RoomY"), band + 1):
+                return
+            self.step(self.altitude(band))
 
     def ride(self, cur, nxt):
         """Along the WATER row: the raft is the only floor. It moves (0.5-0.75 px per
