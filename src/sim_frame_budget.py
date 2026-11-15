@@ -96,7 +96,7 @@ for _need in ('StartFrame', 'Overscan', 'EnterRoom', 'LoadLevel', '.Row',
 PC_START = LABELS['StartFrame']
 # Blank room-transition frame (2026-11): bank5 TransBody's `.TBgo` entry.
 PC_TBGO = None
-for _l in (SRC / 'bank7.lst').read_text(errors='replace').splitlines():
+for _l in (SRC / 'bank4.lst').read_text(errors='replace').splitlines():
     _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+\.?TBgo\s*$', _l)
     if _m:
         PC_TBGO = int(_m.group(1), 16)
@@ -438,7 +438,7 @@ while frame < 1100:
     # that outlives the deadline reaches the poll late, so vbl_pre alone
     # exceeds the budget.  Frame-length consequences stay covered by the
     # wall-model assert (265 lines).
-    if ((bk == 0 and pc == PC_WAIT) or (bk == 6 and pc == PC_WAIT6)) and phase == PH_VBL and vbl_pre is None:
+    if ((bk == 0 and pc == PC_WAIT) or (bk == 1 and pc == PC_WAIT6)) and phase == PH_VBL and vbl_pre is None:
         vbl_pre = vbl_acc
 
     # -- phase transitions (landmarks are bank0 labels) --
@@ -449,7 +449,7 @@ while frame < 1100:
         # title-transition f2 acc 1491 while real span was 1336c).
         vbl_acc = 0
         vbl_pre = None
-    elif bk == 0 and pc == PC_ROW and phase == PH_VBL:
+    elif bk in (0, 1) and pc == PC_ROW and phase == PH_VBL:   # layout v3: the kernel lands in the cave bank (1) at .Row
         vbl_val = vbl_pre if vbl_pre is not None else vbl_acc
         _wall_vbl = mem.wall
         ker_bounds.setdefault(frame, {})['row'] = mem.wall
@@ -481,7 +481,7 @@ while frame < 1100:
         _wall_ker = mem.wall
         ker_bounds.setdefault(frame, {})['over'] = mem.wall
         gap = 0
-    elif bk == 5 and pc == PC_TBGO and not blank_active:
+    elif bk == 4 and pc == PC_TBGO and not blank_active:
         blank_active = True        # a room change is pending: one blank frame
         blank_start = mem.wall
     elif bk == 0 and pc == PC_START:
@@ -566,7 +566,7 @@ while frame < 1100:
         frame_bad.append(
             f'f{frame}: GameStart re-entry (bad rts/reboot) — return '
             f'address cells clobbered; check jsr depth vs $F6/$F7')
-    if bk == 2 and pc == 0xF25A:      # LaserWallClamp entry (bank2 only)
+    if bk in (6, 7) and pc == 0xF25A:      # LaserWallClamp entry (bank2 only)
         beam_cols[frame] = (mem.ram[0x0E], mem.ram[0x0C])
     if phase == PH_OVER:
         # bank-keyed: bank0/bank2 share $F000-$FFFF (raw-pc histograms
