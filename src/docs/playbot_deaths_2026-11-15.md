@@ -506,3 +506,103 @@ one-column shaft. Your call.
     ###.############.###
 ```
 
+
+---
+
+# Second round (same day, after your review): 32/32 levels, 3 deaths
+
+Changes since the first report (all in `tools/playbot.py`):
+- **Routing:** a drop into a band whose floor holds a patroller, and an arrival next to one, cost 15 extra cells (28 px
+  window around the authored position), so another shaft wins when it exists. Miner order is ranked without that
+  cost. (200 and 35 were tried: 200 pushed levels 17/23 onto a bomb strip, 35 made level 29 miss the level timer;
+  15 gives level 29 in 8,060 frames with no deaths.)
+- **Bomb spot:** any band's floor on the centre side counts, like `stage_reach.level_grids` and the ROM (the strip
+  blast tests columns only), and the bot now checks `EnemyDeadMask` after the fuse. Levels 17 and 23 room 9 passed that
+  check: the strip at column 19 does break from the band-4 floor, so the generator rule is consistent with the ROM there.
+- **Moths and bats:** a flyer under a drop makes the bot step aside along the band (when there is room), face the shaft
+  and wait up to 150 frames for it to come level. Back off to 16 px, then one tap to turn, then hold and fire.
+- **Hold-for-ever bug in `shoot_ahead`** (the wait counter was reset after its own timeout): fixed.
+- **Time bar:** the death log now says `time bar empty` when `BarLevel` ran out. The level 21 "tentacle" death of the
+  previous round was exactly that: the ROM called LoseLife from `.TimerExpired` (replayed frame by frame), no enemy
+  involved. The bot had used ~7,400 frames on that level.
+
+Result: 32/32 levels reach the tally; deaths 12 -> 3:
+
+| Level | Room | Cause | Status |
+|---|---|---|---|
+| 19 | 3  | crusher (hcrunch row) | accepted (hard by design) |
+| 25 | 9  | spider hanging at (55, 96) while the bot walks the floor under it | open |
+| 32 | 18 | moth hovering under a one-cell gap in the ceiling row: no room to step aside | open; generator note: do not park a flyer under a one-cell gap |
+
+Level 29 is the longest route (4 miners, ~8,000 frames); the level timer empties at about 8,350 frames for the bot.
+
+## Round-two death rooms
+#### Playbot deaths (3)
+
+### Level 19, room 3 (frame 1244): crusher
+
+- model 71 "Shape N+s+H+wideBottom", bottom_band=False
+- player at x=135 y=96 (the frame before the life was lost), bot doing: `edge (2, 2, 16)->(2, 3, 16)`
+- enemies in that frame: none
+- feature cells (band, col, type): [[2, 0, 12], [2, 1, 12], [2, 2, 12], [2, 3, 12], [2, 4, 12], [2, 5, 12], [2, 6, 12], [2, 7, 12], [2, 8, 12], [2, 9, 12]]
+- facts: hcrunch row band 2, clock 96, covers pairs 1..4 (x<40 and x>119)
+
+```
+    ########....########   <- band 0
+    ########....########
+    ########....########
+    ....................   <- band 1
+    ....................
+    ....................
+    ###....#....#....###   <- band 2
+    ###....#....#....###
+    ###....#....#...P###
+    ###....#.##.#....###   <- band 3
+    ###....#.##.#....###
+    ###....#.##.#....###
+```
+
+### Level 25, room 9 (frame 3213): ?
+
+- model 111 "Shape n+S+H+Pillars+wideFloor", bottom_band=False
+- player at x=54 y=122 (the frame before the life was lost), bot doing: `edge (8, 3, 2)->(8, 2, 2)`
+- enemies in that frame: bat (12,48), spider (55,96)
+- facts: spider at dx=+1 dy=-26
+
+```
+    ########.##.########   <- band 0
+    ########.##.########
+    ########.##.########
+    ....................   <- band 1
+    .b..................
+    ....................
+    ##.....#....#.....##   <- band 2
+    ##.....#....#.....##
+    ##....p#....#.....##
+    ##................##   <- band 3
+    ##................##
+    ##....P...........##
+```
+
+### Level 32, room 18 (frame 4318): moth
+
+- model 75 "Shape N+s+2Gap+Profile1", bottom_band=False
+- player at x=55 y=22 (the frame before the life was lost), bot doing: `edge (17, 0, 6)->(17, 1, 6)`
+- enemies in that frame: miner (39,99), moth (55,44)
+- facts: moth at dx=+0 dy=+22
+
+```
+    ###.##.######.##.###   <- band 0
+    ###.##.######.##.###
+    ###.##P######.##.###
+    #........##........#   <- band 1
+    #.....m..##........#
+    #........##........#
+    ###..##########..###   <- band 2
+    ###..##########..###
+    ###.M##########..###
+    ###.############.###   <- band 3
+    ###.############.###
+    ###.############.###
+```
+

@@ -272,24 +272,29 @@ class Level:
                     if not (nr == ri and nb == b and nf - f == out_dx):
                         continue
                 risk = 0
-                if nr != ri:
+                if nr != ri or nb > b:
                     # arriving in another room: EnterRoom puts every enemy back on its authored
                     # spot, so a patroller starting near the arrival column is hit on the first
                     # frame (level 25 room 6: snake at x 67, arrival x 71). Prefer another column.
-                    risk = self.arrival_risk(nr, nb, nf)
+                    # A DROP (nb > b) into a band whose floor holds a patroller is the same hit:
+                    # the sprite touches it before any sideways step is possible, so take another
+                    # shaft of the room (levels 3, 17, 18, 22, 28, 29: a snake under the column).
+                    risk = self.arrival_risk(nr, nb, nf) if self.use_risk else 0
                 yield (nr, nb, nf), (1 if strip else 0), \
                     (SR.DANGER if (nb, nf) in gd else 0) + risk
 
-    ARRIVAL_RISK = 200       # about 200 cells of detour; a hazard-free column always wins
+    use_risk = True          # off while play() ranks the miner orders: the detours must not reorder them
+
+    ARRIVAL_RISK = 15        # a detour of up to 15 cells beats a hazard column (a bomb strip costs 40; 35 made level 29 run out of time)
 
     def arrival_risk(self, room, band, cell):
-        """ARRIVAL_RISK when a hazard enemy of `room` starts within 20 px of cell `cell` in `band`."""
+        """ARRIVAL_RISK when a hazard enemy of `room` starts within 28 px of cell `cell` in `band`."""
         px = 8 * cell + 4
         for e in self.rooms[room].get("enemies") or []:
             if e.get("type") not in (0, 1, 2, 3, 4):
                 continue
             eb = min(BANDS - 1, int(round(e["y"] * 12)) // BAND_PX)
-            if eb == band and abs(int(e["x"] * 4) + 3 - px) <= 20:
+            if eb == band and abs(int(e["x"] * 4) + 3 - px) <= 28:
                 return self.ARRIVAL_RISK
         return 0
 
@@ -395,7 +400,7 @@ class Pilot:
         return {"f": c.frames, "room": c.r("RoomNo") + 1, "x": c.r("RoomX"),
                 "y": c.r("RoomY"), "vy": c.r("vyHi"), "sw": sw & 0xFF,
                 "hover": c.r("Hover"), "clock": c.ram[0xC2 & 0x7F],
-                "dm": c.ram[0xBA & 0x7F], "enemies": en, "doing": self.doing}
+                "dm": c.ram[0xBA & 0x7F], "bar": c.r("BarLevel"), "enemies": en, "doing": self.doing}
 
     def explain(self, rows):
         """Facts about the last frame before a life was lost, and the cause they point
@@ -439,6 +444,9 @@ class Pilot:
                 causes.append("hot rock?")
         if room.get("bottom_band") and y >= 112:
             causes.append("water")
+        if r.get("bar", 99) <= 1:
+            causes = ["time bar empty"]       # LoseLife from the level timer, not an enemy
+            facts.append(f"BarLevel {r['bar']}: the bot used up the level's time")
         if not causes:
             causes.append("?")
         return "/".join(causes), facts
@@ -657,6 +665,7 @@ class Pilot:
         room = self.lv.rooms[c.r("RoomNo")]
         recs = room.get("enemies") or []
         mask = c.ram[0xBA & 0x7F]
+        ahead = False
         for i in range(min(3, c.r("EnemyCount"), len(recs))):
             if mask >> i & 1 or recs[i]["type"] not in (0, 1, 2, 4):
                 continue                          # dead, or not killable: only spider / bat /
@@ -669,8 +678,11 @@ class Pilot:
                 self.threat_dx = ex - x
                 if self.shoot_wait < 400:
                     return True
-        else:
-            self.shoot_wait = 0
+                ahead = True
+        if not ahead:
+            self.shoot_wait = 0               # (the old for/else reset it after a timeout too, so a
+                                              # moth the laser never hit held the bot for ever:
+                                              # level 29 room 14, 9000 frames)
         return False
 
     def to_x(self, x_t, band, maxf=400):
@@ -794,10 +806,17 @@ class Pilot:
         side = 1 if col < 10 else -1
         air = self.lv.grids[ri][0]
         stand = None
-        for d in (1, 2):
-            f = col + side * d
-            if 0 <= f < 20 and air[b][f] and (b + 1 >= len(air) or not air[b + 1][f]):
-                stand = (ri, b, f)
+        # The blast only tests columns (StripBlastCheck ignores Y, like stage_reach.level_grids), so a
+        # floor in ANY band of the room on the centre side works: levels 17 / 23 room 9 have none in
+        # the strip's own band. Same band first, then the others.
+        for bb in [b] + [k for k in range(len(air)) if k != b]:
+            for d in (1, 2):
+                f = col + side * d
+                if 0 <= f < 20 and air[bb][f] and (bb + 1 >= len(air) or not air[bb + 1][f]) \
+                        and (bb == b or self.lv.route(self.here(), (ri, bb, f)) is not None):
+                    stand = (ri, bb, f)
+                    break
+            if stand:
                 break
         if stand is None:
             raise GiveUp(f"no floor to bomb the strip {strip} from")
@@ -813,16 +832,21 @@ class Pilot:
             self.say("walk to the bomb spot", stand, "path", path[:3], "...")
             self.fly(path)
         f = stand[2]
-        if not self.to_x(x_for_cell(f), b):
+        sb = stand[1]                            # the band we stand in (may differ from the strip's)
+        if not self.to_x(x_for_cell(f), sb):
             raise GiveUp("cannot align at the bomb spot")
         if not self.land():
             raise GiveUp("cannot stand on the floor to plant a bomb")
         self.hold(DOWN, 4)                       # plant (edge on the floor)
         away = max(0, min(19, f + side * 3))
         self.say("bomb planted at", c.pos(), "retreat to cell", away)
-        self.to_x(x_for_cell(away), b)
+        self.to_x(x_for_cell(away), sb)
         self.land()
         self.hold(NONE, 230)                     # ~3 s fuse + the flash
+        bit = 0x10 if col < 10 else 0x08         # EnemyDeadMask: b4 = left (M1) strip, b3 = right (ball) strip
+        if not c.ram[0xBA & 0x7F] & bit:
+            raise GiveUp(f"the strip {strip} survived the bomb planted at cell {f} band {sb + 1} "
+                         f"(dead mask ${c.ram[0xBA & 0x7F]:02X}): check the generator's bomb-spot rule")
         self.lv.grids[ri][1].discard((b, col))
         self.say("strip", strip, "should be open")
 
@@ -920,7 +944,7 @@ class Pilot:
             return False
         top = BAND_PX * b1 + 4
         if b1 > b0:
-            self.wait_clear_below(x_for_cell(f0), b0)
+            self.wait_clear_below(x_for_cell(f0), b0, f0=f0)
         for _ in range(200):
             y = c.r("RoomY")
             if band_of(y) == b1 and (b1 < b0 and y <= BAND_PX * b1 + 14 or b1 > b0):
@@ -951,9 +975,43 @@ class Pilot:
                 return True
         return False
 
-    def wait_clear_below(self, x, band, maxf=300):
-        """Hold at the top of a drop while an enemy sits under the shaft (it patrols away).
-        Falling takes ~10 frames at 1-2 px/frame, so a clear column now stays clear."""
+    def flyer_below(self, x, band):
+        """A live moth / bat in the landing band within 20 px of column x (they home in on us)."""
+        c = self.c
+        recs = self.lv.rooms[c.r("RoomNo")].get("enemies") or []
+        mask = c.ram[0xBA & 0x7F]
+        for i in range(min(3, c.r("EnemyCount"), len(recs))):
+            if mask >> i & 1 or recs[i]["type"] not in (1, 4):
+                continue
+            ex = c.ram[(c.lab["EnemyRamX"] & 0x7F) + i]
+            ey = c.ram[(c.lab["EnemyRamY"] & 0x7F) + i]
+            if abs(ex - x) <= 20 and BAND_PX * (band + 1) - 12 <= ey < BAND_PX * (band + 2) + 22:
+                return True
+        return False
+
+    def wait_clear_below(self, x, band, maxf=60, f0=None):
+        """Hold at the top of a drop while an enemy sits under the shaft. A snake or spider
+        patrols away (or not: see the report); a moth / bat HOMES IN on our column, so step
+        aside along the band, face the shaft and let it come up level with us: the held laser
+        kills it there (level 32 room 18: dropped onto a moth hovering under the gap)."""
+        c = self.c
+        if f0 is not None and self.flyer_below(x, band):
+            ri = c.r("RoomNo")
+            air = self.lv.grids[ri][0]
+            for off in (3, -3, 2, -2, 4, -4):
+                f = f0 + off
+                if 0 <= f < 20 and all(air[band][g] for g in range(min(f0, f), max(f0, f) + 1)):
+                    if self.to_x(x_for_cell(f), band):
+                        toward = RIGHT if f0 > f else LEFT
+                        for _ in range(150):
+                            if not self.flyer_below(x, band):
+                                break
+                            if c.r("PlayerDir") != (0 if f0 > f else 1):
+                                self.step(toward & self.altitude(band))      # one tap turns him
+                            else:
+                                self.step(self.altitude(band))
+                        self.to_x(x_for_cell(f0), band)
+                    break
         for _ in range(maxf):
             if not self.hazard_below(x, self.c.r("RoomY"), band + 1):
                 return
@@ -1009,6 +1067,7 @@ class Pilot:
         import itertools
         start = (c.r("RoomNo"), band_of(c.r("RoomY")), cell_of(c.r("RoomX")))
         best = None
+        self.lv.use_risk = False
         for perm in itertools.permutations([self.lv.miner] + list(self.lv.extras)):
             cur, total = start, 0
             for t in perm:
@@ -1020,6 +1079,7 @@ class Pilot:
                 cur = t                          # hazard-free order always beats a short one
             if total is not None and (best is None or total < best[0]):
                 best = (total, perm)
+        self.lv.use_risk = True
         if best is None:
             raise GiveUp("no order of the miners has a route for every leg")
         targets = list(best[1])
