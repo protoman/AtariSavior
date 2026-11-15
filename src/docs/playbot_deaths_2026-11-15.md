@@ -15,7 +15,7 @@ frames before today's bomb change, so none of them comes from the bomb staging o
 
 | Cause (first run) | Deaths | Now |
 |---|---|---|
-| A. Free fall down a shaft onto an enemy waiting at the bottom | 8 (L3, 17, 18 x2, 22, 28, 29, 32) | **still 7** (L3, 17, 18 x2, 28, 29 + L32 moth); L22 fixed by the arrival/phase changes |
+| A. Free fall down a shaft onto an enemy waiting at the bottom | 8 (L3, 17, 18 x2, 22, 28, 29, 32) | **still 8** (L3, 17, 18 x2, 22, 28, 29, 32) |
 | B. Walked into a moth that drifted next to the bot (L20) | 1 | fixed |
 | C. Arrived from below next to the room's snake (L25) | 1 | fixed (the router prefers another arrival column) |
 | D. Waited inside a phase wall's span (L26) | 1 | fixed (also: the 8-bit clock wraps at 256, so the wall comes on up to 15 frames before a mod-90 phase says) |
