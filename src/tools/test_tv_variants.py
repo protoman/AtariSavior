@@ -63,7 +63,7 @@ def main() -> int:
     # no raw colour literals
     store = re.compile(r"^\s*(sta|sty|stx)\s+(COLUP0|COLUP1|COLUPF|COLUBK)\b")
     bad = []
-    for name in ("kernel.asm", "bank1.asm", "bank2.asm", "bank3.asm"):
+    for name in ("bank0.asm", "bank2.asm", "bank6.asm", "bank5.asm"):
         lines = (ROOT / name).read_text().split("\n")
         code = [l.split(";", 1)[0] for l in lines]
         for i, l in enumerate(code):

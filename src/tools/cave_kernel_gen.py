@@ -4,7 +4,7 @@
 Writes (to OUTDIR):
   cave_zp.inc        zero page map (kernel-local state + the live bytes the kernel reads)
   cave_kernel.inc    the kernel: one band code run 4x (X = band), generated line by line
-  cave_tables.inc    padded sprite pages + LUTs (production: parsed from kernel.asm art;
+  cave_tables.inc    padded sprite pages + LUTs (production: parsed from bank0.asm art;
                      --test: tagged art for tools/proto)
 
 Every scanline is a Timeline: instructions sit at exact cycle targets (padding with nop /

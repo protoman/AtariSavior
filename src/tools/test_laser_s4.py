@@ -21,8 +21,8 @@ Contract (redesign 2026-10-08 — single travelling missile, no sweep):
         b7 held) — LaserBeamOn byte retired, $83 holds LaserX now.
   dead mask: bit-per-enemy set/test/clear, no cross-enemy revival
 
-Mirrors the source of LaserHitTest formulas (src/bank2.asm —
-LaserHitTestBody) and LaserInput (src/kernel.asm) so drift fails.
+Mirrors the source of LaserHitTest formulas (src/bank6.asm —
+LaserHitTestBody) and LaserInput (src/bank0.asm) so drift fails.
 
 Run: /home/iuri/python3/bin/python3 tools/test_laser_s4.py
 """
@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 MISSILE_W = 8   # NUSIZ0=$30 -> 8-clock M0
-ENEMY_W = 8     # kernel.asm ENEMY_WIDTH
+ENEMY_W = 8     # bank0.asm ENEMY_WIDTH
 BEAM_ROWS = (4, 5)  # kill window rows (bank2 hard-coded RoomY+4..5);
                     # the DRAW is row 2 only — BeamMask {0,0,2,0,...}
 TRAVEL = 4      # px per held frame (contact missile)
@@ -55,9 +55,9 @@ def overlap_reference(a_lo, a_hi, b_lo, b_hi) -> bool:
 
 def main() -> None:
     # --- asm constants: formulas must match the source --------------------
-    src = Path(__file__).resolve().parents[1] / "kernel.asm"
+    src = Path(__file__).resolve().parents[1] / "bank0.asm"
     text = src.read_text(encoding="utf-8")
-    b2 = (Path(__file__).resolve().parents[1] / "bank2.asm")
+    b2 = (Path(__file__).resolve().parents[1] / "bank6.asm")
     text2 = b2.read_text(encoding="utf-8")
     assert re.search(r"ENEMY_WIDTH\s*=\s*8\b", text), "ENEMY_WIDTH != 8"
 

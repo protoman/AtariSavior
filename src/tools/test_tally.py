@@ -303,7 +303,7 @@ assert mem.ram[DROPT] != 0xFE, f"still in tally mode (DropTarget=$FE)"
 assert mem.ram[LEVEL] == 1, f"Level={mem.ram[LEVEL]} expected 1"
 assert mem.ram[BAR] == 120, f"BarLevel={mem.ram[BAR]} expected 120"
 # TickCounter: done path stores 60, then jmp OverscanAudio's `dec TickCounter`
-# (kernel.asm:1055) runs in the same frame -> 59 (the old pickup tail had
+# (bank0.asm:1055) runs in the same frame -> 59 (the old pickup tail had
 # the identical order; bar reload waits for the next 60th frame either way).
 assert mem.ram[TICKC] in (59, 60), f"TickCounter={mem.ram[TICKC]} expected 60/59"
 assert score_total() == expected_score, (

@@ -30,7 +30,7 @@ import playbot as P  # noqa: E402
 import tia_render as T  # noqa: E402
 
 QUICK = "--quick" in sys.argv
-ART = G.read_art(ROOT / "kernel.asm")
+ART = G.read_art(ROOT / "bank0.asm")
 OBJ = ART["consts"]
 SYM = {}
 for _l in (ROOT / "generated" / "symbols.asm").read_text().splitlines():

@@ -55,7 +55,7 @@ def extras_bytes(room=ROOM):
 # --- 2. ROM layer ----------------------------------------------------------
 NEED3 = {"B3StageBand", "RoomMetaA", "RoomMetaB", "BandTab",
          "EnemyDeadMask", "RoomRectsLo", "RoomRectsHi"}
-L3 = parse_labels(FROZEN / "bank3.lst", NEED3)
+L3 = parse_labels(FROZEN / "bank5.lst", NEED3)
 missing = NEED3 - L3.keys()
 if missing:
     sys.exit(f"frozen bank3 labels missing: {sorted(missing)}")

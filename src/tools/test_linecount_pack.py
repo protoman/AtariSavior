@@ -31,7 +31,7 @@ FROZEN = ROOT / "tests" / "frozen"
 NEED = {"HotOverlapBody", "CollisionCellX", "CollisionCellY", "CollisionEndX",
         "CollisionEndY", "RoomRectsLo", "RoomRectsHi", "RoomMetaB",
         "RoomM1Hot", "EnemyDeadMask", "BombPacked", "LineCount"}
-L = parse_labels(FROZEN / "bank3.lst", NEED)
+L = parse_labels(FROZEN / "bank5.lst", NEED)
 missing = NEED - L.keys()
 if missing:
     sys.exit(f"frozen labels missing: {sorted(missing)}")

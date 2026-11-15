@@ -24,7 +24,7 @@ Glyph widths: most letters 3px, 'i' and space 1px (proportional, so
 the 48px canvas holds the full name on each line).
 
 Run:  /home/iuri/python3/bin/python3 tools/footer_font.py [--check]
-  --check  verify the FooterFont block in bank2.asm still matches
+  --check  verify the FooterFont block in bank6.asm still matches
            this generator (CI-style; hand edits fail loudly).
 """
 import re
@@ -32,7 +32,7 @@ import sys
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parent.parent
-BANK2 = SRC / "bank2.asm"
+BANK2 = SRC / "bank6.asm"
 
 # (text, indent-in-pixels); line 2 indent 18 = F under line 1's I
 # (I sits at col 18 once the 1px inter-letter gaps are counted).
@@ -136,11 +136,11 @@ def main():
     src = BANK2.read_text()
     m = re.search(r"^FooterFont:\n(?:.*\n)*?(?=    \.ds \$F854)", src, re.M)
     if not m:
-        sys.exit("FooterFont block not found in bank2.asm")
+        sys.exit("FooterFont block not found in bank6.asm")
     block = render_block(slots)
     if check:
         if m.group(0) != block:
-            print("FAIL: bank2.asm FooterFont differs from generator")
+            print("FAIL: bank6.asm FooterFont differs from generator")
             sys.exit(1)
         print("bank2 FooterFont matches generator")
         return

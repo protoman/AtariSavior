@@ -40,7 +40,7 @@ from test_cell_map import Mem, RTS_SENTINEL, parse_labels  # noqa: E402
 from py65.devices.mpu6502 import MPU  # noqa: E402
 
 FROZEN = Path(os.environ.get("TEST_FROZEN") or ROOT / "tests" / "frozen")
-L1 = parse_labels(FROZEN / "bank1.lst", {"MenuMain", "SetObjectXPos_b1"})
+L1 = parse_labels(FROZEN / "bank2.lst", {"MenuMain", "SetObjectXPos_b1"})
 L0 = parse_labels(FROZEN / "bank0.lst",
                   {"PlayerLives", "PlayerBombs", "LevelStartRoom", "LineCount",
                    "BombX", "Level", "TickCounter", "BarLevel"})

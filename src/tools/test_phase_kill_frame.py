@@ -37,9 +37,9 @@ def lst_labels(path):
 
 
 L0 = lst_labels(SRC / "bank0.lst")
-L1 = lst_labels(SRC / "bank1.lst")
-L2 = lst_labels(SRC / "bank2.lst")
-L3 = lst_labels(SRC / "bank3.lst")   # C7: shape blocks + HOV walker (bank3)
+L1 = lst_labels(SRC / "bank2.lst")
+L2 = lst_labels(SRC / "bank6.lst")
+L3 = lst_labels(SRC / "bank5.lst")   # C7: shape blocks + HOV walker (bank3)
 
 import test_fixtures as FX  # noqa: E402
 PC_STARTFRAME = L0["StartFrame"]
@@ -59,12 +59,12 @@ STREAM_ADDR = 0xCC
 
 
 def _b3_pc(pattern: str) -> int:
-    """PC of the first bank3.lst row whose source matches `pattern`."""
-    for _l in (SRC / "bank3.lst").read_text(errors="replace").splitlines():
+    """PC of the first bank5.lst row whose source matches `pattern`."""
+    for _l in (SRC / "bank5.lst").read_text(errors="replace").splitlines():
         _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+", _l)
         if _m and re.search(pattern, _l):
             return int(_m.group(1), 16)
-    raise SystemExit(f"bank2.lst: no row matching {pattern!r}")
+    raise SystemExit(f"bank6.lst: no row matching {pattern!r}")
 
 
 PC_HOV_BEQCNT = _b3_pc(r"beq\s+\.HOVdone")      # hot count==0 -> skip

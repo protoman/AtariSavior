@@ -114,7 +114,7 @@ B2_IDX_DEAD = _LBL['EnemyDeadMask'] & 0x7F
 # that reads 3 (TENTACLE). The room's authored records are the user's stage
 # (AGENTS) and this sim must not depend on them. UE_Tentacle takes its X from
 # EnemyRamX and chases the player, so the fake record's other fields are unused.
-_B2 = (Path(__file__).with_name('bank2.bin')).read_bytes()
+_B2 = (Path(__file__).with_name('bank6.bin')).read_bytes()
 TENT_REC = next(0xF000 + i for i, v in enumerate(_B2) if i >= 0x100 and v == 3)
 PC_STARTFRAME = _LBL['StartFrame']
 LOADLEVEL     = _LBL['LoadLevel']

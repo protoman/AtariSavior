@@ -32,7 +32,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-LEVEL_COUNT = int(re.search(r"^LEVEL_COUNT\s*=\s*(\d+)", (ROOT / "kernel.asm").read_text(), re.M).group(1))   # the ROM's level count
+LEVEL_COUNT = int(re.search(r"^LEVEL_COUNT\s*=\s*(\d+)", (ROOT / "bank0.asm").read_text(), re.M).group(1))   # the ROM's level count
 sys.path.insert(0, str(ROOT / "tools"))
 from test_cell_map import parse_labels  # noqa: E402
 import stage_reach as SR  # noqa: E402

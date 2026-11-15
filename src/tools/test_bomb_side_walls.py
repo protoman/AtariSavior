@@ -32,7 +32,7 @@ FROZEN = ROOT / "tests" / "frozen"
 L0 = parse_labels(FROZEN / "bank0.lst", {"BombX", "LineCount", "EnemyDeadMask",
                                          "CollisionX", "BombPacked", "PF0Buf",
                                          "PF1Buf", "PF2Buf"})
-L1 = parse_labels(FROZEN / "bank1.lst", {"BombMarkWalls"})
+L1 = parse_labels(FROZEN / "bank2.lst", {"BombMarkWalls"})
 for lab, names in ((L0, ("BombX", "LineCount", "EnemyDeadMask", "PF0Buf",
                          "PF1Buf", "PF2Buf")), (L1, ("BombMarkWalls",))):
     miss = [n for n in names if n not in lab]
@@ -117,8 +117,8 @@ for exits in (0, 2, 3):                           # interior M1 strip (dcol 16)
         f"interior M1 strip must stay bombable (RoomExits=${exits:02X}, count={n})")
 
 # --- 4. SetRoomExits (bank2): the flags come from the room grid -------------------
-L2 = parse_labels(FROZEN / "bank2.lst", {"SetRoomExits"})
-assert "SetRoomExits" in L2, "frozen bank2.lst lacks SetRoomExits"
+L2 = parse_labels(FROZEN / "bank6.lst", {"SetRoomExits"})
+assert "SetRoomExits" in L2, "frozen bank6.lst lacks SetRoomExits"
 bank2 = bytearray(CM.BANK2)
 BASE = 0xFFC0 - 0xF000                           # fabricated level block base
 N = 4

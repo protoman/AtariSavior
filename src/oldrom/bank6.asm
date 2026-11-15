@@ -2,7 +2,7 @@
     seg code
     org $F000
 ; ==============================================================================
-; NEW ROM bank 1 - the GAMEPLAY CAVE KERNEL (old bank6) (HERO-style; plans/hero_style_kernel_plan.md)
+; Bank6 - the GAMEPLAY CAVE KERNEL (HERO-style; plans/hero_style_kernel_plan.md)
 ; ------------------------------------------------------------------------------
 ; Entered from bank0's VBL tail (`sta $1FFA` at GoKernel6; the byte after it is
 ; `jmp Kernel6Entry` here). Runs the whole 144-line cave, then hands over to the
@@ -32,8 +32,8 @@
     org Kernel6Pad
     jmp Kernel6Entry
 
-; The prologue (frame/object/door/water staging, ~650 cycles) lives in BKI_PROLOGUE = bank 3 (this bank is
-; full: 8 table pages = 2 KB + ~1.7 KB of kernel code): `sta BK_PROLOGUE` selects it, whose bytes at Kernel6Entry+3 are `jmp Prologue7`; it ends
+; The prologue (frame/object/door/water staging, ~650 cycles) lives in bank7 (bank6 has no room
+; for it): `sta $1FFB` selects bank7, whose bytes at Kernel6Entry+3 are `jmp Prologue7`; it ends
 ; with `sta $1FFA` at Kernel6Entry+6, so the next fetch (+9) is bank6's `Kernel6Back`.
 Kernel6Entry:
     sta BK_PROLOGUE

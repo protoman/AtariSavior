@@ -155,7 +155,7 @@ assert got["flicker"] == 7, (
 # --- case 3: the miner is the higher candidate ----------------------------
 got = call_stage_slot1(ys=[60], xs=[71], types=[MOTH],
                        miner=True, miner_y=96)
-K = (Path(__file__).resolve().parents[1] / "kernel.asm").read_text()
+K = (Path(__file__).resolve().parents[1] / "bank0.asm").read_text()
 OBJ_MINER = int(re.search(r"^OBJ_MINER\s*=\s*(\d+)", K, re.M).group(1))
 assert got["base1"] == OBJ_MINER, \
     f"slot 1 base ${got['base1']:02X} != OBJ_MINER {OBJ_MINER}"
@@ -224,12 +224,12 @@ assert (base, height) == (OBJ_MOTH, MOTH_H), (
     "indexing EnemyColorTable/ObjSpriteOffTable/ObjHeightTab")
 
 # --- the height tables must be byte-identical (bank2 stages slot 1) --------
-L2 = parse_labels(FROZEN / "bank2.lst", {"ObjHeightTab"})
+L2 = parse_labels(FROZEN / "bank6.lst", {"ObjHeightTab"})
 L0 = parse_labels(FROZEN / "bank0.lst", {"ObjHeightTab"})
 if "ObjHeightTab" not in L0 or "ObjHeightTab" not in L2:
     sys.exit("ObjHeightTab missing from a frozen listing (re-freeze?)")
 b0 = (FROZEN / "bank0.bin").read_bytes()
-b2 = (FROZEN / "bank2.bin").read_bytes()
+b2 = (FROZEN / "bank6.bin").read_bytes()
 t0 = b0[L0["ObjHeightTab"] - 0xF000:][:15]
 t2 = b2[L2["ObjHeightTab"] - 0xF000:][:15]
 assert t0 == t2, (f"ObjHeightTab twins differ: bank0 {t0.hex()} vs bank2 "
@@ -244,7 +244,7 @@ _k = {n: int(re.search(rf"^{n}\s*=\s*(\d+)", K, re.M).group(1))
 assert _k["OBJ_CELL"] == 12 and _k["OBJ_CELL"] + t0[14] == _k["OBJ_MOTH"], \
     "the cell art must exactly fill the KEY block's rows 12-15"
 # bank2's slot-1 offset table must cover type 14 too (it stages slot 1)
-_o = parse_labels(FROZEN / "bank2.lst", {"ObjSpriteOffTable"})["ObjSpriteOffTable"]
+_o = parse_labels(FROZEN / "bank6.lst", {"ObjSpriteOffTable"})["ObjSpriteOffTable"]
 assert b2[_o - 0xF000 + 14] == 12, "bank2 ObjSpriteOffTable[14] != OBJ_CELL"
 
 # SPIDER graduated to its own (15-row) art height: its declared draw window

@@ -37,7 +37,7 @@ L0 = parse_labels(FROZEN / "bank0.lst", NEED)
 missing = NEED - L0.keys()
 if missing:
     sys.exit(f"labels missing: {sorted(missing)}")
-L2 = parse_labels(FROZEN / "bank2.lst",
+L2 = parse_labels(FROZEN / "bank6.lst",
                   {"LEVEL1_RoomShapes", "LEVEL1_RoomCounts"})
 if not L2:
     sys.exit("bank2 level tables missing (frozen labels)")

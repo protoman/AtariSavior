@@ -26,10 +26,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-KERNEL = (ROOT / "kernel.asm").read_text(encoding="utf-8")
-# S5.4: LaserHitTest body moved to bank2 (entry tramp stays in kernel.asm)
-BANK2 = (ROOT / "bank2.asm").read_text(encoding="utf-8")
-BANK3 = (ROOT / "bank3.asm").read_text(encoding="utf-8")
+KERNEL = (ROOT / "bank0.asm").read_text(encoding="utf-8")
+# S5.4: LaserHitTest body moved to bank2 (entry tramp stays in bank0.asm)
+BANK2 = (ROOT / "bank6.asm").read_text(encoding="utf-8")
+BANK3 = (ROOT / "bank5.asm").read_text(encoding="utf-8")
 
 
 def loader_run(records, dark=0x00):
@@ -50,9 +50,9 @@ def loader_run(records, dark=0x00):
 
     names = {"EBLER_Loop", "EBLER_Done", "EnemyRamX", "EnemyRamY",
              "EnemyRamD", "EnemyCount", "FetchPtr"}
-    lbl = parse_labels(ROOT / "tests" / "frozen" / "bank2.lst", names)
+    lbl = parse_labels(ROOT / "tests" / "frozen" / "bank6.lst", names)
     missing = names - lbl.keys()
-    assert not missing, f"frozen bank2.lst missing {sorted(missing)} — re-freeze"
+    assert not missing, f"frozen bank6.lst missing {sorted(missing)} — re-freeze"
 
     mem = Mem()
     mem.bank = 2
@@ -91,7 +91,7 @@ def line_no(pattern: str, flags: int = 0) -> int:
     for i, ln in enumerate(KERNEL.splitlines()):
         if re.search(pattern, ln, flags):
             return i + 1
-    raise AssertionError(f"not found in kernel.asm: {pattern}")
+    raise AssertionError(f"not found in bank0.asm: {pattern}")
 
 
 def main() -> None:
@@ -151,7 +151,7 @@ def main() -> None:
         "loader must read the packed record byte (+0) into Temp for the snake test"
     # --- stride guard: the 3 B record must stay 3 B in BOTH hand-copied
     # EnemyOffTable tables (kernel + bank2) and in the loader's *3 base math.
-    for who, text in (("kernel.asm", KERNEL), ("bank2.asm", BANK2)):
+    for who, text in (("bank0.asm", KERNEL), ("bank6.asm", BANK2)):
         m_off = re.search(r"^EnemyOffTable:\n\s+\.byte ([\d,\s]+)", text, re.M)
         assert m_off, f"{who}: EnemyOffTable literal missing"
         vals = [int(v) for v in m_off.group(1).replace(" ", "").split(",") if v]
@@ -300,7 +300,7 @@ def main() -> None:
         "DEYDelta must be a global label (gap leaf cannot jmp a local)"
     assert "cmp #ENEMY_MOTH" in dey and "CallPad_MothYDerive" in dey, \
         "DeriveEnemyY must dispatch the moth via CallPad_MothYDerive (bank1)"
-    _b1m = (ROOT / "bank1.asm").read_text(encoding="utf-8")
+    _b1m = (ROOT / "bank2.asm").read_text(encoding="utf-8")
     moth = _b1m.split("MothYDerive:")[1].split("TitleSelect:")[0]
     assert "and #15" in moth and "cmp #8" in moth, \
         "moth phase must be (P>>2)&15 with triangle mirror at 8"
@@ -313,7 +313,7 @@ def main() -> None:
     assert "sta EnemyRamP" not in moth, "MothYDerive reads the clock only"
 
     # --- E4 Stage C: bank2 MothRoutine horizontal patrol ---------------------
-    b2 = (ROOT / "bank2.asm").read_text(encoding="utf-8")
+    b2 = (ROOT / "bank6.asm").read_text(encoding="utf-8")
     mr = b2.split("MothRoutine:")[1].split("MothBitTable:")[0]
     body = "\n".join(ln.split(";")[0] for ln in mr.splitlines())
     # Same-bank leaf jsr is fine (BandRowFromLine); a CROSS-bank jsr/fold is
@@ -459,7 +459,7 @@ def main() -> None:
     assert re.search(r"sbc\s+#12\b", llb), \
         "band respawn must shift RoomY up by 12 (not the whole 48-line band)"
     # bank1's fold-pad return address must track Overscan's new address
-    b1 = (ROOT / "bank1.asm").read_text(encoding="utf-8")
+    b1 = (ROOT / "bank2.asm").read_text(encoding="utf-8")
     ov = re.search(r"^\s*(\d+)\s+([0-9a-f]{4})\s+\S*\s*Overscan\b",
                    (ROOT / "bank0.lst").read_text(encoding="utf-8"),
                    re.M)

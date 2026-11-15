@@ -29,7 +29,7 @@ sys.path.insert(0, str(TOOLS))
 from py65.devices.mpu6502 import MPU  # noqa: E402
 from test_cell_map import Mem as Mem02, RTS_SENTINEL, parse_labels  # noqa: E402
 
-L2 = parse_labels(SRC / "bank3.lst", {   # C7: HotOverlapBody is bank3
+L2 = parse_labels(SRC / "bank5.lst", {   # C7: HotOverlapBody is bank3
     "HotOverlapBody", "CollisionCellX", "CollisionCellY",
     "CollisionEndX", "CollisionEndY", "RoomRectsLo", "RoomRectsHi",
     "RoomMetaB", "RoomM1Hot", "EnemyDeadMask", "BombPacked", "Temp",

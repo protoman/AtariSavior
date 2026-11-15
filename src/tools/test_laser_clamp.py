@@ -40,7 +40,7 @@ BANKS = [bytearray(open(FROZEN / f"bank{i}.bin", "rb").read()) for i in range(8)
 # symmetric. The hot count is the block's FIRST byte now (C4).
 _EX = None
 _M0RR = None
-for _l in ((FROZEN / "bank3.lst").read_text(errors="replace").splitlines()
+for _l in ((FROZEN / "bank5.lst").read_text(errors="replace").splitlines()
            + (FROZEN / "bank4.lst").read_text(errors="replace").splitlines()):
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(LEVEL1_AsyncExtras|"
                   r"M0Shape)\s*$", _l)

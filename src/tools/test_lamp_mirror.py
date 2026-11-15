@@ -27,8 +27,8 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 SRC = ROOT
 FROZEN = SRC / "tests" / "frozen"
-K = (SRC / "kernel.asm").read_text(encoding="utf-8")
-B2 = (SRC / "bank2.asm").read_text(encoding="utf-8")
+K = (SRC / "bank0.asm").read_text(encoding="utf-8")
+B2 = (SRC / "bank6.asm").read_text(encoding="utf-8")
 
 WIDTH_ = 10
 HEIGHT_ = 3
@@ -39,7 +39,7 @@ LAMP_MIRROR = 13
 
 def obj_equ(name: str) -> int:
     m = re.search(r"^" + name + r"\s*=\s*(\d+)", K, re.M)
-    assert m, f"{name} EQU missing from kernel.asm"
+    assert m, f"{name} EQU missing from bank0.asm"
     return int(m.group(1))
 
 

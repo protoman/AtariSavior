@@ -37,7 +37,7 @@ L0 = parse_labels(FROZEN / "bank0.lst", {"TitleBcd", "ScoreTe"})
 if {"TitleBcd", "ScoreTe"} - set(L0):
     sys.exit(f"bank0.lst missing labels: {sorted({'TitleBcd', 'ScoreTe'} - set(L0))}")
 
-KERNEL = (SRC / "kernel.asm").read_text(encoding="utf-8")
+KERNEL = (SRC / "bank0.asm").read_text(encoding="utf-8")
 
 
 def run_bcd(level: int) -> int:

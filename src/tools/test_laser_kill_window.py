@@ -40,7 +40,7 @@ need0 = {"EnemyCount", "EnemyDeadMask", "EnemyRamX", "EnemyRamY", "RoomY",
          "RoomPF0Lo"}
 L0 = parse_labels(SRC / "bank0.lst", need0)
 need2 = {"LaserHitTestBody", "LEVEL1_EnemyDataTable"}
-L2 = parse_labels(SRC / "bank2.lst", need2)
+L2 = parse_labels(SRC / "bank6.lst", need2)
 missing = (need0 - L0.keys()) | (need2 - L2.keys())
 if missing:
     sys.exit(f"labels missing: {sorted(missing)}")

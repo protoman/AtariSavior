@@ -17,12 +17,12 @@ import re
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parent.parent
-K = (SRC / "kernel.asm").read_text()
-# C2 (2026-10-20): LoadLevel's body lives in bank2 (LoadLevelB2); kernel.asm
+K = (SRC / "bank0.asm").read_text()
+# C2 (2026-10-20): LoadLevel's body lives in bank2 (LoadLevelB2); bank0.asm
 # keeps only the pad + the drop-in tail (LF_B0Tail).
-B2 = (SRC / "bank2.asm").read_text()
+B2 = (SRC / "bank6.asm").read_text()
 
-B1 = (SRC / "bank1.asm").read_text()
+B1 = (SRC / "bank2.asm").read_text()
 GRAVITY = int(re.search(r"^GRAVITY\s*=\s*\$([0-9A-Fa-f]+)", K, re.M).group(1), 16)
 JET_MAX = int(re.search(r"^JET_MAX\s*=\s*\$([0-9A-Fa-f]+)", K, re.M).group(1), 16)
 

@@ -23,7 +23,7 @@ import re
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parent.parent
-K = (SRC / "kernel.asm").read_text()
+K = (SRC / "bank0.asm").read_text()
 
 # --- 1. asm structure -------------------------------------------------------
 cbt = K[K.index("CheckBandTouch:"):K.index(".CBTdone:")]

@@ -34,7 +34,7 @@ NEED = {"EnemyBitTable", "EnemyOffTable", "EnemyDataLo", "EnemyDataHi",
         "EnemyRamX", "EnemyCount", "EnemyDeadMask", "EnemyIndex", "BombX",
         "CollisionCellX"}
 L0 = parse_labels(FROZEN / "bank0.lst", NEED)
-L2 = parse_labels(FROZEN / "bank2.lst",
+L2 = parse_labels(FROZEN / "bank6.lst",
                   NEED | {"BombEnemyBlastBody"})
 # C7: the shape blocks live in bank3, so the scratch address is a bank3 label
 # (same address space; the private bank2 copy is only the staging buffer).

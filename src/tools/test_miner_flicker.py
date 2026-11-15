@@ -46,7 +46,7 @@ if miss:
 import re  # noqa: E402
 
 # OBJ_MINER is a decimal EQU the listing does not echo as an address.
-_m = re.search(r"^OBJ_MINER\s*=\s*(\d+)", (ROOT / "kernel.asm").read_text(),
+_m = re.search(r"^OBJ_MINER\s*=\s*(\d+)", (ROOT / "bank0.asm").read_text(),
                re.M)
 OBJ_MINER = int(_m.group(1))
 

@@ -50,23 +50,23 @@ for _i in range(8):
 Mem = _CM.Mem
 
 # kernel EQUs (read from the frozen bank2 listing via its hand copies)
-Z = parse_labels(FROZEN / "bank2.lst", {
+Z = parse_labels(FROZEN / "bank6.lst", {
     "LevelPFDataLo", "LevelPFDataHi", "LevelRoomN", "RoomNo", "LevelConnSpare",
     "RoomX", "RoomY"})
-L2 = parse_labels(FROZEN / "bank2.lst", {
+L2 = parse_labels(FROZEN / "bank6.lst", {
     "ExitUpB2", "ExitDownB2", "ExitLeftB2", "ExitRightB2", "ExitScanB2",
     "EnterRoomB2", "ReturnPad"})
 for need, got, where in (
         ({"ExitUpB2", "ExitDownB2", "ExitLeftB2", "ExitRightB2",
-          "EnterRoomB2", "ReturnPad"}, L2, "bank2.lst"),
+          "EnterRoomB2", "ReturnPad"}, L2, "bank6.lst"),
         ({"LevelPFDataLo", "LevelPFDataHi", "LevelRoomN", "RoomNo",
-          "RoomX", "RoomY"}, Z, "bank2.lst")):
+          "RoomX", "RoomY"}, Z, "bank6.lst")):
     lack = need - set(got)
     if lack:
         sys.exit(f"{where}: missing labels {sorted(lack)}")
 if not {"ExitUpB2", "ExitDownB2", "ExitLeftB2", "ExitRightB2",
         "EnterRoomB2", "ReturnPad"} <= set(L2):
-    sys.exit(f"frozen bank2.lst is missing exit labels: {sorted(set(L2))}")
+    sys.exit(f"frozen bank6.lst is missing exit labels: {sorted(set(L2))}")
 
 PLAYER_MIN_X, PLAYER_MAX_X = 4, 159
 PLAYER_MIN_Y, PLAYER_MAX_Y = 0, 122

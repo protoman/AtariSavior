@@ -42,13 +42,13 @@ FROZEN = Path(os.environ.get("TEST_FROZEN")
               or (SRC / "tests" / "frozen"))   # never live src/
 TESTS = SRC / "tests"          # frozen stage copies (AGENTS test-data rule)
 BANK0 = (FROZEN / "bank0.bin").read_bytes()
-BANK1 = (FROZEN / "bank1.bin").read_bytes()
-BANK2 = (FROZEN / "bank2.bin").read_bytes()
-BANK3 = (FROZEN / "bank3.bin").read_bytes()
+BANK1 = (FROZEN / "bank2.bin").read_bytes()
+BANK2 = (FROZEN / "bank6.bin").read_bytes()
+BANK3 = (FROZEN / "bank5.bin").read_bytes()
 BANK4 = (FROZEN / "bank4.bin").read_bytes()
-BANK5 = (FROZEN / "bank5.bin").read_bytes()
-BANK6 = (FROZEN / "bank6.bin").read_bytes()
-BANK7 = (FROZEN / "bank7.bin").read_bytes()
+BANK5 = (FROZEN / "bank7.bin").read_bytes()
+BANK6 = (FROZEN / "bank1.bin").read_bytes()
+BANK7 = (FROZEN / "bank3.bin").read_bytes()
 
 
 def parse_labels(path: Path, names: set[str]) -> dict[str, int]:
@@ -97,13 +97,13 @@ need2 = {".MothColsOk", "RoomPF0Lo"}
 # stub only). C3: a shape block ends in `<tag>Rows` (3 row-pool indices).
 # C7 (2026-10-20): the SHAPE half (model blocks, the row pool and the async
 # extras streams) moved back to bank3 with the walkers that read them; bank2
-# keeps the room/enemy tables. Code labels still come from bank2.lst, block
-# data labels from bank3.lst.
+# keeps the room/enemy tables. Code labels still come from bank6.lst, block
+# data labels from bank5.lst.
 blk = {"LEVEL1_AsyncExtras", "RoomNoStream", "RoomMetaB", "RoomM1Hot"}
 # 2026-11-10: the shape blocks / row pool moved to bank7 (ShapeStep7)
 blk7 = {"M5Shape", "M0Shape", "M0Rows"}
-L2 = parse_labels(FROZEN / "bank2.lst", need2 | blk)
-L3 = parse_labels(FROZEN / "bank3.lst", blk)
+L2 = parse_labels(FROZEN / "bank6.lst", need2 | blk)
+L3 = parse_labels(FROZEN / "bank5.lst", blk)
 L7 = parse_labels(FROZEN / "bank4.lst", blk7)
 if not blk7 <= L7.keys():
     sys.exit(f"bank4 labels missing: {sorted(blk7 - L7.keys())}")
@@ -202,7 +202,7 @@ def visible_range(room_x: int, player_dir: int) -> tuple[int, int]:
 
 PLAYER_SPRITE_H = int(re.search(r"^PLAYER_SPRITE_H\s*=\s*(\d+)",
                                  (Path(__file__).resolve().parents[1] /
-                                  "kernel.asm").read_text(), re.M).group(1))
+                                  "bank0.asm").read_text(), re.M).group(1))
 
 
 def row_range(room_y: int) -> tuple[int, int]:

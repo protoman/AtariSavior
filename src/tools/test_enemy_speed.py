@@ -138,9 +138,9 @@ for spd in (2, 5):
                              f"frames, want {FRAMES} (extra passes dropped, first kept)")
 
 # --- 3. no enemy motion still reads a shared clock ---------------------------------
-K = (SRC / "kernel.asm").read_text()
-B1 = (SRC / "bank1.asm").read_text()
-B2 = (SRC / "bank2.asm").read_text()
+K = (SRC / "bank0.asm").read_text()
+B1 = (SRC / "bank2.asm").read_text()
+B2 = (SRC / "bank6.asm").read_text()
 
 
 def body(text, start, end):

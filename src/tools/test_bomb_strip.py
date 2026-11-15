@@ -21,7 +21,7 @@ Three halves of the fix, driven against the real routines:
 
 3. bank2 StageBandTab: b3 (ball strip dead) blanks BandTab; b4 (M1
    dead) stages M1X=0 and clears the packed b3 presence flag. Expectations
-   are DERIVED from the model meta in bank2.bin (MetaA/MetaB packed) so
+   are DERIVED from the model meta in bank6.bin (MetaA/MetaB packed) so
    they track models.json edits.
 
 Both deaths are room-scoped: EnterRoom zeroes EnemyDeadMask.
@@ -78,7 +78,7 @@ class Mem1:
 
 
 def parse_equ(path: Path, names: set) -> dict:
-    """bank2.lst EQU lines: `addr  bytes  Name = $vv` (no U prefix)."""
+    """bank6.lst EQU lines: `addr  bytes  Name = $vv` (no U prefix)."""
     out = {}
     rx = re.compile(r"^\s*\d+\s+U?[0-9a-f]{4}\s+(?:[0-9a-f]{2}\s+)+"
                     r"([A-Za-z_][A-Za-z0-9_]*)\s+=\s+\$([0-9a-fA-F]+)")
@@ -89,7 +89,7 @@ def parse_equ(path: Path, names: set) -> dict:
     return out
 
 
-L1 = parse_labels(FROZEN / "bank1.lst", {"BombMarkWalls", "StripBlastCheck",
+L1 = parse_labels(FROZEN / "bank2.lst", {"BombMarkWalls", "StripBlastCheck",
                                       "M1StripBlast"})
 L0 = parse_labels(FROZEN / "bank0.lst", {"BombX", "LineCount",
                                 "EnemyDeadMask", "CollisionX",
@@ -98,11 +98,11 @@ L0 = parse_labels(FROZEN / "bank0.lst", {"BombX", "LineCount",
 L2 = {}
 # C7 (2026-10-20): the stage/band walker and the shape blocks + extras
 # streams live in bank3 again; bank2 keeps the room/enemy tables.
-L3 = parse_labels(FROZEN / "bank3.lst", {"B3StageBand", "LEVEL1_AsyncExtras"})
+L3 = parse_labels(FROZEN / "bank5.lst", {"B3StageBand", "LEVEL1_AsyncExtras"})
 L3.update(parse_labels(FROZEN / "bank4.lst", {"M0Rows", "M3Rows"}))   # shapes: bank4
 L2.update({k: L3[k] for k in ("M0Rows", "M3Rows",
                               "LEVEL1_AsyncExtras")})
-L2.update(parse_equ(FROZEN / "bank2.lst",
+L2.update(parse_equ(FROZEN / "bank6.lst",
                     {"BandTab", "CollisionEndY", "CollisionEndX",
                      "RoomPF0Lo", "RoomRectsLo"}))
 need = ({"BombMarkWalls", "StripBlastCheck", "M1StripBlast"} - L1.keys()) | \
@@ -129,7 +129,7 @@ assert L1["M1StripBlast"] < L1["StripBlastCheck"], "strip chain out of order"
 # StripBlastCheck floats in bank1's $F8C6-$F9AB gap (raft twin -> sound leaves)
 assert 0xF8C6 <= L1["StripBlastCheck"] < 0xF9AC, (
     f"StripBlastCheck ${L1['StripBlastCheck']:04X} outside the $F8C6-$F9AB gap")
-for _f in ("kernel.asm", "bank1.asm", "bank2.asm", "bank3.asm"):
+for _f in ("bank0.asm", "bank2.asm", "bank6.asm", "bank5.asm"):
     _t = (SRC / _f).read_text(errors="replace")
     # comments may mention the retired pins; only CODE operands break:
     for _n, _line in enumerate(_t.splitlines(), 1):

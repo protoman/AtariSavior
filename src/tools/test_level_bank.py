@@ -3,16 +3,16 @@
 
 Source-shape contract for the cross-bank fold (HERO fold, write-triggered):
 
-  - FoldIndirect block exists in kernel.asm AND bank2.asm with exactly the
+  - FoldIndirect block exists in bank0.asm AND bank6.asm with exactly the
     four contracted instructions in order (sta $1FF6 / lda (FetchPtr),Y /
     sta $1FF4 / rts) — hand-edited drift in one bank breaks execution at
     the switch point. P3.1: bank select absolute (X preserved; was
     sta $1FF6,X).
   - FetchPtr = $E0 defined in both files (operand is baked per file).
-  - kernel.asm: block sits right before `.ds $FF00 - *, 0` (margin directive
+  - bank0.asm: block sits right before `.ds $FF00 - *, 0` (margin directive
     to the $FF00 fineAdjust anchor — an assembler error, not silent growth).
-  - bank2.asm: `.ds $FEF6 - *, 0` pins the block to the same address.
-  - bank1.asm rebuilds scorePtr1 ($E0/$E1) every HUD frame, so bank0 must
+  - bank6.asm: `.ds $FEF6 - *, 0` pins the block to the same address.
+  - bank2.asm rebuilds scorePtr1 ($E0/$E1) every HUD frame, so bank0 must
     stage FetchPtr before every fold batch (contract §0.2 — staging is
     enforced when fold call sites land in P2/P3; here we just pin the
     writers that make the alias family real).
@@ -27,10 +27,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-KERNEL = (ROOT / "kernel.asm").read_text(encoding="utf-8")
-BANK2 = (ROOT / "bank2.asm").read_text(encoding="utf-8")
-BANK1 = (ROOT / "bank1.asm").read_text(encoding="utf-8")
-BANK2 = (ROOT / "bank2.asm").read_text(encoding="utf-8")
+KERNEL = (ROOT / "bank0.asm").read_text(encoding="utf-8")
+BANK2 = (ROOT / "bank6.asm").read_text(encoding="utf-8")
+BANK1 = (ROOT / "bank2.asm").read_text(encoding="utf-8")
+BANK2 = (ROOT / "bank6.asm").read_text(encoding="utf-8")
 
 BLOCK = [
     "sta BK_ROOMS",
@@ -57,9 +57,9 @@ def block_body(src: str, label: str) -> list[str]:
 
 def main() -> None:
     # --- block shape, both banks ------------------------------------------
-    for name, src in (("kernel.asm", KERNEL), ("bank2.asm", BANK2)):
+    for name, src in (("bank0.asm", KERNEL), ("bank6.asm", BANK2)):
         body = block_body(src, "FoldIndirect")
-        if name == "bank2.asm":
+        if name == "bank6.asm":
             # room bank A: the read is done by the A/B router (Stub_Fold: bit RoomExits / lda (FetchPtr),Y /
             # jmp ReturnPad); check_room_banks guards its bytes. The pad half is still `sta BK_ROOMS`.
             body = [ln.split(";")[0].strip() for ln in body]
@@ -69,15 +69,15 @@ def main() -> None:
             f"{name}: FoldIndirect body {body} != contract {BLOCK}"
 
     # --- FetchPtr operand, both files (moved $E0→$E5 in S3.2) --------------
-    for name, src in (("kernel.asm", KERNEL), ("bank2.asm", BANK2)):
+    for name, src in (("bank0.asm", KERNEL), ("bank6.asm", BANK2)):
         m = re.search(r"^FetchPtr\s*=\s*\$E5\b", src, re.M)
         assert m, f"{name}: FetchPtr = $E5 definition missing"
 
     # --- address pinning ---------------------------------------------------
     assert re.search(r"FoldIndirect:.*?\.ds \$FF00 - \*, 0", KERNEL, re.S), \
-        "kernel.asm: block must be followed by the .ds $FF00 margin directive"
+        "bank0.asm: block must be followed by the .ds $FF00 margin directive"
     assert re.search(r"\.ds \$FEF6 - \*, 0\s*\nFoldIndirect:", BANK2), \
-        "bank2.asm: .ds $FEF6 must pin the block to bank0's address"
+        "bank6.asm: .ds $FEF6 must pin the block to bank0's address"
 
     # --- P1.3: FetchPtr ($E5/$E6) partition + stage-before-batch ----------
     # S3.2: FetchPtr moved $E0→$E5 (frees $E0 = rect4.h in the cache); it
@@ -88,14 +88,14 @@ def main() -> None:
     # kernel must not write FetchPtr's bytes raw (only via the EQU) and
     # must not raw-write $E0 (now a rect cache byte — writes go RcBase,Y)
     assert not re.search(r"sta\s+\$E5\b", KERNEL), \
-        "kernel.asm writes $E5 raw — use the FetchPtr EQU for alias clarity"
+        "bank0.asm writes $E5 raw — use the FetchPtr EQU for alias clarity"
     assert not re.search(r"sta\s+\$E0\b", KERNEL), \
-        "kernel.asm writes $E0 raw — rect cache byte, write via RcBase,Y"
+        "bank0.asm writes $E0 raw — rect cache byte, write via RcBase,Y"
 
     # --- P2/P3.1: no direct reads of relocated tables ----------------------
     for tbl in ("LevelPFDataLo", "LevelEnemyLo", "LevelConnLo", "EnemyDataLo"):
         assert not re.search(rf"lda \({tbl}\),Y", KERNEL), \
-            f"kernel.asm still reads ({tbl}),Y directly — route via FoldIndirect"
+            f"bank0.asm still reads ({tbl}),Y directly — route via FoldIndirect"
     # #22: EnterRoom moved to bank2 (direct (ptr),Y reads — it IS the reader),
     # so its 11 fold call sites + 10 stage lines left kernel with it.
     # was 30: the snake's symmetric patrol (2026-10-19) dropped its two ROM-dir
@@ -137,7 +137,7 @@ def main() -> None:
     # (EnterRoomB2 restages it on every room entry since the 2026-10-04 fix),
     # so the ONLY writer is the room loader now.
     assert "sta RoomBandColor" not in KERNEL, \
-        "kernel.asm must not re-read the band color every VBL (redundant)"
+        "bank0.asm must not re-read the band color every VBL (redundant)"
     assert "sta RoomBandColor" in BANK2, \
         "EnterRoomB2 must stage RoomBandColor (the only writer)"
     assert "jsr LoadRoomBottomColor" not in KERNEL, \
@@ -148,7 +148,7 @@ def main() -> None:
         encoding="utf-8")
     n_levels = len(re.findall(r"^\s*\.word\s+LEVEL\d+_RoomShapes",
                               gen, re.M))
-    for name, text in (("kernel.asm", KERNEL), ("bank1.asm", BANK1)):
+    for name, text in (("bank0.asm", KERNEL), ("bank2.asm", BANK1)):
         m = re.search(r"^LEVEL_COUNT\s*=\s*(\d+)", text, re.M)
         assert m and int(m.group(1)) == n_levels, (
             f"{name}: LEVEL_COUNT = {m and m.group(1)} != {n_levels} "
@@ -156,9 +156,9 @@ def main() -> None:
             "the build's --sync patches both, a stale tree is a red gate)")
 
     # --- frozen data address: hand-copy matches bank2 listing --------------
-    lst = (ROOT / "bank2.lst").read_text(encoding="utf-8")
+    lst = (ROOT / "bank6.lst").read_text(encoding="utf-8")
     m = re.search(r"^\s+\d+\s+([0-9a-f]{4})\s+LevelDataTable\b", lst, re.M)
-    assert m, "LevelDataTable not found in bank2.lst"
+    assert m, "LevelDataTable not found in bank6.lst"
     m2 = re.search(r"^LEVEL_DATA_ADDR\s*=\s*\$([0-9A-Fa-f]{4})", KERNEL, re.M)
     assert m2 and m2.group(1).lower() == m.group(1), \
         f"LEVEL_DATA_ADDR ${m2 and m2.group(1)} != " \
@@ -193,7 +193,7 @@ def main() -> None:
     m = re.search(r"^BAND_COLOR = \$([0-9a-f]{2})", equ, re.M)
     assert m, "generated/levels_equ.asm must define BAND_COLOR"
     assert 'include "generated/levels_equ.asm"' in BANK2, (
-        "bank2.asm must include generated/levels_equ.asm (BAND_COLOR) BEFORE "
+        "bank6.asm must include generated/levels_equ.asm (BAND_COLOR) BEFORE "
         "EnterRoomB2 uses it")
     # LEVEL_FORMAT 8 must be declared by the generator and by the consumers
     # (LAYOUT 8, 2026-10-24: 7-bit shape index + band flag b7; owns-extras is
@@ -202,7 +202,7 @@ def main() -> None:
     assert m and int(m.group(1), 16) == 8, (
         "generated level index must declare LEVEL_FORMAT = $08 (7-bit shape "
         "index, band flag b7)")
-    for name, body in (("kernel.asm", KERNEL), ("bank1.asm", BANK1)):
+    for name, body in (("bank0.asm", KERNEL), ("bank2.asm", BANK1)):
         hm = re.search(r"^LEVEL_FORMAT\s*=\s*\$([0-9a-f]{2})", body, re.M)
         assert hm and int(hm.group(1), 16) == 8, (
             f"{name}: LEVEL_FORMAT hand copy must be $08 (7-bit shape index)")

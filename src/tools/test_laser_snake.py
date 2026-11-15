@@ -42,7 +42,7 @@ for _i in range(8):
 Mem = _CM.Mem
 BANKS = {i: getattr(_CM, f"BANK{i}") for i in range(4)}
 
-L2 = parse_labels(FROZEN / "bank2.lst", {
+L2 = parse_labels(FROZEN / "bank6.lst", {
     "LaserHitTestBody", "LevelPFDataLo", "LevelPFDataHi", "LevelRoomN",
     "EnemyDataLo", "EnemyDataHi", "EnemyRamX", "EnemyRamY", "EnemyDeadMask",
     "EnemyCount", "RoomY", "PlayerDir", "CollisionX", "RoomMetaA", "RoomMetaB",
@@ -54,7 +54,7 @@ for need, got, where in (({"LaserHitTestBody", "LevelPFDataLo", "LevelPFDataHi",
                            "EnemyRamY", "EnemyDeadMask", "EnemyCount",
                            "RoomY", "PlayerDir", "CollisionX", "RoomMetaA",
                            "RoomMetaB", "LEVEL1_EnemyDataTable"}, L2,
-                          "bank2.lst"),
+                          "bank6.lst"),
                          ({"PF0Buf"}, L0, "bank0.lst")):
     lack = need - set(got)
     if lack:

@@ -70,35 +70,30 @@ fi
 # map instead of DASM's cryptic `Origin Reverse-indexed` at the pad line
 python3 "$DIR/tools/verify_build.py" --precheck "$DIR"
 
-# Assemble each bank (from src/ so include paths resolve)
-# C7 (2026-10-20): the level-data subsystem is SPLIT — bank3 owns the shape
-# blocks + extras streams and every walker that reads them, bank2 owns the
-# level/room/enemy tables and theirs. bank3 assembles FIRST (the HOF pad
-# literal is patched from its listing), then bank2, then the bank0 literals.
+# Assemble each bank (from src/ so include paths resolve).
+# Layout v3 (docs/agents/banks.md): the FILE NUMBER IS THE PHYSICAL BANK.
+#   0 general, 1 cave kernel, 2 HUD/title/score, 3 prologue+gameplay,
+#   4 save/transition/models/overlay, 5 extras data, 6 rooms A, 7 rooms B.
+# Level data (banks 5-7) assembles FIRST: bank0's LEVEL_DATA_ADDR and the HOF
+# pad literal are patched from their listings; bank0 then feeds the cave bank.
 cd "$DIR"
-dasm bank3.asm -f3 -obank3.bin -lbank3.lst
-echo "  bank3: OK"
-dasm bank2.asm -f3 -obank2.bin -lbank2.lst
-echo "  bank2: OK"
-# kernel's HotOverlapFlag pad ends `jmp $xxxx` -> bank3 HotOverlapBody
+INC="-I. -Igenerated"
+dasm bank5.asm -f3 $INC -obank5.bin -lbank5.lst
+echo "  bank5: OK"
+dasm bank6.asm -f3 $INC -obank6.bin -lbank6.lst
+echo "  bank6: OK"
 python3 "$DIR/tools/verify_build.py" --sync-hof "$DIR"
 python3 "$DIR/tools/verify_build.py" --sync "$DIR"
-dasm kernel.asm -f3 -obank0.bin -lbank0.lst -sgenerated/symbols.asm
+dasm bank0.asm -f3 $INC -obank0.bin -lbank0.lst -sgenerated/symbols.asm
 echo "  bank0: OK"
-# bank1's fold pad jmp literal tracks Overscan (moves with pre-pad code) —
-# self-heal from bank0.lst instead of the hand-sync that bit us 3+ times.
+# bank2's fold pad jmp literal tracks Overscan (moves with pre-pad code)
 python3 "$DIR/tools/verify_build.py" --sync-overscan "$DIR"
-dasm bank1.asm -f3 -obank1.bin -lbank1.lst
-echo "  bank1: OK"
-# Bank6 = the gameplay cave kernel: its kernel lines and sprite tables are GENERATED
-# (tools/cave_kernel_gen.py, art parsed from kernel.asm) and it needs a few bank0
-# addresses (the dispatch pad, the player frames) from bank0's symbol dump.
+# The cave bank (1) is GENERATED (tools/cave_kernel_gen.py, art parsed from bank0.asm) and needs
+# a few bank0 addresses from bank0's symbol dump.
 python3 "$DIR/tools/gen_bank6_equs.py" "$DIR"
-python3 "$DIR/tools/cave_kernel_gen.py" --real "$DIR/generated" "$DIR/kernel.asm"
-# F4 (32K): banks 4-5 are free windows, bank7 is the power-up bank (F4 reads
-# its reset vector from the LAST bank).
-for b in 4 5 6 7; do
-    dasm "bank$b.asm" -f3 -I. -Igenerated -o"bank$b.bin" -l"bank$b.lst"
+python3 "$DIR/tools/cave_kernel_gen.py" --real "$DIR/generated" "$DIR/bank0.asm"
+for b in 1 2 3 4 7; do
+    dasm "bank$b.asm" -f3 $INC -o"bank$b.bin" -l"bank$b.lst"
     echo "  bank$b: OK"
 done
 
@@ -108,7 +103,7 @@ for i in 0 1 2 3 4 5 6 7; do
     if [ "$SIZE" -lt 4096 ]; then
         PAD=$((4096 - SIZE))
         printf '\0%.0s' $(seq 1 $PAD) >> "bank${i}.bin"
-        echo "  bank${i}: padded $SIZE → 4096"
+        echo "  bank${i}: padded $SIZE -> 4096"
     elif [ "$SIZE" -eq 4096 ]; then
         echo "  bank${i}: $SIZE bytes (exact)"
     else

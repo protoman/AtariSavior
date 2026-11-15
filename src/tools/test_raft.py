@@ -25,7 +25,7 @@ L0 = parse_labels(FROZEN / "bank0.lst", {
     "vyLo", "vyHi", "Temp", "PlayerBombs", "UpdateEnemies", "EnemyCount",
     "EnemyDataLo", "EnemyDataHi", "EnemyDeadMask", "UEDispatch", "UE_Next"})
 OBJ_RAFT_TYPE = 7
-L1 = parse_labels(FROZEN / "bank1.lst", {"RaftBody"})
+L1 = parse_labels(FROZEN / "bank2.lst", {"RaftBody"})
 missing = ({"EnemyRamX", "EnemyRamY", "EnemyRamD", "EnemyRamP", "RoomX",
             "RoomY", "vyLo", "vyHi"} - L0.keys()) | ({"RaftBody"} - L1.keys())
 if missing:
@@ -114,7 +114,7 @@ def integration() -> None:
     see it (a $F82C tramp with no bank1 twin jumped into the body's own bytes).
     """
     b0 = (FROZEN / "bank0.bin").read_bytes()
-    b1 = (FROZEN / "bank1.bin").read_bytes()
+    b1 = (FROZEN / "bank2.bin").read_bytes()
     a = b0[TRAMP - 0xF000:TRAMP - 0xF000 + 6]
     b = b1[TRAMP - 0xF000:TRAMP - 0xF000 + 6]
     assert a == b and a[:3] == bytes([0x8D, 0xF5, 0x1F]), (
@@ -123,9 +123,9 @@ def integration() -> None:
     assert a[3:6] == bytes([0x4C, RAFT & 0xFF, RAFT >> 8]), (
         f"raft tramp target {a[3:6].hex()} != bank1 RaftBody ${RAFT:04X}")
 
-    L2 = parse_labels(FROZEN / "bank2.lst", {"LEVEL1_RoomShapes"})
+    L2 = parse_labels(FROZEN / "bank6.lst", {"LEVEL1_RoomShapes"})
     assert "LEVEL1_RoomShapes" in L2, "frozen bank2 level table label"
-    b2 = (FROZEN / "bank2.bin").read_bytes()
+    b2 = (FROZEN / "bank6.bin").read_bytes()
     # RaftBody reads NO record field (it lives off EnemyRam*/the playfield), so
     # any bank2 byte that reads 7 in the type slot stages a raft for real. Prefer
     # a hit inside the level-data area so the fake record looks like data.
@@ -189,7 +189,7 @@ def tally_gate() -> None:
     assert not (need - L.keys()), f"labels missing: {sorted(need - L.keys())}"
     Z = {k: v & 0x7F for k, v in L.items() if 0x80 <= v <= 0xFF}
     km = re.search(r"^OBJ_MINER\s*=\s*(\d+)",
-                   (ROOT / "kernel.asm").read_text(), re.M)
+                   (ROOT / "bank0.asm").read_text(), re.M)
     assert km, "OBJ_MINER EQU not found"
     OBJ_MINER = int(km.group(1))
 

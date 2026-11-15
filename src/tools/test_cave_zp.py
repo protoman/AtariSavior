@@ -2,7 +2,7 @@
 """The bank6 cave kernel's zero page contract (tools/cave_kernel_gen.py LIVE / KERNEL_ZP).
 
   * every LIVE name (a byte the kernel READS from the rest of the game) must sit at the address
-    bank0's symbol dump says (a ZP move in kernel.asm would silently break the kernel);
+    bank0's symbol dump says (a ZP move in bank0.asm would silently break the kernel);
   * every kernel-local byte must be one that is free while the cave runs: VBL/overscan scratch
     that is restaged before use (names whitelisted below), bank1-only HUD bytes ($E0-$EF, the HUD
     rewrites them before reading), the EnemyRamY window ($E2-$E4: written at overscan entry,
@@ -50,7 +50,7 @@ def main():
     for name, addr in G.LIVE.items():
         real = SYMNAME.get(name, name)
         if sym.get(real) != addr:
-            bad.append(f"LIVE {name}: generator ${addr:02X}, kernel.asm {sym.get(real)}")
+            bad.append(f"LIVE {name}: generator ${addr:02X}, bank0.asm {sym.get(real)}")
     owners = {}
     for name, addr in G.KERNEL_ZP.items():
         size = 2 if name in ("G0", "C0", "G1", "C1", "G1hiC", "C1hiC", "KbC", "EC") else 1

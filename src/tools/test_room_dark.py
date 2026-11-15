@@ -19,33 +19,33 @@ from pathlib import Path
 SRC = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_cell_map import parse_labels, FROZEN, Mem as BankMem  # noqa: E402
-BANK1 = (SRC / "bank1.bin").read_bytes()
-BANK2 = (SRC / "bank2.bin").read_bytes()
-BANK3_BLK = (SRC / "bank3.bin").read_bytes()  # C7: BuildColupF in bank3
-KERNEL = (SRC / "kernel.asm").read_text(encoding="utf-8")
-BANK1_SRC = (SRC / "bank1.asm").read_text(encoding="utf-8")
-BANK2_SRC = (SRC / "bank2.asm").read_text(encoding="utf-8")
+BANK1 = (SRC / "bank2.bin").read_bytes()
+BANK2 = (SRC / "bank6.bin").read_bytes()
+BANK3_BLK = (SRC / "bank5.bin").read_bytes()  # C7: BuildColupF in bank3
+KERNEL = (SRC / "bank0.asm").read_text(encoding="utf-8")
+BANK1_SRC = (SRC / "bank2.asm").read_text(encoding="utf-8")
+BANK2_SRC = (SRC / "bank6.asm").read_text(encoding="utf-8")
 
 labels = {}
-for line in (SRC / "bank1.lst").read_text(errors="replace").splitlines():
+for line in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
     m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+"
                  r"([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$", line)
     if m:
         labels.setdefault(m.group(2), int(m.group(1), 16))
 for need in ("IsRoomDark", "SetRoomDark", "ReturnPad"):
     if need not in labels:
-        sys.exit(f"label {need} missing from bank1.lst")
+        sys.exit(f"label {need} missing from bank2.lst")
 ADDR = {k: labels[k] for k in ("IsRoomDark", "SetRoomDark", "ReturnPad")}
 
 labels2 = {}
-for line in (SRC / "bank3.lst").read_text(errors="replace").splitlines():
+for line in (SRC / "bank5.lst").read_text(errors="replace").splitlines():
     m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+"
                  r"([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$", line)
     if m:
         labels2.setdefault(m.group(2), int(m.group(1), 16))
 for need in ("BuildColupF", "ReturnPad"):
     if need not in labels2:
-        sys.exit(f"label {need} missing from bank3.lst")
+        sys.exit(f"label {need} missing from bank5.lst")
 ADDR2 = {k: labels2[k] for k in ("BuildColupF", "ReturnPad")}
 
 ROOM_NO = 0x98

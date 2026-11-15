@@ -18,7 +18,7 @@ MEASUREMENT (py65 = pure CPU work; WSYNC/TIM64T/INTIM stubbed):
             WSYNC-off-by-one / HUD-bar class)
   kernel WSYNC count constant per frame (structure drift guard)
 
-Budgets are the documented timers (kernel.asm VBL #31 = 1984c,
+Budgets are the documented timers (bank0.asm VBL #31 = 1984c,
 overscan #44 = 2816c; frame = V(#31)+O(#44) = 272 lines (wall model)). A timer segment
 whose WORK exceeds its window loses the wait and eats extra scanlines on
 hardware; py65 work > budget predicts the Stella jump.
@@ -96,12 +96,12 @@ for _need in ('StartFrame', 'Overscan', 'EnterRoom', 'LoadLevel', '.Row',
 PC_START = LABELS['StartFrame']
 # Blank room-transition frame (2026-11): bank5 TransBody's `.TBgo` entry.
 PC_TBGO = None
-for _l in (SRC / 'bank5.lst').read_text(errors='replace').splitlines():
+for _l in (SRC / 'bank7.lst').read_text(errors='replace').splitlines():
     _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+\.?TBgo\s*$', _l)
     if _m:
         PC_TBGO = int(_m.group(1), 16)
 if PC_TBGO is None:
-    sys.exit('label .TBgo not found in bank5.lst')
+    sys.exit('label .TBgo not found in bank7.lst')
 blank_active = False
 blank_start = 0
 blank_lines = []              # length of each blank transition frame, in lines
@@ -119,13 +119,13 @@ PC_WAIT = LABELS['.WaitVBLANK']  # INTIM poll entry = end of pure VBL work
 # measurement must end at ITS first INTIM read, not only at bank0's .WaitVBLANK (2026-11: the
 # guard stopped at the bank0 dispatch and missed 730c of prologue -> enemy rooms overran the window)
 PC_WAIT6 = None
-for _l in (SRC / 'bank6.lst').read_text(errors='replace').splitlines():
+for _l in (SRC / 'bank1.lst').read_text(errors='replace').splitlines():
     _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+\.wait\s*$', _l)
     if _m:
         PC_WAIT6 = int(_m.group(1), 16)
         break
 if PC_WAIT6 is None:
-    sys.exit('label .wait not found in bank6.lst')
+    sys.exit('label .wait not found in bank1.lst')
 PC_TITLE = LABELS['CallPad_TitleBand']  # bank0 pad -> bank1 TitleBand (bands 1-2)
 
 # overscan sub-marks for attribution (which caller eats the timer window)
@@ -238,7 +238,7 @@ def step():
 def zp_byte_addr(name):
     """Address of a `Name byte` ZP decl (sequential from org $80)."""
     addr = None
-    for line in (SRC / 'kernel.asm').read_text(errors='replace').splitlines():
+    for line in (SRC / 'bank0.asm').read_text(errors='replace').splitlines():
         if re.match(r'\s*org\s+\$80\b', line):
             addr = 0x80
             continue
@@ -919,7 +919,7 @@ for _fr in [int(x) for x in os.environ.get('SIM_HIST', '').split(',') if x]:
         continue
     _inv = {v: k for k, v in LABELS.items()}
     _inv2 = {}
-    for _l in (SRC / 'bank2.lst').read_text(errors='replace').splitlines():
+    for _l in (SRC / 'bank6.lst').read_text(errors='replace').splitlines():
         _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+'
                       r'([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$', _l)
         if _m:

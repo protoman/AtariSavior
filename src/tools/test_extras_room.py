@@ -47,14 +47,14 @@ NAMES = {"B3RoomBlocks", "PF0Buf", "RoomRectsLo", "RoomRectsHi",
          "LevelConnSpare", "RoomNo",
          "LevExtrasLo", "LevExtrasHi", "RoomM1Hot", "RoomNoStream"}
 NAMES7 = {"LEVEL_ShapeTable", "RowPoolPF0", "RowPoolPF1", "RowPoolPF2"}
-LAB = parse_labels(FROZEN / "bank3.lst", NAMES)
+LAB = parse_labels(FROZEN / "bank5.lst", NAMES)
 LAB.update(parse_labels(FROZEN / "bank4.lst", NAMES7))
 NAMES = NAMES | NAMES7
 missing = NAMES - LAB.keys()
 if missing:
-    sys.exit(f"bank3.lst labels missing: {sorted(missing)}")
+    sys.exit(f"bank5.lst labels missing: {sorted(missing)}")
 
-BANK3 = bytearray((FROZEN / "bank3.bin").read_bytes())
+BANK3 = bytearray((FROZEN / "bank5.bin").read_bytes())
 BANK7 = bytearray((FROZEN / "bank4.bin").read_bytes())   # shapes (2026-11-10)
 
 # --- test-owned staging area inside bank3's $F010 data window tail ----------

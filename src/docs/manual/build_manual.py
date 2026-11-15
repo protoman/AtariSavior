@@ -2,7 +2,7 @@
 """Builds the S.A.V.I.O.R. instruction manual (PDF), in the spirit of the
 classic Atari 2600 cartridge booklets.
 
-Sprites are read straight from kernel.asm (ObjSprites / ObjColorTab /
+Sprites are read straight from bank0.asm (ObjSprites / ObjColorTab /
 PlayerSpriteA / PlayerColTable), so the pictures follow the art in the ROM.
 
 Run:  python3 docs/manual/build_manual.py     ->  docs/manual/savior_manual.pdf
@@ -23,7 +23,7 @@ from reportlab.platypus import (BaseDocTemplate, Flowable, Frame, KeepTogether,
 
 SRC = Path(__file__).resolve().parents[2]
 OUT = SRC / "docs" / "manual" / "savior_manual.pdf"
-KERNEL = (SRC / "kernel.asm").read_text()
+KERNEL = (SRC / "bank0.asm").read_text()
 VERSION = (SRC / "VERSION").read_text().strip()      # the release version (src/VERSION)
 SHOT_HUD = Path(__file__).resolve().parent / "hud_8lives.png"
 SHOT_TITLE = SRC / "screenshots" / "releases" / "0.8" / "001.png"

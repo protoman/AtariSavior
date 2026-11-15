@@ -33,7 +33,7 @@ from py65.devices.mpu6502 import MPU  # noqa: E402
 
 FROZEN = ROOT / "tests" / "frozen"
 
-L1 = parse_labels(FROZEN / "bank1.lst", {"MenuMain"})
+L1 = parse_labels(FROZEN / "bank2.lst", {"MenuMain"})
 L0 = parse_labels(FROZEN / "bank0.lst",
                   {"PlayerLives", "PlayerBombs", "LevelStartRoom", "LineCount",
                    "BombX", "Level", "TickCounter", "BarLevel"})

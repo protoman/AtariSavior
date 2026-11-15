@@ -17,7 +17,7 @@ LEVEL = ["Level", "LevelRoomN", "LevelPFDataLo", "LevelPFDataHi",
 
 def writers(name):
     out = []
-    for f in ("kernel.asm", "bank1.asm", "bank2.asm", "bank3.asm"):
+    for f in ("bank0.asm", "bank2.asm", "bank6.asm", "bank5.asm"):
         label = "?"
         for i, ln in enumerate((SRC / f).read_text(errors="replace").splitlines(), 1):
             code = ln.split(";")[0]

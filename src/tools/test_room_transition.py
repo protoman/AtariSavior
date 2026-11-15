@@ -45,7 +45,7 @@ PC_SAMPLE = LABELS['Overscan']
 
 def zp(name):
     addr = None
-    for line in (SRC / 'kernel.asm').read_text(errors='replace').splitlines():
+    for line in (SRC / 'bank0.asm').read_text(errors='replace').splitlines():
         if re.match(r'\s*org\s+\$80\b', line):
             addr = 0x80
             continue

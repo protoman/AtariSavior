@@ -30,9 +30,9 @@ from test_cell_map import parse_labels  # noqa: E402
 
 ROM = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("/tmp/opencode/savior_qa.bin")
 L0P = ROM.with_name(ROM.stem + ".bank0.lst")
-L2P = ROM.with_name(ROM.stem + ".bank2.lst")
+L2P = ROM.with_name(ROM.stem + ".bank6.lst")
 if not (ROM.exists() and L0P.exists() and L2P.exists()):
-    sys.exit(f"{ROM} (+ .bank0.lst/.bank2.lst) missing — run: "
+    sys.exit(f"{ROM} (+ .bank0.lst/.bank6.lst) missing — run: "
              f"bash tools/qa_build.sh")
 
 BANKS = [bytearray(ROM.read_bytes()[4096 * i:4096 * (i + 1)]) for i in range(8)]

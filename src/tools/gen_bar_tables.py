@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Power-bar table generator (bugs.md #30) — uniform drain chunks.
 
-Regenerates bank1.asm's BarDelayTable / BarFineTable from path cycle
+Regenerates bank2.asm's BarDelayTable / BarFineTable from path cycle
 counts (never hand-transcribe — the 2026-09-23 hand pass caused 9
 mismatches, power_bar_smooth_plan.md H3b-3).
 
@@ -22,14 +22,14 @@ Design (2026-10-11 user report):
     the generator snaps targets down to the nearest reachable value.
 
 Run:  /home/iuri/python3/bin/python3 tools/gen_bar_tables.py [--check]
-  --check  only verify the tables already in bank1.asm (CI-style).
+  --check  only verify the tables already in bank2.asm (CI-style).
 """
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BANK1 = ROOT / "bank1.asm"
+BANK1 = ROOT / "bank2.asm"
 
 K = 8               # seconds (BarLevel decs) per visible chunk
 FULL_HOLD = 7       # extra decs held all-yellow after t=0 (first red at t=K=8)
@@ -198,7 +198,7 @@ def main():
         sys.exit(1)
     print("verify OK: monotone, reachable, 1-4c steps, K-grid, ratio<=1.7")
     if check:
-        # verify the tables actually IN bank1.asm match the generator
+        # verify the tables actually IN bank2.asm match the generator
         src = BANK1.read_text()
         for name, want in (("BarDelayTable", delay_of), ("BarFineTable", fine_of)):
             m = re.search(rf"{name}:[^\n]*\n((?:\s*\.byte[^\n]*\n)+)", src)

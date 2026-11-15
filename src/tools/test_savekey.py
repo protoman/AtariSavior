@@ -32,7 +32,7 @@ if "SkService" not in L4:
     sys.exit("frozen bank4 has no SkService yet (red)")
 SERVICE = L4["SkService"]
 
-# game variables the ops touch (kernel.asm ZP; hand copies live in bank4.asm)
+# game variables the ops touch (bank0.asm ZP; hand copies live in bank4.asm)
 LEVEL, LIVES = 0xA3, 0xAC
 SC_TH, SC_HU, SC_TE = 0xF3, 0xF4, 0xF5
 BASE = 0x7FE0                       # record block in the chip

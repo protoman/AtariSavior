@@ -32,15 +32,15 @@ def lst_labels(path: Path) -> dict[str, int]:
 def main() -> None:
     labels0 = lst_labels(SRC / "bank0.lst")
     rom0 = (SRC / "bank0.bin").read_bytes()
-    kernel = (SRC / "kernel.asm").read_text(encoding="utf-8")
-    bank2 = (SRC / "bank2.asm").read_text(encoding="utf-8")
+    kernel = (SRC / "bank0.asm").read_text(encoding="utf-8")
+    bank2 = (SRC / "bank6.asm").read_text(encoding="utf-8")
 
     # --- 1) color table bytes -------------------------------------------
-    # design offsets come from kernel.asm (they move whenever a type
+    # design offsets come from bank0.asm (they move whenever a type
     # graduates to taller art — per-type heights since Phase 6)
     def obj_off(name: str) -> int:
         m = re.search(rf"^{name}\s*=\s*(\d+)", kernel, re.M)
-        assert m, f"{name} EQU not found in kernel.asm"
+        assert m, f"{name} EQU not found in bank0.asm"
         return int(m.group(1))
     O_MINER, O_MOTH, O_BAT, O_BOMB = (obj_off(n) for n in
                                      ("OBJ_MINER", "OBJ_MOTH", "OBJ_BAT", "OBJ_BOMB"))
@@ -68,7 +68,7 @@ def main() -> None:
     # body must live in the bank that owns the art.
     want = {k: labels0[k] for k in
             ("PlayerSpriteA", "PlayerSpriteB", "PlayerWalkA", "PlayerWalkB")}
-    labels2 = lst_labels(SRC / "bank2.lst")
+    labels2 = lst_labels(SRC / "bank6.lst")
     for name in list(want) + ["PickPlayerFrame"]:
         assert name not in labels2, f"bank2 still defines {name} (twin/tramp)"
     assert "PickPlayerFrame" in labels0, "PickPlayerFrame body must be in bank0"

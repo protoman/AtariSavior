@@ -49,9 +49,9 @@ def lst_labels(path):
 
 
 L0 = lst_labels(FROZEN / "bank0.lst")
-L1 = lst_labels(FROZEN / "bank1.lst")
-L2 = lst_labels(FROZEN / "bank2.lst")
-L3 = lst_labels(FROZEN / "bank3.lst")   # C7: extras
+L1 = lst_labels(FROZEN / "bank2.lst")
+L2 = lst_labels(FROZEN / "bank6.lst")
+L3 = lst_labels(FROZEN / "bank5.lst")   # C7: extras
 L7 = lst_labels(FROZEN / "bank4.lst")   # 2026-11-10: shape blocks + row pool
 PC_STARTFRAME = L0["StartFrame"]
 PC_BMW = L1["BombMarkWalls"]

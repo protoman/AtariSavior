@@ -29,7 +29,7 @@ from py65.devices.mpu6502 import MPU  # noqa: E402
 
 FROZEN = ROOT / "tests" / "frozen"
 NEED = {"ExtrasLoad", "LevelConnSpare", "Level", "EnemyRamP", "PF0Buf"}
-L = parse_labels(FROZEN / "bank3.lst", NEED)
+L = parse_labels(FROZEN / "bank5.lst", NEED)
 missing = NEED - L.keys()
 if missing:
     sys.exit(f"frozen labels missing: {sorted(missing)}")

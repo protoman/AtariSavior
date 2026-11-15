@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT
-K = (SRC / "kernel.asm").read_text(encoding="utf-8")
+K = (SRC / "bank0.asm").read_text(encoding="utf-8")
 CL = (ROOT / "tools" / "convert_level.py").read_text(encoding="utf-8")
 CR = (ROOT / "tools" / "convert_room.py").read_text(encoding="utf-8")
 
@@ -38,7 +38,7 @@ WANT_FORMAT = 8
 def kconst(name):
     m = re.search(rf"^{name}\s*=\s*(\$?)([0-9A-Fa-f]+)\b", K, re.M)
     if not m:
-        sys.exit(f"kernel.asm: {name} not found")
+        sys.exit(f"bank0.asm: {name} not found")
     return int(m.group(2), 16 if m.group(1) else 10)
 
 
@@ -71,7 +71,7 @@ want(kconst("PLAYER_MAX_Y"), bands * lines - sprite_h,
 # The line->band table: one entry per 4 scanlines, band = line // LINES_PER_TILE.
 m = re.search(r"^YToRowTable:\s*\n((?:\s*\.byte[^\n]*\n)+)", K, re.M)
 if not m:
-    fails.append("kernel.asm: YToRowTable not found")
+    fails.append("bank0.asm: YToRowTable not found")
 else:
     body = re.sub(r";[^\n]*", "", m.group(1))
     table = [int(b.strip().lstrip("$"), 16)

@@ -35,7 +35,7 @@ FROZEN = Path(os.environ.get("M1_HOT_FROZEN")
 NEED = {"HotOverlapBody", "PF0Buf", "RoomMetaA", "RoomMetaB", "RoomM1Hot",
         "EnemyDeadMask", "RoomX", "Temp", "CollisionCellY", "CollisionEndY",
         "CollisionCellX", "CollisionEndX", "RoomRectsLo", "RoomRectsHi"}
-L3 = parse_labels(FROZEN / "bank3.lst", NEED)
+L3 = parse_labels(FROZEN / "bank5.lst", NEED)
 missing = NEED - L3.keys()
 if missing:
     sys.exit(f"frozen bank3 labels missing: {sorted(missing)}")

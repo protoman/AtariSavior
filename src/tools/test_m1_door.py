@@ -39,7 +39,7 @@ missing = NEED - L0.keys()
 if missing:
     sys.exit(f"frozen labels missing: {sorted(missing)}")
 
-# kernel.asm ColOff/ColMask (20 PF cells: 4 PF0, 8 PF1, 8 PF2). The lst has no
+# bank0.asm ColOff/ColMask (20 PF cells: 4 PF0, 8 PF1, 8 PF2). The lst has no
 # symbol line for data labels, so locate the 40-byte pair by its signature and
 # assert it — the walk's own tables, not a hand-typed copy.
 _SIG = bytes([0, 0, 0, 0] + [4] * 8 + [8] * 8

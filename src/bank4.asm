@@ -533,6 +533,8 @@ ShapeStep7:
 ;   return $FBF8: this `sta $1FF4` selects bank0, whose `rts` at $FBFB returns
 ;          to the caller (bank0's ReturnPad is the same two instructions)
 ; ------------------------------------------------------------------------------
+    .ds $F9BF - *, 0
+    jmp PHMOverlay                 ; OverlayTramp hop (bank0 `sta BK_OVERLAY` at $F9BC)
     .ds $FBD0 - *, 0
     sta BK_ROOMS                   ; twin of bank0's EnterRoom pad (the transition frame jumps here)
     .ds $FBF8 - *, 0
@@ -555,6 +557,285 @@ ReturnPad:
 RomVersion:
     include "version.asm"
     include "trans.inc"
+
+; ==============================================================================
+; Phase 4 asym-patch collision overlay cluster - moved here from bank0 (the bank0 reserve of >= 200 B).
+; Entered from bank0's OverlayTramp: `sta BK_OVERLAY` at $F9BC, then the `jmp PHMOverlay` fetched at $F9BF
+; (below). Exits are `jmp ReturnPad` ($FBF8: sta BK_GENERAL, bank0's rts at $FBFB = the PHM caller; flags kept).
+; DoorLocked is inlined (OvDoorLocked); its hot tail is the HotOverlapFlag twin pad at $FFEC
+; (`sta BK_EXTRAS`, the extras bank serves `jmp HotOverlapBody` at $FFEF and ends through ReturnPad).
+; ColOff/ColMask are copies (bank0 keeps the pair for the PHM walk); OvHead/OvTail/M1OffTab live only here.
+; ==============================================================================
+RoomX = $80
+PlayerDir = $82
+LineCount = $84
+Temp = $88
+CollisionX = $8B
+CollisionCellY = $8D
+CollisionEndY = $8F
+RectCount = $92
+RoomPF0Lo = $99
+RoomPF0Hi = $9A
+LevelStartRoom = $A7
+EnemyDeadMask = $BA
+PF0Buf = $C3
+PLAYER_WIDTH = 7
+PHMOverlay:
+    ; LineCount packed: b4-b7 = right_col+1, b0-2 = bands with the painted
+    ; ball-strip ($ff BandTab entries). D6 envelope: ONE right column
+    ; [BallX-7, BallX] px, BallX = 87+8*rc — overlay is additive (cells
+    ; painted only where the mirrored cell is open, never hot).
+    ; Exact visible_left (same math as PHM's prologue), then px overlap of
+    ; [vl, vl+6] (PLAYER_WIDTH=7 lit) with the patch column, then band x rows.
+    sec
+    lda RoomX
+    sbc PlayerDir
+    cmp #15
+    bcs .Ov7
+    sec
+    sbc #4
+    jmp .OvVL
+.Ov7:
+    sbc #7
+.OvVL:
+    clc
+    adc PlayerDir               ; A = visible_left px
+    sta CollisionX              ; walk temps are free on the miss path
+    lda LineCount
+    lsr
+    lsr
+    lsr
+    lsr                         ; n = right_col+1 (1..10)
+    beq .OvClear                ; 2026-10-23: n = 0 means this room has NO ball
+                                ;   column. Without this the test invented a
+                                ;   phantom ball at x79 (BallX = 79 + 8n) and a
+                                ;   player standing near it was routed to the
+                                ;   shutter/right-door path, so the LEFT (M1)
+                                ;   door test never ran — the door never blocked.
+    asl
+    asl
+    asl                         ; 8n
+    clc
+    adc #79                     ; BallX = 79+8n = 87+8*rc (patch right edge)
+    sta RectCount               ; scratch (NOT CollisionCellX): the prologue
+                                ; box must survive for HotOverlapFlag — OvM1Block
+                                ; funnels block hits there for hot-death. Scratch
+                                ; = RectCount ($92): free after the cell walk,
+                                ; RowIdx re-inits at kernel entry. NEVER Temp —
+                                ; CheckP0Left/Right read the joystick in Temp
+                                ; AFTER this physics call (Temp scratch here
+                                ; left D3=0 = phantom right-press = drift bug).
+    lda CollisionX
+    cmp RectCount               ; vl vs BallX
+    beq .OvT2
+    bcs .OvClear                ; vl > BallX → player fully right of patch
+.OvT2:                          ; (vl < BallX falls through)
+    lda RectCount
+    sec
+    sbc #13                     ; BallX-13 (lit span is 7px, not 8: [vl,vl+6])
+    cmp CollisionX              ; vs vl: overlap iff BallX-13 <= vl
+    beq .OvBand
+    bcs .OvClear                ; BallX-13 > vl: no overlap (2026-11-14: order swapped so the miss falls
+                                ;   straight into OvM1Block - the `jmp` is gone, -3 B in a full bank)
+.OvBand:
+    jmp OvShutBand              ; band overlap → shutter kill / strip solid
+.OvClear:
+                                ; right-strip miss → M1 (left) strip test (OvM1Block follows);
+                                ; IT returns with C set/clear.
+                                ; Shutter rooms: miss here = player left of
+                                ; the VISIBLE right-half block → passable
+                                ; (kill follows the drawn block only, async
+                                ; ruling 2026-10-14 — no left mirror)
+
+OvM1Block:
+    ; Phase 4 M1 (left strip) collision overlay. Entered by JMP from
+    ; PHMOverlay's .OvClear — 0 pushes; both exits rts to the PHM caller.
+    ; In: CollisionX = vl, CollisionCellY/EndY =
+    ; player row range (survive the right tests — do NOT clobber the
+    ; prologue box: CellX/EndX/CellY/EndY must stay intact, the block
+    ; path hands them to HotOverlapFlag). Scratch = RectCount ($92; M1X,
+    ; then ℓ math — see PHMOverlay note). Kill-aware
+    ; (EnemyDeadMask b4); a row blocks iff its PF cell at col ℓ is open —
+    ; the wall-hide envelope guarantees open ⟺ patched (every band at ℓ
+    ; is wall or M1-patched, never plain-open).
+    lda EnemyDeadMask
+    and #$10                    ; b4 = M1 strip destroyed → transparent
+    bne .OvM1no
+    lda RoomPF0Lo               ; staged MetaA ($99)
+    and #$01                    ; Phase 5: b0 = M1 strip on the RIGHT half
+    tax                         ;   (door band mask is $02 → b0 free)
+    lda RoomPF0Lo               ; reload MetaA
+    lsr
+    lsr
+    lsr
+    lsr                         ; m1_col+1 (0 = no M1 patch)
+    beq .OvM1no
+    asl
+    asl
+    asl                         ; 8*(m1_col+1)
+    clc
+    adc M1OffTab,X              ; -1 (left, $FF) / +79 (right, $4f) → the
+                                ;   side's M1X (7+8*col / 87+8*col) — MUST
+                                ;   match B3StageBand's staging (its own twin)
+    sta RectCount               ; scratch M1X (EndX = prologue min col is
+                                ; CollisionEndX — kept intact for HotOverlapFlag)
+    ; --- contact test: the door is a solid 8 px block [M1X-7, M1X] --------
+    ; The player box is 7 lit px [vl, vl+6], so the block must fire as soon
+    ; as the boxes TOUCH: vl in [M1X-13, M1X]. Both sides are right-justified
+    ; (the M1 is drawn [x-7, x]), so the same window covers a left-wall door
+    ; approached from its right and a right-wall one from its left.
+    ; Two earlier shapes were wrong and are recorded here so they stay dead:
+    ;  - one-sided [M1X-12, M1X] blocked, but the LEFT door read the wrong PF
+    ;    register (the old (M1X-7)>>3 cell) and never fired;
+    ;  - [M1X-6, M1X] (span the strip's last px) fired only after the player
+    ;    had walked 7 px INTO the art: "I can enter inside it, but I can't
+    ;    pass its right side" — the block plane sat one tile right of the
+    ;    drawing (user report 2026-10-23).
+    ; 2026-10-25 (user, level 7 room 1: "half the player can move inside the
+    ; wall"): below argument 15 SetObjectXPos strobes RESM1 inside HBLANK, so
+    ; the strip is DRAWN 3 px right of [M1X-7, M1X] - the same clamp that makes
+    ; the player's visible edge RoomX-4 (not -7) under x=15. The col-0 strip
+    ; (M1X 7) occupies [3,10]; test the box edge 3 px closer. vl < 3 (the
+    ; player at the screen edge) borrows: that is still contact.
+    lda RectCount
+    cmp #14                     ; M1X >= 14 (argument >= 15): no clamp
+    lda CollisionX              ; vl = the box's left edge (lda keeps C)
+    bcs .OvM1Cmp
+    sbc #2                      ; C clear: A - 3
+    bcc .OvM1Band
+.OvM1Cmp:
+    cmp RectCount               ; M1X = the strip column
+    beq .OvM1Band               ; the column is the box's left edge
+    bcs .OvM1no                 ; vl > M1X → the strip is left of the box
+    clc
+    adc #PLAYER_WIDTH + 6       ; vl + 13 = box right edge + the strip's 7 px
+    cmp RectCount
+    bcc .OvM1no                 ; vl + 13 < M1X → no contact with [M1X-7, M1X]
+.OvM1Band:
+    ; 2026-10-23: ℓ is the PF CELL of the strip (ColOff/ColMask are indexed by
+    ; x>>2, 20 cells = the 80 px half, mirrored) - it was (M1X-7)>>3, which
+    ; pointed one register off for a left strip: a door at col 7 (x=63, cell
+    ; 15, PF2 bit 3) was looked up as cell 7 (PF1 bit 4), the live $FC has that
+    ; bit set, so the scan read a WALL and called the door passable.
+    lda RectCount
+    lsr
+    lsr                         ; ℓ = M1X / 4 = the PF cell (0..19 left half)
+    cmp #20                     ; the 80 px half = 20 PF cells (mirrored)
+    bcc .OvM1Cell
+    eor #$FF                    ; right half: A = 255 - ℓ (one's complement)
+    sec
+    adc #39                     ; 255 - ℓ + 40 = 295 - ℓ = 39 - ℓ (mod 256)
+                                ; reflect mapping (test_cell_map.visible_range).
+                                ; Was `eor #%00011111` = 31 - ℓ, off by 8 cells:
+                                ; the level-4 room 3 door (M1X 103, cell 25)
+                                ; read cell 6, a WALL, and returned clc — the
+                                ; player walked through it (2026-10-23 trace:
+                                ; 268 overlaps, all .OvM1no, X=6 at $FAA6).
+.OvM1Cell:
+    tax                         ; X = ℓ (PHM callers preserve X themselves)
+    lda CollisionCellY
+    sta RectCount               ; $92 walk temp — free after the cell walk
+                                ; (RowIdx re-inits at kernel entry)
+.OvM1Row:
+    lda RectCount
+    clc
+    adc ColOff,X                ; PF0/PF1/PF2 group offset (0/3/6)
+    tay
+    lda PF0Buf,Y                ; same cell read as PlayerHitsMap
+    and ColMask,X
+    beq .OvM1block              ; open → patch cell active in this row
+    lda RectCount
+    cmp CollisionEndY
+    beq .OvM1no
+    inc RectCount
+    bne .OvM1Row                ; row never wraps to 0
+.OvM1block:
+    ; Blocked by the M1 cell: run the hot check too — convert emits the
+    ; M1 patch cell as a hot rect on the hot band (mask $00, never dies
+    ; with a wall), so touching the block on a hot band = death, exactly
+    ; like a hot PF wall. Off-band / non-hot: body finds no rect → sec,
+    ; still blocked. b4 (strip destroyed) never reaches here (.OvM1no).
+    ; Phase 5 key: touching the M1 strip (left door) while KeyHeld removes
+    ; it (b4) — touch, not mere possession.
+    lda LevelStartRoom
+    bmi .OvM1unlock
+    jmp OvDoorLocked              ; locked: blocks in a cold room too (fill)
+.OvM1unlock:
+    lda EnemyDeadMask
+    ora #$10                    ; b4 = M1 strip (left door) destroyed
+    sta EnemyDeadMask
+    clc
+    jmp ReturnPad                         ; passable (bank0 caller)
+.OvM1no:
+    clc
+    jmp ReturnPad
+
+; ------------------------------------------------------------------------------
+; OvShutBand — right-column strip on the PHMOverlay miss path. Entered from
+; PHMOverlay .OvBand (right-column + player-band overlap). MetaB b7 marks a
+; LOCKED_DOOR right strip; b7 clear is a plain D6 strip. A plain strip is
+; solid. A door strip is solid until the key is held, then the touch
+; destroys it (EnemyDeadMask b3) and the walk passes (Phase 5).
+; Kill follows the VISIBLE right-half block only (async ruling 2026-10-14 —
+; no left mirror). The retired vcrunch kill test is gone.
+; ------------------------------------------------------------------------------
+OvShutBand:
+    ldx CollisionCellY
+    lda OvHead,X                ; bits >= row
+    ldx CollisionEndY
+    and OvTail,X                ; bits <= row
+    and LineCount               ; active-band mask (b0-2)
+    beq .OSBm1                  ; not in a painted band → M1 strip test
+    and #$02                    ; b1 = the box overlaps the strip's band 2 (the hot band)
+    tax                         ;   X = 2 / 0 (PHM callers preserve X themselves)
+    lda RoomPF0Hi               ; staged MetaB ($9A)
+    bpl .OSBsolid               ; b7=0: plain D6 strip → solid
+    lda LevelStartRoom          ; KeyHeld?
+    bpl .OSBsolid               ; no key → locked (solid)
+    lda EnemyDeadMask           ; key held: the touch destroys the strip
+    ora #$08                    ; b3 = ball strip (right door) destroyed
+    sta EnemyDeadMask
+    jmp .OSBm1                  ; passable (strip blanked next B3StageBand)
+.OSBsolid:
+    ; User 2026-11-11 (level 9 room 1): "all elements (PF or simulating PF) in a hot band
+    ; should kill on touch" - the ball strip is drawn in the hot colours there, so touching
+    ; it on the hot band is HotBump (Temp b7), like the M1 block and a hot PF wall.
+    txa
+    beq .OSBsolidRet            ; not on the hot band
+    bit RoomPF0Hi               ; MetaB: V = b6 hot room
+    bvc .OSBsolidRet
+    asl Temp
+    sec
+    ror Temp                    ; Temp b7 = HotBump: UpdateP0Vertical turns it into LoseLife
+.OSBsolidRet:
+    sec
+    jmp ReturnPad
+.OSBm1:
+    jmp OvM1Block
+
+OvDoorLocked:                   ; bank0's DoorLocked, inlined
+    lda RoomPF0Hi               ; staged MetaB
+    and #$40                    ; b6 = hot shape
+    bne .ODLhot
+    sec                         ; cold room: the door is simply solid
+    jmp ReturnPad
+.ODLhot:
+    jmp $FFEC                   ; hot band: the overlap body owns the hit (C=1)
+
+ColOff:     .byte 0,0,0,0, 4,4,4,4,4,4,4,4, 8,8,8,8,8,8,8,8
+ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
+; OvHead/OvTail/M1OffTab moved here from the overlay cluster (2026-11-11: the ball-strip
+; hot kill needed their 10 bytes; they are data, position-free, but keep OvHead/OvTail adjacent -
+; test_async_band3 reads them as one 8-byte signature).
+OvHead:
+    .byte 15,14,12,8            ; rows 0..3 -> mask bits >= row (4 bands)
+OvTail:
+    .byte 1,3,7,15              ; rows 0..3 -> mask bits <= row
+M1OffTab:                       ; MetaA b0 -> M1 x-offset.
+    .byte $ff, $4f              ; B3StageBand has the twin.
+
+    .ds $FFEC - *, 0
+    sta BK_EXTRAS                   ; twin of bank0's HotOverlapFlag (the extras bank serves the jmp at $FFEF)
 
     .ds $FFFA - *, 0
     .word $F000

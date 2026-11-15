@@ -1,28 +1,29 @@
 ; ==============================================================================
-; Bank selectors by ROLE (docs/agents/banks.md). Code never writes a literal $1FF4-$1FFB: it writes
-; the selector of the bank that holds the ROLE it wants (`sta BK_ROOMS`), so the physical bank
-; number of every role is decided HERE and nowhere else. The F4 hotspot of physical bank n is $1FF4+n.
-;
-; BKI_x = the physical bank (0-7) that holds role x. OLD layout (what build.sh assembles today):
+; NEW ROM bank selectors by ROLE (docs/agents/banks.md, Layout v3). BKI_x = the physical bank of role x.
+; The new ROM is built from newrom/ (tools/build_newrom.sh); this file shadows src/banks.inc there.
 ; ==============================================================================
 BKI_GENERAL   = 0       ; main loop, input, physics, collision, sound, the fold pads
-BKI_HUD       = 1       ; HUD, title and level select, raft, bomb wall marks, strip blast
-BKI_ROOMS     = 2       ; level room half: room readers, exits, laser, moth, blast + the room tables
-BKI_EXTRAS    = 3       ; level extras half: phase/hcrunch/hot/dark walkers + the extras data
+BKI_CAVE      = 1       ; the generated gameplay cave kernel (+ its prologue)
+BKI_HUD       = 2       ; HUD, title, level select
+BKI_GAMEPLAY  = 3       ; raft, bomb wall marks, strip blast, stage band, colour build
 BKI_SAVE      = 4       ; save-to-cartridge (I2C)
 BKI_TRANS     = 4       ; version header, blank transition frame, attract script
-BKI_CAVE      = 6       ; the generated gameplay cave kernel
-BKI_PROLOGUE  = 7       ; cave kernel start-up code
-BKI_ROOMS_B   = 5       ; room bank B: identical code to ROOMS (bank2), the data of the levels past LEVEL_SPLIT
-BKI_MODELS    = 4       ; room models: the shape step + the shape blocks / row pool (shares bank4, plan phase 3)
+BKI_MODELS    = 4       ; room models: shape step + shape blocks / row pool
+BKI_OVERLAY   = 4       ; asym-patch collision overlay cluster (placed when bank 4 is filled)
+BKI_EXTRAS    = 5       ; extras walkers + extras data of all 32 levels
+BKI_ROOMS     = 6       ; room bank A: room code + room data
+BKI_ROOMS_B   = 7       ; room bank B: same code, the levels past LEVEL_SPLIT
+BKI_PROLOGUE  = 3       ; cave kernel start-up code (does not fit in the cave bank: 2 KB tables + 1.7 KB code)
 
 BK_GENERAL    = $1FF4 + BKI_GENERAL
+BK_CAVE       = $1FF4 + BKI_CAVE
 BK_HUD        = $1FF4 + BKI_HUD
-BK_ROOMS      = $1FF4 + BKI_ROOMS
-BK_EXTRAS     = $1FF4 + BKI_EXTRAS
+BK_GAMEPLAY   = $1FF4 + BKI_GAMEPLAY
 BK_SAVE       = $1FF4 + BKI_SAVE
 BK_TRANS      = $1FF4 + BKI_TRANS
-BK_CAVE       = $1FF4 + BKI_CAVE
-BK_PROLOGUE   = $1FF4 + BKI_PROLOGUE
 BK_MODELS     = $1FF4 + BKI_MODELS
+BK_OVERLAY    = $1FF4 + BKI_OVERLAY
+BK_EXTRAS     = $1FF4 + BKI_EXTRAS
+BK_ROOMS      = $1FF4 + BKI_ROOMS
 BK_ROOMS_B    = $1FF4 + BKI_ROOMS_B
+BK_PROLOGUE   = $1FF4 + BKI_PROLOGUE

@@ -53,13 +53,13 @@ PC_START = LABELS["StartFrame"]
 # sits at LEVEL1_AsyncExtras+1/+2 (header = flags, MetaA, MetaB).
 _pat = re.compile(r"^\s*\d+\s+([0-9a-f]{4})\s+LEVEL1_AsyncExtras\s*$")
 EXTRAS = None
-for _l in (FROZEN / "bank3.lst").read_text(errors="replace").splitlines():
+for _l in (FROZEN / "bank5.lst").read_text(errors="replace").splitlines():
     _m = _pat.match(_l)
     if _m:
         EXTRAS = int(_m.group(1), 16)
         break
 if EXTRAS is None:
-    sys.exit("LEVEL1_AsyncExtras label not found in bank3.lst")
+    sys.exit("LEVEL1_AsyncExtras label not found in bank5.lst")
 
 
 def run(rom: Path, band1: int = 0xFF) -> dict:

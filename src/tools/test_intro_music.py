@@ -69,7 +69,7 @@ sys.path.insert(0, str(SRC / "tools"))
 import gen_intro_theme  # noqa: E402
 
 _b1 = {}
-for _l in open(SRC / "bank1.lst", errors="replace"):
+for _l in open(SRC / "bank2.lst", errors="replace"):
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$", _l)
     if _m:
         _b1.setdefault(_m.group(2), int(_m.group(1), 16))

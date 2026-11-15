@@ -73,7 +73,7 @@ def check(banks, labels) -> None:
     for label in ("M0Shape", "M2Shape", "M4Shape", "RoomNoStream"):
         if label not in labels:
             raise SystemExit(f"test_fixtures: label {label} missing in "
-                             "bank4.lst/bank3.lst — re-freeze or retire the fixture")
+                             "bank4.lst/bank5.lst — re-freeze or retire the fixture")
 
 
 if __name__ == "__main__":
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     from test_cell_map import parse_labels  # noqa: PLC0415
     lab = parse_labels(root / "tests" / "frozen" / "bank4.lst",
                        {"M0Shape", "M2Shape", "M4Shape"})
-    lab.update(parse_labels(root / "tests" / "frozen" / "bank3.lst", {"RoomNoStream"}))
+    lab.update(parse_labels(root / "tests" / "frozen" / "bank5.lst", {"RoomNoStream"}))
     check(None, lab)
     for name, blob in (("M2", M2_STREAM), ("M4", M4_STREAM)):
         count = blob[0]

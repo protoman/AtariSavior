@@ -47,7 +47,7 @@ for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
         LABELS.setdefault(_m.group(2), int(_m.group(1), 16))
 
 EQU = {}
-for _line in (SRC / "kernel.asm").read_text(errors="replace").splitlines():
+for _line in (SRC / "bank0.asm").read_text(errors="replace").splitlines():
     _m = re.match(r"^([A-Za-z_][A-Za-z_0-9]*)\s*=\s*\$([0-9a-fA-F]+)", _line)
     if _m and int(_m.group(2), 16) <= 0xFF:
         EQU[_m.group(1)] = int(_m.group(2), 16)
@@ -58,7 +58,7 @@ def zp(name):
     if name in EQU:
         return EQU[name]
     addr = None
-    for line in (SRC / "kernel.asm").read_text(errors="replace").splitlines():
+    for line in (SRC / "bank0.asm").read_text(errors="replace").splitlines():
         if re.match(r"\s*org\s+\$80\b", line):
             addr = 0x80
             continue
