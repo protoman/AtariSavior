@@ -481,6 +481,36 @@ BombClearMask:
     .byte $7F, $BF, $DF, $EF, $F7, $FB, $FD, $FE ; col 4-11 (PF1)
     .byte $FE, $FD, $FB, $F7, $EF, $DF, $BF, $7F ; col 12-19 (PF2)
 
+; BMWJ — which slice of the blast this call does. Out: A = 0 (BombTimer 60 = the edge, or 59),
+; 1 (timer 58), 2 (timer 57), or $80 = any other timer (legacy / tests: the whole blast). N = bit 7.
+BMWJ:
+    lda #59
+    sec
+    sbc BombTimer
+    cmp #3
+    bcc .BJok                   ; 59/58/57 -> 0/1/2
+    cmp #$FF
+    bne .BJleg                  ; 60 -> $FF = the edge
+    lda #0
+.BJok:
+    ora #0                      ; (re)set N/Z from A for the callers' bmi/beq
+    rts
+.BJleg:
+    lda #$80
+    rts
+
+; BMWCellSolid — plan 5.1b cell read. In: X = display col 0..19 (left half),
+; A = band row 0..2. Out: Z=1 if the PF cell is EMPTY, Z=0 if SOLID (A = the
+; masked byte). Clobbers A/Y, preserves X. Same-bank jsr (no pad nesting);
+; caller keeps its loop vars in ZP, so X/Y loss is invisible.
+BMWCellSolid:
+    clc
+    adc ColOff,X
+    tay
+    lda PF0Buf,Y
+    and ColMask,X
+    rts
+
 ; ========================================================================
 ; BombMarkWalls (S5.2, moved from bank0) — pinned at $FB10.
 ;   On the bomb 1->2 edge: punch the THIN walls in the blast window and
@@ -587,6 +617,20 @@ BombMarkWalls:
     lda #1
 .BMWkOk:
     sta CollisionCellY          ; cell index k
+    ; Spread over frames (2026-11: one blast frame measured +5.8 lines in a wall-heavy room):
+    ; BombTick calls this at BombTimer 60 (edge: first cell + the strips), 58 and 57 (one cell
+    ; each). Any other BombTimer (tests, legacy callers) = every cell in this one call.
+    jsr BMWJ
+    bmi .BMWkLoop               ; legacy: all cells
+    clc
+    adc CollisionCellY
+    sta CollisionCellY          ; k = k0 + j
+    lda CollisionCellX
+    lsr
+    cmp CollisionCellY
+    bcs .BMWkLoop               ; k <= floor(hi/2): process this one cell
+    lda #0                      ; nothing left for this frame
+    jmp ReturnPad
 .BMWkLoop:
     lda #0
     sta CollisionEndY           ; row 0 for this cell
@@ -645,28 +689,24 @@ BombMarkWalls:
     ; next cell; stop after floor(blast_hi/2) — CollisionCellX must survive
     ; (StripBlastCheck reads the blast window), so re-derive the bound.
     inc CollisionCellY
+    jsr BMWJ
+    bpl .BMWDone                ; staged: one cell per call
     lda CollisionCellX
     lsr
     cmp CollisionCellY
     bcs .BMWkLoop
 .BMWDone:
+    jsr BMWJ
+    bmi .BMWStrip               ; legacy: strips now
+    beq .BMWStrip               ; edge call (j = 0): strips now
+    lda CollisionX              ; j = 1/2: just the cell's count
+    jmp ReturnPad
+.BMWStrip:
     jmp M1StripBlast            ; same bank (repack chunk 2, 2026-10-20):
                                  ; M1StripBlast stages the left-strip dcol and
                                  ; sets b4, then tail-jmps StripBlastCheck.
                                  ; Still 0 push — SP guard unchanged; the
                                  ; check ends in ReturnPad with A = count.
-
-; BMWCellSolid — plan 5.1b cell read. In: X = display col 0..19 (left half),
-; A = band row 0..2. Out: Z=1 if the PF cell is EMPTY, Z=0 if SOLID (A = the
-; masked byte). Clobbers A/Y, preserves X. Same-bank jsr (no pad nesting);
-; caller keeps its loop vars in ZP, so X/Y loss is invisible.
-BMWCellSolid:
-    clc
-    adc ColOff,X
-    tay
-    lda PF0Buf,Y
-    and ColMask,X
-    rts
 
 ; ---- ReturnPad: every bank's body tails `jmp $FBF8` (bank0 serves the rts at $FBFB) ----
     .ds $FBF8 - *, 0

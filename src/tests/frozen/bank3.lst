@@ -1167,410 +1167,450 @@
     481  f96f		       7f bf df ef*	      .byte.b	$7F, $BF, $DF, $EF, $F7, $FB, $FD, $FE	; col 4-11 (PF1)
     482  f977		       fe fd fb f7*	      .byte.b	$FE, $FD, $FB, $F7, $EF, $DF, $BF, $7F	; col 12-19 (PF2)
     483  f97f
-    484  f97f							; ========================================================================
-    485  f97f							; BombMarkWalls (S5.2, moved from bank0) — pinned at $FB10.
-    486  f97f							;   On the bomb 1->2 edge: punch the THIN walls in the blast window and
-    487  f97f							;   report how many were newly broken (A, caller scores +75 each).
-    488  f97f							;   Bomb left-half col +-2, clamped 0..19. Score is NOT done here — pads
-    489  f97f							;   cannot nest (ReturnPad switches to bank0), so the bank0 caller adds
-    490  f97f							;   +75 per wall.
-    491  f97f							;   Plan 5.1b (2026-10-20): the punch is CELL-based — no rect cache. The
-    492  f97f							;   PF buffers ARE the map (export: convert_room.pf_values; holes included),
-    493  f97f							;   so a bombable wall is found the same way find_rectangles finds a w==2
-    494  f97f							;   rect: a thin wall is ONE D7 logical cell = 2 display cols = a solid
-    495  f97f							;   PF bit-PAIR whose left and right neighbouring cells are empty. The
-    496  f97f							;   emitted cells are pair-aligned (both bits of a cell are always written
-    497  f97f							;   together: pf_values, ClearPFColumn, PhMaskTab), so ONE solidity read
-    498  f97f							;   per cell covers both cols, and vertical extent needs no data: each row
-    499  f97f							;   is tested on its own (the old rect h is exactly the run of thin rows —
-    500  f97f							;   find_rectangles stops a w==1 rect at a row that joins a wider run, and
-    501  f97f							;   so does the neighbour test). Col 0 (screen border, and its mirror col
-    502  f97f							;   39) is never destroyable — the old `rect.x == 0` skip.
-    503  f97f							;   Double-score guard = the buffer: the punched pair is empty, so a second
-    504  f97f							;   blast in the same room finds no cell (the old WallMask bits and PairGone
-    505  f97f							;   are gone; walls return on re-entry, D1-B). WallMask (BombPacked b3-6) is
-    506  f97f							;   retired: HotOverlapBody now tests its parent hot cell's PF bit.
-    507  f97f							;   Cost: ≤4 cells × 3 rows × ~3 cell probes; blast edge only.
-    508  f97f
-    509  f97f		       00 00 00 00*	      .ds	$FB10 - *, 0
-    510  fb10				   BombMarkWalls
-    511  fb10							; visible-left mapping identical to PlayerHitsMap: the bomb is drawn from
-    512  fb10							; BombX via SetObjectXPos, so its left edge is BombX-5 / BombX-7, not BombX.
-    513  fb10		       38		      sec
-    514  fb11		       a5 f6		      lda	BombX
-    515  fb13		       c9 0f		      cmp	#15
-    516  fb15		       90 04		      bcc	.BMWoff7
-    517  fb17		       e9 07		      sbc	#7	; visible left = BombX - 7
-    518  fb19		       b0 02		      bcs	.BMWVL	; C set (X>=15) — skip the -5 path
-    519  fb1b				   .BMWoff7
-    520  fb1b		       e9 04		      sbc	#4	; visible left = BombX - 5 (CMP clears carry)
-    521  fb1d				   .BMWVL
-    522  fb1d		       4a		      lsr
-    523  fb1e		       4a		      lsr		; screen col = visible_left/4 (0..39)
-    524  fb1f		       85 92		      sta	RectCount	; ORIGINAL screen col (0..39): >=20 = right
-    525  fb21							; bomb → real blast lives in the right half,
-    526  fb21							; so M1StripBlast must skip its left overlap
-    527  fb21							; test (the window below is mirror-space for
-    528  fb21							; right bombs). RectCount free pre-loop.
-    529  fb21		       c9 14		      cmp	#TILE_COLUMNS
-    530  fb23		       90 07		      bcc	.BMWCol
-    531  fb25		       85 88		      sta	BMWScratch
-    532  fb27		       a9 27		      lda	#39
-    533  fb29		       38		      sec
-    534  fb2a		       e5 88		      sbc	BMWScratch	; mirror right-half → left-half col
-    535  fb2c				   .BMWCol
-    536  fb2c		       85 88		      sta	BMWScratch	; bomb left-half col
-    537  fb2e							; blast lo = max(col-2, 0)   (±2: player is 8px wide, so a bomb dropped
-    538  fb2e							; blast hi = min(col+2, 19)	flush-left sits 2 cols from the wall)
-    539  fb2e		       a5 88		      lda	BMWScratch
-    540  fb30		       c9 02		      cmp	#2
-    541  fb32		       90 05		      bcc	.BMWLo0
-    542  fb34		       38		      sec
-    543  fb35		       e9 02		      sbc	#2
-    544  fb37		       b0 02		      bcs	.BMWStoreLo
-    545  fb39				   .BMWLo0
-    546  fb39		       a9 00		      lda	#0
-    547  fb3b				   .BMWStoreLo
-    548  fb3b		       85 8e		      sta	CollisionEndX	; blast_lo (free: overscan, after movement)
-    549  fb3d		       a5 88		      lda	BMWScratch
-    550  fb3f		       c9 12		      cmp	#18
-    551  fb41		       b0 05		      bcs	.BMWHi19
-    552  fb43		       18		      clc
-    553  fb44		       69 02		      adc	#2
-    554  fb46		       90 02		      bcc	.BMWStoreHi
-    555  fb48				   .BMWHi19
-    556  fb48		       a9 13		      lda	#19
-    557  fb4a				   .BMWStoreHi
-    558  fb4a		       85 8c		      sta	CollisionCellX	; blast_hi (loop compares rect.x against it)
-    559  fb4c							; --- Phase 4: capture the strip's left col BEFORE the punch loop
-    560  fb4c							; (ClearPFColumn overwrites LineCount with rect rows). pL = 18+2n,
-    561  fb4c							; n = packed nibble (right_col+1); $FF = symmetric/none. BMWScratch is
-    562  fb4c							; free here (bomb col already folded into blast lo/hi).
-    563  fb4c		       a5 84		      lda	LineCount
-    564  fb4e		       f0 0b		      beq	.SBnocap
-    565  fb50		       4a		      lsr
-    566  fb51		       4a		      lsr
-    567  fb52		       4a		      lsr
-    568  fb53		       4a		      lsr		; n = right_col+1
-    569  fb54		       0a		      asl
-    570  fb55		       18		      clc
-    571  fb56		       69 12		      adc	#18	; pL = 20+2*right_col
-    572  fb58		       4c 5d fb 	      jmp	.SBst
-    573  fb5b				   .SBnocap
-    574  fb5b		       a9 ff		      lda	#$FF
-    575  fb5d				   .SBst
-    576  fb5d		       85 88		      sta	BMWScratch
-    577  fb5f		       a9 00		      lda	#0
-    578  fb61		       85 8b		      sta	CollisionX	; walls-broken count (returned in A)
-    579  fb63							; --- cell scan (plan 5.1b): cells floor(lo/2)..floor(hi/2), rows 0..2 --
-    580  fb63							; Cell k = display cols 2k, 2k+1. k=0 is the border cell (never broken,
-    581  fb63							; and its mirror = col 39). Each row is tested on its own: the thin
-    582  fb63							; rect's h is exactly the run of thin rows (find_rectangles stops a w==1
-    583  fb63							; rect at a row that joins a wider run, and the neighbour test does too).
-    584  fb63		       a5 8e		      lda	CollisionEndX
-    585  fb65		       4a		      lsr
-    586  fb66		       d0 02		      bne	.BMWkOk
-    587  fb68		       a9 01		      lda	#1
-    588  fb6a				   .BMWkOk
-    589  fb6a		       85 8d		      sta	CollisionCellY	; cell index k
-    590  fb6c				   .BMWkLoop
-    591  fb6c		       a9 00		      lda	#0
-    592  fb6e		       85 8f		      sta	CollisionEndY	; row 0 for this cell
-    593  fb70				   .BMWrowLoop
-    594  fb70							; solid(cell k)?  one read covers both cols (pairs are always aligned)
-    595  fb70		       a5 8d		      lda	CollisionCellY
-    596  fb72		       0a		      asl		; 2k = display col
-    597  fb73		       aa		      tax
-    598  fb74		       a5 8f		      lda	CollisionEndY
-    599  fb76		       20 ce fb 	      jsr	BMWCellSolid
-    600  fb79		       f0 3f		      beq	.BMWrNext	; empty cell
-    601  fb7b							; left neighbour cell (2k-2) must be empty; k=1 → col 0 is a real cell
-    602  fb7b		       8a		      txa
-    603  fb7c		       38		      sec
-    604  fb7d		       e9 02		      sbc	#2
-    605  fb7f		       aa		      tax
-    606  fb80		       a5 8f		      lda	CollisionEndY
-    607  fb82		       20 ce fb 	      jsr	BMWCellSolid
-    608  fb85		       d0 33		      bne	.BMWrNext	; joins a wider run on the left
-    609  fb87							; right neighbour (2k+2); k=9 is the seam cell (cols 18/19) → open edge
-    610  fb87		       a5 8d		      lda	CollisionCellY
-    611  fb89		       c9 09		      cmp	#9
-    612  fb8b		       f0 0c		      beq	.BMWPunch
-    613  fb8d		       0a		      asl
-    614  fb8e		       18		      clc
-    615  fb8f		       69 02		      adc	#2
-    616  fb91		       aa		      tax
-    617  fb92		       a5 8f		      lda	CollisionEndY
-    618  fb94		       20 ce fb 	      jsr	BMWCellSolid
-    619  fb97		       d0 21		      bne	.BMWrNext	; joins a wider run on the right
-    620  fb99				   .BMWPunch
-    621  fb99		       a5 8d		      lda	CollisionCellY
-    622  fb9b		       c9 01		      cmp	#1
-    623  fb9d		       d0 06		      bne	.BMWgo	; only the cell next to the screen border (k = 1)
-    624  fb9f		       a5 db		      lda	RoomExits	; the wall in front of the edge column: the PF is
-    625  fba1		       29 03		      and	#3	;   MIRRORED, so breaking it opens BOTH sides - it
-    626  fba3		       d0 15		      bne	.BMWrNext	;   needs a room on each (user 2026-10-26: no
-    627  fba5							;   opening where nothing is connected)
-    628  fba5				   .BMWgo
-    629  fba5		       a5 8f		      lda	CollisionEndY
-    630  fba7		       85 84		      sta	LineCount	; ClearPFColumn first row = last row = r
-    631  fba9		       a5 8d		      lda	CollisionCellY
-    632  fbab		       0a		      asl
-    633  fbac		       20 3a f9 	      jsr	ClearPFColumn	; col 2k
-    634  fbaf		       a5 8d		      lda	CollisionCellY
-    635  fbb1		       0a		      asl
-    636  fbb2		       18		      clc
-    637  fbb3		       69 01		      adc	#1
-    638  fbb5		       20 3a f9 	      jsr	ClearPFColumn	; col 2k+1 (second half of the D7 cell)
-    639  fbb8		       e6 8b		      inc	CollisionX	; +1 wall broken (caller scores +75 each)
-    640  fbba				   .BMWrNext
-    641  fbba		       e6 8f		      inc	CollisionEndY
-    642  fbbc		       a5 8f		      lda	CollisionEndY
-    643  fbbe		       c9 03		      cmp	#3
-    644  fbc0		       d0 ae		      bne	.BMWrowLoop
-    645  fbc2							; next cell; stop after floor(blast_hi/2) — CollisionCellX must survive
-    646  fbc2							; (StripBlastCheck reads the blast window), so re-derive the bound.
-    647  fbc2		       e6 8d		      inc	CollisionCellY
-    648  fbc4		       a5 8c		      lda	CollisionCellX
-    649  fbc6		       4a		      lsr
-    650  fbc7		       c5 8d		      cmp	CollisionCellY
-    651  fbc9		       b0 a1		      bcs	.BMWkLoop
-    652  fbcb				   .BMWDone
-    653  fbcb		       4c e8 f2 	      jmp	M1StripBlast	; same bank (repack chunk 2, 2026-10-20):
-    654  fbce							; M1StripBlast stages the left-strip dcol and
-    655  fbce							; sets b4, then tail-jmps StripBlastCheck.
-    656  fbce							; Still 0 push — SP guard unchanged; the
-    657  fbce							; check ends in ReturnPad with A = count.
-    658  fbce
-    659  fbce							; BMWCellSolid — plan 5.1b cell read. In: X = display col 0..19 (left half),
-    660  fbce							; A = band row 0..2. Out: Z=1 if the PF cell is EMPTY, Z=0 if SOLID (A = the
-    661  fbce							; masked byte). Clobbers A/Y, preserves X. Same-bank jsr (no pad nesting);
-    662  fbce							; caller keeps its loop vars in ZP, so X/Y loss is invisible.
-    663  fbce				   BMWCellSolid
-    664  fbce		       18		      clc
-    665  fbcf		       7d c0 f2 	      adc	ColOff,X
-    666  fbd2		       a8		      tay
-    667  fbd3		       b9 c3 00 	      lda	PF0Buf,Y
-    668  fbd6		       3d d4 f2 	      and	ColMask,X
-    669  fbd9		       60		      rts
-    670  fbda
-    671  fbda							; ---- ReturnPad: every bank's body tails `jmp $FBF8` (bank0 serves the rts at $FBFB) ----
-    672  fbda		       00 00 00 00*	      .ds	$FBF8 - *, 0
-    673  fbf8				   ReturnPad
-    674  fbf8		       8d f4 1f 	      sta	BK_GENERAL
-    675  fbfb
-    676  fbfb							; ---- entry pad half: bank0's CallPad_BombMarkWalls `sta` is at $FC1A, this `jmp` is fetched at $FC1D ----
-    677  fbfb		       00 00 00 00*	      .ds	$FC1D - *, 0
-    678  fc1d		       4c 10 fb 	      jmp	BombMarkWalls
-    679  fc20
-    680  fc20		       00 00 00 00*	      .ds	$FDE3 - *, 0
-    681  fc20		       00 08	   RAFT_MIN_X =	8	; the raft's logical X is its lit span's right
-    682  fc20		       00 94	   RAFT_MAX_X =	148	; end, exactly like the player's [x-7,x]; these
-    683  fde3							; rails keep it inside the room
-    684  fde3		       00 83	   RAFTER_BASE =	131	; raft top when the tide is at 0: the 2-row
-    685  fde3							; surface (line 132) - 7, so its BOTTOM row
-    686  fde3							; sits exactly ON the surface. The live value is
-    687  fde3							; plank's BOTTOM row (top+1) lands on the water
-    688  fde3							; surface (132+off) — see the tide block below;
-    689  fde3							; never hard-code the Y: the surface MOVES.
-    690  fde3		       00 06	   RAFTER_XOFF =	6	; PLAYER_WIDTH-1: spawn x of the body span
-    691  fde3		       00 0e	   RAFTER_XSPAN =	14	; PLAYER_WIDTH+ENEMY_WIDTH-1: no-overlap gate
-    692  fde3		       00 1c	   RAFTER_YSPAN =	28	; PLAYER_SPRITE_H+6: riding when the feet are
-    693  fde3							; from 22 px above the raft's top to 5 px into it
-    694  fde3		       00 16	   RAFTER_PINFIT =	22	; PLAYER_SPRITE_H: pin = raft top - this
-    695  fde3
-    696  fde3				   RaftBody
-    697  fde3							; --- float ON the water surface, riding the TIDE ------------------------
-    698  fde3							; The water band's surface drifts 0-3 lines (the tide): the VBL stages
-    699  fde3							; 36+off into CollisionX and the kernel draws the strip as the band's last
-    700  fde3							; (12-off) lines, so the surface line is 132+off. The raft's bottom row
-    701  fde3							; (top+1, a 2-row plank) must land ON that line -> top = 131+off.
-    702  fde3							; This mirrors the VBL's
-    703  fde3							; triangle EXACTLY (p = EnemyRamP>>4: p0-3 down 0->3, p4-7 up 3->0,
-    704  fde3							; p8-15 rest), and this frame's EnemyRamP inc runs before UpdateEnemies,
-    705  fde3							; so both sides see the same p — the raft bobs with the water it floats on.
-    706  fde3							; CollisionX itself is unusable here: the input rect-walks clobber it
-    707  fde3							; before UpdateEnemies runs. Keep the two formulas in step (AGENTS).
-    708  fde3		       a5 c2		      lda	EnemyRamP
-    709  fde5		       29 f0		      and	#$F0
-    710  fde7		       f0 15		      beq	.RaftTide	; p=0 -> off 0 (A already 0)
-    711  fde9		       4a		      lsr
-    712  fdea		       4a		      lsr
-    713  fdeb		       4a		      lsr
-    714  fdec		       4a		      lsr		; A = p (1..15)
-    715  fded		       c9 08		      cmp	#8
-    716  fdef		       90 04		      bcc	.RaftTideTri
-    717  fdf1		       a9 00		      lda	#0	; rest phase p8-15
-    718  fdf3		       f0 09		      beq	.RaftTide	; always
-    719  fdf5				   .RaftTideTri
-    720  fdf5		       c9 04		      cmp	#4
-    721  fdf7		       90 05		      bcc	.RaftTide	; p1-3: off = p
-    722  fdf9		       49 ff		      eor	#$FF
-    723  fdfb		       38		      sec
-    724  fdfc		       69 07		      adc	#7	; p4-7: off = 7-p
-    725  fdfe				   .RaftTide
-    726  fdfe		       18		      clc
-    727  fdff		       69 83		      adc	#RAFTER_BASE	; + 131 -> the surface line (132+off) minus 1
-    728  fe01		       95 e2		      sta	EnemyRamY,X	; the authored y is ignored on purpose: the
-    729  fe03							; water line is what the raft floats on
-    730  fe03
-    731  fe03							; --- does the player count as "over the raft"? --------------------------
-    732  fe03							; The raft is a FERRY (user rule 2026-10-18): it moves ONLY while he is over
-    733  fe03							; it, parks the moment he steps off, and its position resets on room entry
-    734  fe03							; (LoadEnemyRam re-copies the record's spawn x). Gating the whole motion
-    735  fe03							; block here is what makes it park; the pin/carry later still applies while
-    736  fe03							; riding. The test runs against the CURRENT x (before the step), i.e. the
-    737  fe03							; raft he is actually standing on.
-    738  fe03		       a5 80		      lda	RoomX
-    739  fe05		       38		      sec
-    740  fe06		       f5 bd		      sbc	EnemyRamX,X
-    741  fe08		       18		      clc
-    742  fe09		       69 06		      adc	#RAFTER_XOFF
-    743  fe0b		       c9 0e		      cmp	#RAFTER_XSPAN
-    744  fe0d		       b0 13		      bcs	.RaftNoRide	; no X overlap: nobody aboard
-    745  fe0f		       a5 81		      lda	RoomY
-    746  fe11		       38		      sec
-    747  fe12		       f5 e2		      sbc	EnemyRamY,X
-    748  fe14		       18		      clc
-    749  fe15		       69 16		      adc	#RAFTER_PINFIT
-    750  fe17		       c9 1c		      cmp	#RAFTER_YSPAN
-    751  fe19		       b0 07		      bcs	.RaftNoRide	; not in the raft's upper rows
-    752  fe1b		       a5 94		      lda	vyHi
-    753  fe1d		       30 03		      bmi	.RaftNoRide	; rising: let him fly away (no pin)
-    754  fe1f		       4c 2b fe 	      jmp	.RaftGo
-    755  fe22				   .RaftNoRide
-    756  fe22							; nobody over the raft: PARK it (no motion) and clear the ramp state so the
-    757  fe22							; next take-off ramps again; the bomb count in b2-0 is preserved
-    758  fe22		       a5 f0		      lda	$F0
-    759  fe24		       29 07		      and	#%00000111
-    760  fe26		       85 f0		      sta	$F0
-    761  fe28		       4c f8 fb 	      jmp	ReturnPad
-    762  fe2b				   .RaftGo
-    763  fe2b							; --- pin FIRST: the rider stays on the raft even on a TURN frame --------
-    764  fe2b							; A raft boxed in by solid row-2 cells (or parked against a rail) turns
-    765  fe2b							; every frame and never moves; the turn path returns before the carry, so
-    766  fe2b							; pinning here is what keeps a rider standing on it. Without it he fell
-    767  fe2b							; through a stuck raft into the water kill line and respawned forever
-    768  fe2b							; (user report 2026-10-22: "player position keeps changing, zig-zags").
-    769  fe2b							; The vyHi < 0 escape is the gate's `.RaftNoRide` (rising is not a ride).
-    770  fe2b		       b5 e2		      lda	EnemyRamY,X
-    771  fe2d		       38		      sec
-    772  fe2e		       e9 16		      sbc	#RAFTER_PINFIT
-    773  fe30		       85 81		      sta	RoomY	; feet on the raft's top
-    774  fe32		       a9 00		      lda	#0
-    775  fe34		       85 93		      sta	vyLo
-    776  fe36		       85 94		      sta	vyHi	; landing kills the accumulated fall speed
-    777  fe38							; --- take-off ramp (inertia): heaviest right after boarding -------------
-    778  fe38							; State = PlayerBombs' ($F0) spare HIGH bits: b7 = "ridden last frame",
-    779  fe38							; b6-b3 = the ramp level (0-15); b2-0 stay the bomb count. Adding $10 never
-    780  fe38							; carries into b2-0, and the drop's `dec` is guarded by a non-zero count so
-    781  fe38							; it cannot borrow upward either (see the kernel EQU for the contract).
-    782  fe38							; Riding advances the level every 2nd frame: the raft leaves at 0.5 px/frame
-    783  fe38							; and reaches the full 0.75 px/frame after ~30 frames (~0.5 s), the
-    784  fe38							; heavy take-off. Empty (b7 clear) or level 15: full speed straight away.
-    785  fe38		       a5 f0		      lda	$F0
-    786  fe3a		       10 0b		      bpl	.RaftAtSpeed	; b7 clear = nobody aboard -> no ramp
-    787  fe3c		       c9 f8		      cmp	#%11111000	; flag + all four level bits = spun up
-    788  fe3e		       f0 07		      beq	.RaftAtSpeed
-    789  fe40		       a5 c2		      lda	EnemyRamP
-    790  fe42		       29 01		      and	#1	; still ramping: 1 px on odd frames = 0.5 px/frame
-    791  fe44		       4c 51 fe 	      jmp	.RaftHaveStep
-    792  fe47				   .RaftAtSpeed
-    793  fe47		       a5 c2		      lda	EnemyRamP
-    794  fe49		       29 03		      and	#3
-    795  fe4b		       c9 01		      cmp	#1	; C = (P&3) != 0
-    796  fe4d		       a9 00		      lda	#0
-    797  fe4f		       69 00		      adc	#0	; 1 px on 3 of 4 frames = 0.75 px/frame (user 2026-11-10:
-    798  fe51							; the raft was too quick to leave: HALF of 1.5)
-    799  fe51				   .RaftHaveStep
-    800  fe51		       85 88		      sta	$88	; bank0 Temp = this frame's step
-    801  fe53		       bd 36 f3 	      lda	RaftBitTab,X
-    802  fe56		       25 c1		      and	EnemyRamD
-    803  fe58		       f0 29		      beq	.RaftLeft
-    804  fe5a							; ---- leading edge right: candidate = x + step ---------------------------
-    805  fe5a		       b5 bd		      lda	EnemyRamX,X
-    806  fe5c		       18		      clc
-    807  fe5d		       65 88		      adc	$88
-    808  fe5f		       b0 18		      bcs	.RaftTurn	; wrapped past 255
-    809  fe61		       c9 94		      cmp	#RAFT_MAX_X
-    810  fe63		       b0 14		      bcs	.RaftTurn	; right rail
-    811  fe65		       18		      clc
-    812  fe66		       69 01		      adc	#1	; the cell just beyond the right edge
-    813  fe68		       4a		      lsr
-    814  fe69		       4a		      lsr
-    815  fe6a		       20 18 f3 	      jsr	RaftCellSolid
-    816  fe6d		       d0 0a		      bne	.RaftTurn	; solid ahead (ledge / room edge) -> turn
-    817  fe6f		       b5 bd		      lda	EnemyRamX,X
-    818  fe71		       18		      clc
-    819  fe72		       65 88		      adc	$88
-    820  fe74		       95 bd		      sta	EnemyRamX,X
-    821  fe76		       4c a3 fe 	      jmp	.RaftRide
-    822  fe79							; ---- turn-around (kept here: both arms branch to it, and the ramp pushed
-    823  fe79							; ---- it past the 127-byte relative reach when it sat at the very end) ----
-    824  fe79				   .RaftTurn
-    825  fe79		       bd 36 f3 	      lda	RaftBitTab,X
-    826  fe7c		       45 c1		      eor	EnemyRamD
-    827  fe7e		       85 c1		      sta	EnemyRamD	; flip this slot's dir bit (the high nibble is
-    828  fe80							; bank1's RoomDarkMask — must be preserved)
-    829  fe80		       4c f8 fb 	      jmp	ReturnPad	; and the turn costs this frame (the inertia)
-    830  fe83							; ---- leading edge left --------------------------------------------------
-    831  fe83				   .RaftLeft
-    832  fe83		       b5 bd		      lda	EnemyRamX,X
-    833  fe85		       38		      sec
-    834  fe86		       e5 88		      sbc	$88
-    835  fe88		       90 ef		      bcc	.RaftTurn	; wrapped below 0
-    836  fe8a		       c9 08		      cmp	#RAFT_MIN_X
-    837  fe8c		       90 eb		      bcc	.RaftTurn	; left rail
-    838  fe8e		       38		      sec
-    839  fe8f		       e9 08		      sbc	#8	; the cell just beyond the left edge
-    840  fe91		       b0 02		      bcs	.RaftLeftCol
-    841  fe93		       a9 00		      lda	#0
-    842  fe95				   .RaftLeftCol
-    843  fe95		       4a		      lsr
-    844  fe96		       4a		      lsr
-    845  fe97		       20 18 f3 	      jsr	RaftCellSolid
-    846  fe9a		       d0 dd		      bne	.RaftTurn
-    847  fe9c		       b5 bd		      lda	EnemyRamX,X
-    848  fe9e		       38		      sec
-    849  fe9f		       e5 88		      sbc	$88
-    850  fea1		       95 bd		      sta	EnemyRamX,X
-    851  fea3							; ---- carry + pin while the player is aboard -----------------------------
-    852  fea3				   .RaftRide
-    853  fea3							; (the Y pin ran at .RaftGo — it must not depend on the raft moving)
-    854  fea3							; ramp: arm the flag, and +1 level every 2nd frame (capped at 15)
-    855  fea3		       a5 f0		      lda	$F0
-    856  fea5		       09 80		      ora	#%10000000
-    857  fea7		       85 f0		      sta	$F0
-    858  fea9		       a5 c2		      lda	EnemyRamP
-    859  feab		       4a		      lsr		; C = the frame-parity bit
-    860  feac		       b0 0f		      bcs	.RaftCarry	; odd frame: flag only this time
-    861  feae		       a5 f0		      lda	$F0
-    862  feb0		       29 78		      and	#%01111000
-    863  feb2		       c9 78		      cmp	#%01111000
-    864  feb4		       f0 07		      beq	.RaftCarry	; already spun up
-    865  feb6		       a5 f0		      lda	$F0
-    866  feb8		       18		      clc
-    867  feb9		       69 10		      adc	#%00010000
-    868  febb		       85 f0		      sta	$F0
-    869  febd				   .RaftCarry
-    870  febd		       bd 36 f3 	      lda	RaftBitTab,X
-    871  fec0		       25 c1		      and	EnemyRamD
-    872  fec2		       f0 0a		      beq	.RaftCarryL
-    873  fec4		       a5 80		      lda	RoomX
-    874  fec6		       18		      clc
-    875  fec7		       65 88		      adc	$88
-    876  fec9		       85 80		      sta	RoomX
-    877  fecb		       4c d8 fe 	      jmp	.RaftDone
-    878  fece				   .RaftCarryL
-    879  fece		       a5 80		      lda	RoomX
-    880  fed0		       38		      sec
-    881  fed1		       e5 88		      sbc	$88
-    882  fed3		       85 80		      sta	RoomX
-    883  fed5		       4c d8 fe 	      jmp	.RaftDone
-    884  fed8				   .RaftDone
-    885  fed8		       4c f8 fb 	      jmp	ReturnPad
-    886  fedb
-    887  fedb		       00 00 00 00*	      .ds	$FFFA - *, 0
-    888  fffa		       00 f0		      .word.w	$F000
-    889  fffc		       00 f0		      .word.w	$F000
-    890  fffe		       00 f0		      .word.w	$F000
+    484  f97f							; BMWJ — which slice of the blast this call does. Out: A = 0 (BombTimer 60 = the edge, or 59),
+    485  f97f							; 1 (timer 58), 2 (timer 57), or $80 = any other timer (legacy / tests: the whole blast). N = bit 7.
+    486  f97f				   BMWJ
+    487  f97f		       a9 3b		      lda	#59
+    488  f981		       38		      sec
+    489  f982		       e5 f7		      sbc	BombTimer
+    490  f984		       c9 03		      cmp	#3
+    491  f986		       90 06		      bcc	.BJok	; 59/58/57 -> 0/1/2
+    492  f988		       c9 ff		      cmp	#$FF
+    493  f98a		       d0 05		      bne	.BJleg	; 60 -> $FF = the edge
+    494  f98c		       a9 00		      lda	#0
+    495  f98e				   .BJok
+    496  f98e		       09 00		      ora	#0	; (re)set N/Z from A for the callers' bmi/beq
+    497  f990		       60		      rts
+    498  f991				   .BJleg
+    499  f991		       a9 80		      lda	#$80
+    500  f993		       60		      rts
+    501  f994
+    502  f994							; BMWCellSolid — plan 5.1b cell read. In: X = display col 0..19 (left half),
+    503  f994							; A = band row 0..2. Out: Z=1 if the PF cell is EMPTY, Z=0 if SOLID (A = the
+    504  f994							; masked byte). Clobbers A/Y, preserves X. Same-bank jsr (no pad nesting);
+    505  f994							; caller keeps its loop vars in ZP, so X/Y loss is invisible.
+    506  f994				   BMWCellSolid
+    507  f994		       18		      clc
+    508  f995		       7d c0 f2 	      adc	ColOff,X
+    509  f998		       a8		      tay
+    510  f999		       b9 c3 00 	      lda	PF0Buf,Y
+    511  f99c		       3d d4 f2 	      and	ColMask,X
+    512  f99f		       60		      rts
+    513  f9a0
+    514  f9a0							; ========================================================================
+    515  f9a0							; BombMarkWalls (S5.2, moved from bank0) — pinned at $FB10.
+    516  f9a0							;   On the bomb 1->2 edge: punch the THIN walls in the blast window and
+    517  f9a0							;   report how many were newly broken (A, caller scores +75 each).
+    518  f9a0							;   Bomb left-half col +-2, clamped 0..19. Score is NOT done here — pads
+    519  f9a0							;   cannot nest (ReturnPad switches to bank0), so the bank0 caller adds
+    520  f9a0							;   +75 per wall.
+    521  f9a0							;   Plan 5.1b (2026-10-20): the punch is CELL-based — no rect cache. The
+    522  f9a0							;   PF buffers ARE the map (export: convert_room.pf_values; holes included),
+    523  f9a0							;   so a bombable wall is found the same way find_rectangles finds a w==2
+    524  f9a0							;   rect: a thin wall is ONE D7 logical cell = 2 display cols = a solid
+    525  f9a0							;   PF bit-PAIR whose left and right neighbouring cells are empty. The
+    526  f9a0							;   emitted cells are pair-aligned (both bits of a cell are always written
+    527  f9a0							;   together: pf_values, ClearPFColumn, PhMaskTab), so ONE solidity read
+    528  f9a0							;   per cell covers both cols, and vertical extent needs no data: each row
+    529  f9a0							;   is tested on its own (the old rect h is exactly the run of thin rows —
+    530  f9a0							;   find_rectangles stops a w==1 rect at a row that joins a wider run, and
+    531  f9a0							;   so does the neighbour test). Col 0 (screen border, and its mirror col
+    532  f9a0							;   39) is never destroyable — the old `rect.x == 0` skip.
+    533  f9a0							;   Double-score guard = the buffer: the punched pair is empty, so a second
+    534  f9a0							;   blast in the same room finds no cell (the old WallMask bits and PairGone
+    535  f9a0							;   are gone; walls return on re-entry, D1-B). WallMask (BombPacked b3-6) is
+    536  f9a0							;   retired: HotOverlapBody now tests its parent hot cell's PF bit.
+    537  f9a0							;   Cost: ≤4 cells × 3 rows × ~3 cell probes; blast edge only.
+    538  f9a0
+    539  f9a0		       00 00 00 00*	      .ds	$FB10 - *, 0
+    540  fb10				   BombMarkWalls
+    541  fb10							; visible-left mapping identical to PlayerHitsMap: the bomb is drawn from
+    542  fb10							; BombX via SetObjectXPos, so its left edge is BombX-5 / BombX-7, not BombX.
+    543  fb10		       38		      sec
+    544  fb11		       a5 f6		      lda	BombX
+    545  fb13		       c9 0f		      cmp	#15
+    546  fb15		       90 04		      bcc	.BMWoff7
+    547  fb17		       e9 07		      sbc	#7	; visible left = BombX - 7
+    548  fb19		       b0 02		      bcs	.BMWVL	; C set (X>=15) — skip the -5 path
+    549  fb1b				   .BMWoff7
+    550  fb1b		       e9 04		      sbc	#4	; visible left = BombX - 5 (CMP clears carry)
+    551  fb1d				   .BMWVL
+    552  fb1d		       4a		      lsr
+    553  fb1e		       4a		      lsr		; screen col = visible_left/4 (0..39)
+    554  fb1f		       85 92		      sta	RectCount	; ORIGINAL screen col (0..39): >=20 = right
+    555  fb21							; bomb → real blast lives in the right half,
+    556  fb21							; so M1StripBlast must skip its left overlap
+    557  fb21							; test (the window below is mirror-space for
+    558  fb21							; right bombs). RectCount free pre-loop.
+    559  fb21		       c9 14		      cmp	#TILE_COLUMNS
+    560  fb23		       90 07		      bcc	.BMWCol
+    561  fb25		       85 88		      sta	BMWScratch
+    562  fb27		       a9 27		      lda	#39
+    563  fb29		       38		      sec
+    564  fb2a		       e5 88		      sbc	BMWScratch	; mirror right-half → left-half col
+    565  fb2c				   .BMWCol
+    566  fb2c		       85 88		      sta	BMWScratch	; bomb left-half col
+    567  fb2e							; blast lo = max(col-2, 0)   (±2: player is 8px wide, so a bomb dropped
+    568  fb2e							; blast hi = min(col+2, 19)	flush-left sits 2 cols from the wall)
+    569  fb2e		       a5 88		      lda	BMWScratch
+    570  fb30		       c9 02		      cmp	#2
+    571  fb32		       90 05		      bcc	.BMWLo0
+    572  fb34		       38		      sec
+    573  fb35		       e9 02		      sbc	#2
+    574  fb37		       b0 02		      bcs	.BMWStoreLo
+    575  fb39				   .BMWLo0
+    576  fb39		       a9 00		      lda	#0
+    577  fb3b				   .BMWStoreLo
+    578  fb3b		       85 8e		      sta	CollisionEndX	; blast_lo (free: overscan, after movement)
+    579  fb3d		       a5 88		      lda	BMWScratch
+    580  fb3f		       c9 12		      cmp	#18
+    581  fb41		       b0 05		      bcs	.BMWHi19
+    582  fb43		       18		      clc
+    583  fb44		       69 02		      adc	#2
+    584  fb46		       90 02		      bcc	.BMWStoreHi
+    585  fb48				   .BMWHi19
+    586  fb48		       a9 13		      lda	#19
+    587  fb4a				   .BMWStoreHi
+    588  fb4a		       85 8c		      sta	CollisionCellX	; blast_hi (loop compares rect.x against it)
+    589  fb4c							; --- Phase 4: capture the strip's left col BEFORE the punch loop
+    590  fb4c							; (ClearPFColumn overwrites LineCount with rect rows). pL = 18+2n,
+    591  fb4c							; n = packed nibble (right_col+1); $FF = symmetric/none. BMWScratch is
+    592  fb4c							; free here (bomb col already folded into blast lo/hi).
+    593  fb4c		       a5 84		      lda	LineCount
+    594  fb4e		       f0 0b		      beq	.SBnocap
+    595  fb50		       4a		      lsr
+    596  fb51		       4a		      lsr
+    597  fb52		       4a		      lsr
+    598  fb53		       4a		      lsr		; n = right_col+1
+    599  fb54		       0a		      asl
+    600  fb55		       18		      clc
+    601  fb56		       69 12		      adc	#18	; pL = 20+2*right_col
+    602  fb58		       4c 5d fb 	      jmp	.SBst
+    603  fb5b				   .SBnocap
+    604  fb5b		       a9 ff		      lda	#$FF
+    605  fb5d				   .SBst
+    606  fb5d		       85 88		      sta	BMWScratch
+    607  fb5f		       a9 00		      lda	#0
+    608  fb61		       85 8b		      sta	CollisionX	; walls-broken count (returned in A)
+    609  fb63							; --- cell scan (plan 5.1b): cells floor(lo/2)..floor(hi/2), rows 0..2 --
+    610  fb63							; Cell k = display cols 2k, 2k+1. k=0 is the border cell (never broken,
+    611  fb63							; and its mirror = col 39). Each row is tested on its own: the thin
+    612  fb63							; rect's h is exactly the run of thin rows (find_rectangles stops a w==1
+    613  fb63							; rect at a row that joins a wider run, and the neighbour test does too).
+    614  fb63		       a5 8e		      lda	CollisionEndX
+    615  fb65		       4a		      lsr
+    616  fb66		       d0 02		      bne	.BMWkOk
+    617  fb68		       a9 01		      lda	#1
+    618  fb6a				   .BMWkOk
+    619  fb6a		       85 8d		      sta	CollisionCellY	; cell index k
+    620  fb6c							; Spread over frames (2026-11: one blast frame measured +5.8 lines in a wall-heavy room):
+    621  fb6c							; BombTick calls this at BombTimer 60 (edge: first cell + the strips), 58 and 57 (one cell
+    622  fb6c							; each). Any other BombTimer (tests, legacy callers) = every cell in this one call.
+    623  fb6c		       20 7f f9 	      jsr	BMWJ
+    624  fb6f		       30 11		      bmi	.BMWkLoop	; legacy: all cells
+    625  fb71		       18		      clc
+    626  fb72		       65 8d		      adc	CollisionCellY
+    627  fb74		       85 8d		      sta	CollisionCellY	; k = k0 + j
+    628  fb76		       a5 8c		      lda	CollisionCellX
+    629  fb78		       4a		      lsr
+    630  fb79		       c5 8d		      cmp	CollisionCellY
+    631  fb7b		       b0 05		      bcs	.BMWkLoop	; k <= floor(hi/2): process this one cell
+    632  fb7d		       a9 00		      lda	#0	; nothing left for this frame
+    633  fb7f		       4c f8 fb 	      jmp	ReturnPad
+    634  fb82				   .BMWkLoop
+    635  fb82		       a9 00		      lda	#0
+    636  fb84		       85 8f		      sta	CollisionEndY	; row 0 for this cell
+    637  fb86				   .BMWrowLoop
+    638  fb86							; solid(cell k)?  one read covers both cols (pairs are always aligned)
+    639  fb86		       a5 8d		      lda	CollisionCellY
+    640  fb88		       0a		      asl		; 2k = display col
+    641  fb89		       aa		      tax
+    642  fb8a		       a5 8f		      lda	CollisionEndY
+    643  fb8c		       20 94 f9 	      jsr	BMWCellSolid
+    644  fb8f		       f0 3f		      beq	.BMWrNext	; empty cell
+    645  fb91							; left neighbour cell (2k-2) must be empty; k=1 → col 0 is a real cell
+    646  fb91		       8a		      txa
+    647  fb92		       38		      sec
+    648  fb93		       e9 02		      sbc	#2
+    649  fb95		       aa		      tax
+    650  fb96		       a5 8f		      lda	CollisionEndY
+    651  fb98		       20 94 f9 	      jsr	BMWCellSolid
+    652  fb9b		       d0 33		      bne	.BMWrNext	; joins a wider run on the left
+    653  fb9d							; right neighbour (2k+2); k=9 is the seam cell (cols 18/19) → open edge
+    654  fb9d		       a5 8d		      lda	CollisionCellY
+    655  fb9f		       c9 09		      cmp	#9
+    656  fba1		       f0 0c		      beq	.BMWPunch
+    657  fba3		       0a		      asl
+    658  fba4		       18		      clc
+    659  fba5		       69 02		      adc	#2
+    660  fba7		       aa		      tax
+    661  fba8		       a5 8f		      lda	CollisionEndY
+    662  fbaa		       20 94 f9 	      jsr	BMWCellSolid
+    663  fbad		       d0 21		      bne	.BMWrNext	; joins a wider run on the right
+    664  fbaf				   .BMWPunch
+    665  fbaf		       a5 8d		      lda	CollisionCellY
+    666  fbb1		       c9 01		      cmp	#1
+    667  fbb3		       d0 06		      bne	.BMWgo	; only the cell next to the screen border (k = 1)
+    668  fbb5		       a5 db		      lda	RoomExits	; the wall in front of the edge column: the PF is
+    669  fbb7		       29 03		      and	#3	;   MIRRORED, so breaking it opens BOTH sides - it
+    670  fbb9		       d0 15		      bne	.BMWrNext	;   needs a room on each (user 2026-10-26: no
+    671  fbbb							;   opening where nothing is connected)
+    672  fbbb				   .BMWgo
+    673  fbbb		       a5 8f		      lda	CollisionEndY
+    674  fbbd		       85 84		      sta	LineCount	; ClearPFColumn first row = last row = r
+    675  fbbf		       a5 8d		      lda	CollisionCellY
+    676  fbc1		       0a		      asl
+    677  fbc2		       20 3a f9 	      jsr	ClearPFColumn	; col 2k
+    678  fbc5		       a5 8d		      lda	CollisionCellY
+    679  fbc7		       0a		      asl
+    680  fbc8		       18		      clc
+    681  fbc9		       69 01		      adc	#1
+    682  fbcb		       20 3a f9 	      jsr	ClearPFColumn	; col 2k+1 (second half of the D7 cell)
+    683  fbce		       e6 8b		      inc	CollisionX	; +1 wall broken (caller scores +75 each)
+    684  fbd0				   .BMWrNext
+    685  fbd0		       e6 8f		      inc	CollisionEndY
+    686  fbd2		       a5 8f		      lda	CollisionEndY
+    687  fbd4		       c9 03		      cmp	#3
+    688  fbd6		       d0 ae		      bne	.BMWrowLoop
+    689  fbd8							; next cell; stop after floor(blast_hi/2) — CollisionCellX must survive
+    690  fbd8							; (StripBlastCheck reads the blast window), so re-derive the bound.
+    691  fbd8		       e6 8d		      inc	CollisionCellY
+    692  fbda		       20 7f f9 	      jsr	BMWJ
+    693  fbdd		       10 07		      bpl	.BMWDone	; staged: one cell per call
+    694  fbdf		       a5 8c		      lda	CollisionCellX
+    695  fbe1		       4a		      lsr
+    696  fbe2		       c5 8d		      cmp	CollisionCellY
+    697  fbe4		       b0 9c		      bcs	.BMWkLoop
+    698  fbe6				   .BMWDone
+    699  fbe6		       20 7f f9 	      jsr	BMWJ
+    700  fbe9		       30 07		      bmi	.BMWStrip	; legacy: strips now
+    701  fbeb		       f0 05		      beq	.BMWStrip	; edge call (j = 0): strips now
+    702  fbed		       a5 8b		      lda	CollisionX	; j = 1/2: just the cell's count
+    703  fbef		       4c f8 fb 	      jmp	ReturnPad
+    704  fbf2				   .BMWStrip
+    705  fbf2		       4c e8 f2 	      jmp	M1StripBlast	; same bank (repack chunk 2, 2026-10-20):
+    706  fbf5							; M1StripBlast stages the left-strip dcol and
+    707  fbf5							; sets b4, then tail-jmps StripBlastCheck.
+    708  fbf5							; Still 0 push — SP guard unchanged; the
+    709  fbf5							; check ends in ReturnPad with A = count.
+    710  fbf5
+    711  fbf5							; ---- ReturnPad: every bank's body tails `jmp $FBF8` (bank0 serves the rts at $FBFB) ----
+    712  fbf5		       00 00 00 	      .ds	$FBF8 - *, 0
+    713  fbf8				   ReturnPad
+    714  fbf8		       8d f4 1f 	      sta	BK_GENERAL
+    715  fbfb
+    716  fbfb							; ---- entry pad half: bank0's CallPad_BombMarkWalls `sta` is at $FC1A, this `jmp` is fetched at $FC1D ----
+    717  fbfb		       00 00 00 00*	      .ds	$FC1D - *, 0
+    718  fc1d		       4c 10 fb 	      jmp	BombMarkWalls
+    719  fc20
+    720  fc20		       00 00 00 00*	      .ds	$FDE3 - *, 0
+    721  fc20		       00 08	   RAFT_MIN_X =	8	; the raft's logical X is its lit span's right
+    722  fc20		       00 94	   RAFT_MAX_X =	148	; end, exactly like the player's [x-7,x]; these
+    723  fde3							; rails keep it inside the room
+    724  fde3		       00 83	   RAFTER_BASE =	131	; raft top when the tide is at 0: the 2-row
+    725  fde3							; surface (line 132) - 7, so its BOTTOM row
+    726  fde3							; sits exactly ON the surface. The live value is
+    727  fde3							; plank's BOTTOM row (top+1) lands on the water
+    728  fde3							; surface (132+off) — see the tide block below;
+    729  fde3							; never hard-code the Y: the surface MOVES.
+    730  fde3		       00 06	   RAFTER_XOFF =	6	; PLAYER_WIDTH-1: spawn x of the body span
+    731  fde3		       00 0e	   RAFTER_XSPAN =	14	; PLAYER_WIDTH+ENEMY_WIDTH-1: no-overlap gate
+    732  fde3		       00 1c	   RAFTER_YSPAN =	28	; PLAYER_SPRITE_H+6: riding when the feet are
+    733  fde3							; from 22 px above the raft's top to 5 px into it
+    734  fde3		       00 16	   RAFTER_PINFIT =	22	; PLAYER_SPRITE_H: pin = raft top - this
+    735  fde3
+    736  fde3				   RaftBody
+    737  fde3							; --- float ON the water surface, riding the TIDE ------------------------
+    738  fde3							; The water band's surface drifts 0-3 lines (the tide): the VBL stages
+    739  fde3							; 36+off into CollisionX and the kernel draws the strip as the band's last
+    740  fde3							; (12-off) lines, so the surface line is 132+off. The raft's bottom row
+    741  fde3							; (top+1, a 2-row plank) must land ON that line -> top = 131+off.
+    742  fde3							; This mirrors the VBL's
+    743  fde3							; triangle EXACTLY (p = EnemyRamP>>4: p0-3 down 0->3, p4-7 up 3->0,
+    744  fde3							; p8-15 rest), and this frame's EnemyRamP inc runs before UpdateEnemies,
+    745  fde3							; so both sides see the same p — the raft bobs with the water it floats on.
+    746  fde3							; CollisionX itself is unusable here: the input rect-walks clobber it
+    747  fde3							; before UpdateEnemies runs. Keep the two formulas in step (AGENTS).
+    748  fde3		       a5 c2		      lda	EnemyRamP
+    749  fde5		       29 f0		      and	#$F0
+    750  fde7		       f0 15		      beq	.RaftTide	; p=0 -> off 0 (A already 0)
+    751  fde9		       4a		      lsr
+    752  fdea		       4a		      lsr
+    753  fdeb		       4a		      lsr
+    754  fdec		       4a		      lsr		; A = p (1..15)
+    755  fded		       c9 08		      cmp	#8
+    756  fdef		       90 04		      bcc	.RaftTideTri
+    757  fdf1		       a9 00		      lda	#0	; rest phase p8-15
+    758  fdf3		       f0 09		      beq	.RaftTide	; always
+    759  fdf5				   .RaftTideTri
+    760  fdf5		       c9 04		      cmp	#4
+    761  fdf7		       90 05		      bcc	.RaftTide	; p1-3: off = p
+    762  fdf9		       49 ff		      eor	#$FF
+    763  fdfb		       38		      sec
+    764  fdfc		       69 07		      adc	#7	; p4-7: off = 7-p
+    765  fdfe				   .RaftTide
+    766  fdfe		       18		      clc
+    767  fdff		       69 83		      adc	#RAFTER_BASE	; + 131 -> the surface line (132+off) minus 1
+    768  fe01		       95 e2		      sta	EnemyRamY,X	; the authored y is ignored on purpose: the
+    769  fe03							; water line is what the raft floats on
+    770  fe03
+    771  fe03							; --- does the player count as "over the raft"? --------------------------
+    772  fe03							; The raft is a FERRY (user rule 2026-10-18): it moves ONLY while he is over
+    773  fe03							; it, parks the moment he steps off, and its position resets on room entry
+    774  fe03							; (LoadEnemyRam re-copies the record's spawn x). Gating the whole motion
+    775  fe03							; block here is what makes it park; the pin/carry later still applies while
+    776  fe03							; riding. The test runs against the CURRENT x (before the step), i.e. the
+    777  fe03							; raft he is actually standing on.
+    778  fe03		       a5 80		      lda	RoomX
+    779  fe05		       38		      sec
+    780  fe06		       f5 bd		      sbc	EnemyRamX,X
+    781  fe08		       18		      clc
+    782  fe09		       69 06		      adc	#RAFTER_XOFF
+    783  fe0b		       c9 0e		      cmp	#RAFTER_XSPAN
+    784  fe0d		       b0 13		      bcs	.RaftNoRide	; no X overlap: nobody aboard
+    785  fe0f		       a5 81		      lda	RoomY
+    786  fe11		       38		      sec
+    787  fe12		       f5 e2		      sbc	EnemyRamY,X
+    788  fe14		       18		      clc
+    789  fe15		       69 16		      adc	#RAFTER_PINFIT
+    790  fe17		       c9 1c		      cmp	#RAFTER_YSPAN
+    791  fe19		       b0 07		      bcs	.RaftNoRide	; not in the raft's upper rows
+    792  fe1b		       a5 94		      lda	vyHi
+    793  fe1d		       30 03		      bmi	.RaftNoRide	; rising: let him fly away (no pin)
+    794  fe1f		       4c 2b fe 	      jmp	.RaftGo
+    795  fe22				   .RaftNoRide
+    796  fe22							; nobody over the raft: PARK it (no motion) and clear the ramp state so the
+    797  fe22							; next take-off ramps again; the bomb count in b2-0 is preserved
+    798  fe22		       a5 f0		      lda	$F0
+    799  fe24		       29 07		      and	#%00000111
+    800  fe26		       85 f0		      sta	$F0
+    801  fe28		       4c f8 fb 	      jmp	ReturnPad
+    802  fe2b				   .RaftGo
+    803  fe2b							; --- pin FIRST: the rider stays on the raft even on a TURN frame --------
+    804  fe2b							; A raft boxed in by solid row-2 cells (or parked against a rail) turns
+    805  fe2b							; every frame and never moves; the turn path returns before the carry, so
+    806  fe2b							; pinning here is what keeps a rider standing on it. Without it he fell
+    807  fe2b							; through a stuck raft into the water kill line and respawned forever
+    808  fe2b							; (user report 2026-10-22: "player position keeps changing, zig-zags").
+    809  fe2b							; The vyHi < 0 escape is the gate's `.RaftNoRide` (rising is not a ride).
+    810  fe2b		       b5 e2		      lda	EnemyRamY,X
+    811  fe2d		       38		      sec
+    812  fe2e		       e9 16		      sbc	#RAFTER_PINFIT
+    813  fe30		       85 81		      sta	RoomY	; feet on the raft's top
+    814  fe32		       a9 00		      lda	#0
+    815  fe34		       85 93		      sta	vyLo
+    816  fe36		       85 94		      sta	vyHi	; landing kills the accumulated fall speed
+    817  fe38							; --- take-off ramp (inertia): heaviest right after boarding -------------
+    818  fe38							; State = PlayerBombs' ($F0) spare HIGH bits: b7 = "ridden last frame",
+    819  fe38							; b6-b3 = the ramp level (0-15); b2-0 stay the bomb count. Adding $10 never
+    820  fe38							; carries into b2-0, and the drop's `dec` is guarded by a non-zero count so
+    821  fe38							; it cannot borrow upward either (see the kernel EQU for the contract).
+    822  fe38							; Riding advances the level every 2nd frame: the raft leaves at 0.5 px/frame
+    823  fe38							; and reaches the full 0.75 px/frame after ~30 frames (~0.5 s), the
+    824  fe38							; heavy take-off. Empty (b7 clear) or level 15: full speed straight away.
+    825  fe38		       a5 f0		      lda	$F0
+    826  fe3a		       10 0b		      bpl	.RaftAtSpeed	; b7 clear = nobody aboard -> no ramp
+    827  fe3c		       c9 f8		      cmp	#%11111000	; flag + all four level bits = spun up
+    828  fe3e		       f0 07		      beq	.RaftAtSpeed
+    829  fe40		       a5 c2		      lda	EnemyRamP
+    830  fe42		       29 01		      and	#1	; still ramping: 1 px on odd frames = 0.5 px/frame
+    831  fe44		       4c 51 fe 	      jmp	.RaftHaveStep
+    832  fe47				   .RaftAtSpeed
+    833  fe47		       a5 c2		      lda	EnemyRamP
+    834  fe49		       29 03		      and	#3
+    835  fe4b		       c9 01		      cmp	#1	; C = (P&3) != 0
+    836  fe4d		       a9 00		      lda	#0
+    837  fe4f		       69 00		      adc	#0	; 1 px on 3 of 4 frames = 0.75 px/frame (user 2026-11-10:
+    838  fe51							; the raft was too quick to leave: HALF of 1.5)
+    839  fe51				   .RaftHaveStep
+    840  fe51		       85 88		      sta	$88	; bank0 Temp = this frame's step
+    841  fe53		       bd 36 f3 	      lda	RaftBitTab,X
+    842  fe56		       25 c1		      and	EnemyRamD
+    843  fe58		       f0 29		      beq	.RaftLeft
+    844  fe5a							; ---- leading edge right: candidate = x + step ---------------------------
+    845  fe5a		       b5 bd		      lda	EnemyRamX,X
+    846  fe5c		       18		      clc
+    847  fe5d		       65 88		      adc	$88
+    848  fe5f		       b0 18		      bcs	.RaftTurn	; wrapped past 255
+    849  fe61		       c9 94		      cmp	#RAFT_MAX_X
+    850  fe63		       b0 14		      bcs	.RaftTurn	; right rail
+    851  fe65		       18		      clc
+    852  fe66		       69 01		      adc	#1	; the cell just beyond the right edge
+    853  fe68		       4a		      lsr
+    854  fe69		       4a		      lsr
+    855  fe6a		       20 18 f3 	      jsr	RaftCellSolid
+    856  fe6d		       d0 0a		      bne	.RaftTurn	; solid ahead (ledge / room edge) -> turn
+    857  fe6f		       b5 bd		      lda	EnemyRamX,X
+    858  fe71		       18		      clc
+    859  fe72		       65 88		      adc	$88
+    860  fe74		       95 bd		      sta	EnemyRamX,X
+    861  fe76		       4c a3 fe 	      jmp	.RaftRide
+    862  fe79							; ---- turn-around (kept here: both arms branch to it, and the ramp pushed
+    863  fe79							; ---- it past the 127-byte relative reach when it sat at the very end) ----
+    864  fe79				   .RaftTurn
+    865  fe79		       bd 36 f3 	      lda	RaftBitTab,X
+    866  fe7c		       45 c1		      eor	EnemyRamD
+    867  fe7e		       85 c1		      sta	EnemyRamD	; flip this slot's dir bit (the high nibble is
+    868  fe80							; bank1's RoomDarkMask — must be preserved)
+    869  fe80		       4c f8 fb 	      jmp	ReturnPad	; and the turn costs this frame (the inertia)
+    870  fe83							; ---- leading edge left --------------------------------------------------
+    871  fe83				   .RaftLeft
+    872  fe83		       b5 bd		      lda	EnemyRamX,X
+    873  fe85		       38		      sec
+    874  fe86		       e5 88		      sbc	$88
+    875  fe88		       90 ef		      bcc	.RaftTurn	; wrapped below 0
+    876  fe8a		       c9 08		      cmp	#RAFT_MIN_X
+    877  fe8c		       90 eb		      bcc	.RaftTurn	; left rail
+    878  fe8e		       38		      sec
+    879  fe8f		       e9 08		      sbc	#8	; the cell just beyond the left edge
+    880  fe91		       b0 02		      bcs	.RaftLeftCol
+    881  fe93		       a9 00		      lda	#0
+    882  fe95				   .RaftLeftCol
+    883  fe95		       4a		      lsr
+    884  fe96		       4a		      lsr
+    885  fe97		       20 18 f3 	      jsr	RaftCellSolid
+    886  fe9a		       d0 dd		      bne	.RaftTurn
+    887  fe9c		       b5 bd		      lda	EnemyRamX,X
+    888  fe9e		       38		      sec
+    889  fe9f		       e5 88		      sbc	$88
+    890  fea1		       95 bd		      sta	EnemyRamX,X
+    891  fea3							; ---- carry + pin while the player is aboard -----------------------------
+    892  fea3				   .RaftRide
+    893  fea3							; (the Y pin ran at .RaftGo — it must not depend on the raft moving)
+    894  fea3							; ramp: arm the flag, and +1 level every 2nd frame (capped at 15)
+    895  fea3		       a5 f0		      lda	$F0
+    896  fea5		       09 80		      ora	#%10000000
+    897  fea7		       85 f0		      sta	$F0
+    898  fea9		       a5 c2		      lda	EnemyRamP
+    899  feab		       4a		      lsr		; C = the frame-parity bit
+    900  feac		       b0 0f		      bcs	.RaftCarry	; odd frame: flag only this time
+    901  feae		       a5 f0		      lda	$F0
+    902  feb0		       29 78		      and	#%01111000
+    903  feb2		       c9 78		      cmp	#%01111000
+    904  feb4		       f0 07		      beq	.RaftCarry	; already spun up
+    905  feb6		       a5 f0		      lda	$F0
+    906  feb8		       18		      clc
+    907  feb9		       69 10		      adc	#%00010000
+    908  febb		       85 f0		      sta	$F0
+    909  febd				   .RaftCarry
+    910  febd		       bd 36 f3 	      lda	RaftBitTab,X
+    911  fec0		       25 c1		      and	EnemyRamD
+    912  fec2		       f0 0a		      beq	.RaftCarryL
+    913  fec4		       a5 80		      lda	RoomX
+    914  fec6		       18		      clc
+    915  fec7		       65 88		      adc	$88
+    916  fec9		       85 80		      sta	RoomX
+    917  fecb		       4c d8 fe 	      jmp	.RaftDone
+    918  fece				   .RaftCarryL
+    919  fece		       a5 80		      lda	RoomX
+    920  fed0		       38		      sec
+    921  fed1		       e5 88		      sbc	$88
+    922  fed3		       85 80		      sta	RoomX
+    923  fed5		       4c d8 fe 	      jmp	.RaftDone
+    924  fed8				   .RaftDone
+    925  fed8		       4c f8 fb 	      jmp	ReturnPad
+    926  fedb
+    927  fedb		       00 00 00 00*	      .ds	$FFFA - *, 0
+    928  fffa		       00 f0		      .word.w	$F000
+    929  fffc		       00 f0		      .word.w	$F000
+    930  fffe		       00 f0		      .word.w	$F000

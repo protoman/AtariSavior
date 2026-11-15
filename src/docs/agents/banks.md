@@ -362,3 +362,10 @@ Every future "move X to bank N" step starts with a reader/caller survey of X.
   the room-bank code layout) or a smaller enemy-record encoding (enemy records are ~55% of the table bytes). The generator keeps
   the knob `SAVIOR_GEN_ROOMS_CAP`. `tools/playbot.py` re-plans when a wide ceiling/floor link drops it into a room off the route
   (level 22 needed this).
+- **2026-11-15: bomb wall punch spread over 3 frames.** Sweeping `sim_frame_budget` over rooms of the 23-room stage found level 20
+  room 18 with a 285.8-line blast frame (overscan 3543c): `BombMarkWalls` scanned the whole +-2 col window (up to 3 cells) in the
+  edge frame, on top of a heavy room. `BombTick` now calls it at BombTimer 60 (edge: first cell + the M1/ball strip checks),
+  58 and 57 (one cell each); timer 59 stays the enemy/player/sound frame. `BMWJ` (bank 3) derives the slice from BombTimer, so
+  no new ZP; any other BombTimer (tests) keeps the old all-cells call. `tools/test_bomb_stagger.py` guards it. `sim_frame_budget` now
+  starts the cave phase at bank 1 `BandStart` (the `.Row` address there is a sprite-fetch `jmp`), has a tally-frame class
+  (DropTarget $FE bypasses the overscan: 1 line short) and its default scenario is level 2 room 1.

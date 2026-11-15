@@ -2083,9 +2083,13 @@ BombTick subroutine
     beq .BTEnd
     lda BombTimer
     cmp #59                     ; the frame AFTER the blast edge: enemy kill, player
-    bne .BTDone                 ;   hit and the noise burst (2026-11: they used to
+    beq .BT59                   ;   hit and the noise burst (2026-11: they used to
                                 ;   share the edge frame with BombMarkWalls, ~920c,
                                 ;   and pushed that overscan up to 6 lines long)
+    cmp #57                     ; timers 58/57: one more wall-punch slice (BombMarkWalls)
+    bcc .BTDone
+    bcs .BTMark                 ; always
+.BT59:
     jsr BombEnemyBlast          ; S9: A = 1 kill (bank2, lamp-safe), 0 none
     beq .BTNoKill
     lda #$50                    ; +50 per kill — moved out of the pad body
@@ -2098,9 +2102,7 @@ BombTick subroutine
 .BTEnd:
     lda BombPacked              ; clear state bits only (keep mask + DownPrev)
     and #%11111100
-    sta BombPacked
-    lda #0
-    sta BombTimer
+    sta BombPacked              ; (BombTimer is already 0: we got here on the dec's Z)
     rts
 .BTFuse:
     dec BombTimer
@@ -2108,6 +2110,7 @@ BombTick subroutine
     inc BombPacked              ; state 1 -> 2 (b1:0 = 01 -> 10; no carry into b2)
     lda #60
     sta BombTimer
+.BTMark:
     jsr CallPad_BombMarkWalls   ; S6.3: set WallMask; A = #walls newly broken
     tax
     beq .BTNoScore
