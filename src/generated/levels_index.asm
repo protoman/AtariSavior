@@ -25,7 +25,7 @@ LEVEL_SPLIT = 23   ; levels 1..LEVEL_SPLIT live in room bank A (bank2), the rest
 ;                               1 B/patch, 1 B/feature, then the
 ;                               FEATURE-record stream when the room
 ;                               has feature cells (C11: no hot records).
-LEVEL_SHAPE_COUNT = 126
+LEVEL_SHAPE_COUNT = 125
 SHAPE_M0 = 0
 SHAPE_M1 = 1
 SHAPE_M2 = 2
@@ -151,7 +151,6 @@ SHAPE_M121 = 121
 SHAPE_M122 = 122
 SHAPE_M123 = 123
 SHAPE_M124 = 124
-SHAPE_M125 = 125
 
 ; Shape block (C11 2026-10-21): EXACTLY 3 row-pool indices (band
 ;   0/1/2 -> RowPoolPF0/1/2 in models_data.asm; the loader expands
@@ -228,11 +227,11 @@ LevelDataTable:
   .byte 20 ; LEVEL20 rooms
   .byte LEVEL21_MINER_ROOM, LEVEL21_MINER_X, LEVEL21_WALL_COLOR, LEVEL21_WALL_COLOR2
   .word LEVEL21_RoomShapes
-  .byte 20 ; LEVEL21 rooms
+  .byte 21 ; LEVEL21 rooms
   .byte LEVEL22_MINER_ROOM, LEVEL22_MINER_X, LEVEL22_WALL_COLOR, LEVEL22_WALL_COLOR2
   .word LEVEL22_RoomShapes
-  .byte 20 ; LEVEL22 rooms
+  .byte 22 ; LEVEL22 rooms
   .byte LEVEL23_MINER_ROOM, LEVEL23_MINER_X, LEVEL23_WALL_COLOR, LEVEL23_WALL_COLOR2
   .word LEVEL23_RoomShapes
-  .byte 20 ; LEVEL23 rooms
+  .byte 23 ; LEVEL23 rooms
 

@@ -17,9 +17,9 @@ LEVEL3_MINER_Y = 96
 ; (the shape must be shared). C11 (2026-10-21): block = 3 row-pool
 ; indices — the hot count/stream is gone (hot derives from PF row 1).
 LEVEL3_RoomShapes:
-  .byte SHAPE_M46 ; room 0 (model 46)
-  .byte SHAPE_M111 ; room 1 (model 111)
-  .byte SHAPE_M104 ; room 2 (model 104)
+  .byte SHAPE_M44 ; room 0 (model 44)
+  .byte SHAPE_M108 ; room 1 (model 108)
+  .byte SHAPE_M103 ; room 2 (model 103)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
 ; (x<<4 | y) normalised to the level origin. Exits are DERIVED at

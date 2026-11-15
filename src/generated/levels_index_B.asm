@@ -25,7 +25,7 @@ LEVEL_SPLIT = 23   ; levels 1..LEVEL_SPLIT live in room bank A (bank2), the rest
 ;                               1 B/patch, 1 B/feature, then the
 ;                               FEATURE-record stream when the room
 ;                               has feature cells (C11: no hot records).
-LEVEL_SHAPE_COUNT = 126
+LEVEL_SHAPE_COUNT = 125
 SHAPE_M0 = 0
 SHAPE_M1 = 1
 SHAPE_M2 = 2
@@ -151,7 +151,6 @@ SHAPE_M121 = 121
 SHAPE_M122 = 122
 SHAPE_M123 = 123
 SHAPE_M124 = 124
-SHAPE_M125 = 125
 
 ; Shape block (C11 2026-10-21): EXACTLY 3 row-pool indices (band
 ;   0/1/2 -> RowPoolPF0/1/2 in models_data.asm; the loader expands
@@ -168,29 +167,29 @@ SHAPE_M125 = 125
 LevelDataTable:
   .byte LEVEL24_MINER_ROOM, LEVEL24_MINER_X, LEVEL24_WALL_COLOR, LEVEL24_WALL_COLOR2
   .word LEVEL24_RoomShapes
-  .byte 20 ; LEVEL24 rooms
+  .byte 23 ; LEVEL24 rooms
   .byte LEVEL25_MINER_ROOM, LEVEL25_MINER_X, LEVEL25_WALL_COLOR, LEVEL25_WALL_COLOR2
   .word LEVEL25_RoomShapes
-  .byte 20 ; LEVEL25 rooms
+  .byte 23 ; LEVEL25 rooms
   .byte LEVEL26_MINER_ROOM, LEVEL26_MINER_X, LEVEL26_WALL_COLOR, LEVEL26_WALL_COLOR2
   .word LEVEL26_RoomShapes
-  .byte 20 ; LEVEL26 rooms
+  .byte 23 ; LEVEL26 rooms
   .byte LEVEL27_MINER_ROOM, LEVEL27_MINER_X, LEVEL27_WALL_COLOR, LEVEL27_WALL_COLOR2
   .word LEVEL27_RoomShapes
-  .byte 20 ; LEVEL27 rooms
+  .byte 23 ; LEVEL27 rooms
   .byte LEVEL28_MINER_ROOM, LEVEL28_MINER_X, LEVEL28_WALL_COLOR, LEVEL28_WALL_COLOR2
   .word LEVEL28_RoomShapes
-  .byte 20 ; LEVEL28 rooms
+  .byte 23 ; LEVEL28 rooms
   .byte LEVEL29_MINER_ROOM, LEVEL29_MINER_X, LEVEL29_WALL_COLOR, LEVEL29_WALL_COLOR2
   .word LEVEL29_RoomShapes
-  .byte 20 ; LEVEL29 rooms
+  .byte 23 ; LEVEL29 rooms
   .byte LEVEL30_MINER_ROOM, LEVEL30_MINER_X, LEVEL30_WALL_COLOR, LEVEL30_WALL_COLOR2
   .word LEVEL30_RoomShapes
-  .byte 20 ; LEVEL30 rooms
+  .byte 23 ; LEVEL30 rooms
   .byte LEVEL31_MINER_ROOM, LEVEL31_MINER_X, LEVEL31_WALL_COLOR, LEVEL31_WALL_COLOR2
   .word LEVEL31_RoomShapes
-  .byte 20 ; LEVEL31 rooms
+  .byte 23 ; LEVEL31 rooms
   .byte LEVEL32_MINER_ROOM, LEVEL32_MINER_X, LEVEL32_WALL_COLOR, LEVEL32_WALL_COLOR2
   .word LEVEL32_RoomShapes
-  .byte 20 ; LEVEL32 rooms
+  .byte 23 ; LEVEL32 rooms
 
