@@ -36,7 +36,7 @@ y = 98 while the shaft walls still stop any sideways step (the box is clear of t
 exists in none of these rooms (I tried: it also stranded the bot in a dead end on levels 18, 22 and 28 and was removed).
 A human has the same problem unless he shoots or bombs the snake first. Options, not done: (1) let the bot drop a
 bomb from a ledge above, (2) lower itself to the shaft mouth and fire at the snake when the laser row lines up,
-(3) treat it as FORCED (the bot already has ), (4) make the generator keep floor patrols out from under a
+(3) treat it as FORCED (the bot already has `--safe`), (4) make the generator keep floor patrols out from under a
 one-column shaft. Your call.
 
 ### Remaining deaths (9)
