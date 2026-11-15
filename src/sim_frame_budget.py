@@ -61,12 +61,15 @@ GAP_LIMIT = 76             # one scanline = 76 CPU cycles
 MIN_FRAMES = 300
 
 import os
-SIM_LEVEL = os.environ.get('SIM_LEVEL', '1')   # '0' = boot level/room 0
+SIM_LEVEL = os.environ.get('SIM_LEVEL', '2')   # '0' = boot level/room 0
 # SIM_EXIT=down: one frame after landing, force RoomY=PLAYER_MAX_Y (132) with
 # vs positive (falling) and no thrust -> StepDown's `.SDBottom` fires
 # ExitRoomDown -> EnterRoom in OVER (the room-crossing repro; pick a room
 # with a down connection, e.g. SIM_LEVEL=1 SIM_ROOM=0).
 EXIT = os.environ.get('SIM_EXIT', '')
+# Default scenario room: level 2 room 1 (the scenario needs enemies and no miner: in the generated
+# stage level 1 room 1 is a 2-room tutorial where the bot rescues the miner at ~f677 and the tally
+# ends the scene before the bomb fuse runs out).
 SIM_ROOM = os.environ.get('SIM_ROOM', '1')
 PIN_ROW = os.environ.get('SIM_PINROW') == '1'  # pin RoomY onto enemy row
 # Targeted-room probe (SIM_LEVEL/SIM_ROOM off the default flicker repro):
@@ -76,7 +79,7 @@ PIN_ROW = os.environ.get('SIM_PINROW') == '1'  # pin RoomY onto enemy row
 # the shutter before the fuse ends, so state2 never lands — so report those
 # two checks as N/A instead of failing. The build.sh gate never sets these,
 # so the default run stays strict.
-PROBE = SIM_LEVEL != '1' or SIM_ROOM != '1'
+PROBE = SIM_LEVEL != '2' or SIM_ROOM != '1'
 FLY = os.environ.get('SIM_FLY', '')    # '1'/'Y' hover enemy Y; 'X' align enemy X (user repro: fly
                                          # L/R with laser until same row)
 TRAIL_FRAMES = {int(x) for x in os.environ.get('SIM_TRAIL', '347').split(',')}
@@ -105,6 +108,7 @@ if PC_TBGO is None:
 blank_active = False
 blank_start = 0
 blank_lines = []              # length of each blank transition frame, in lines
+tally_frames = set()          # DropTarget == $FE: the frozen tally scene (bypasses the overscan)
 blank_frames = set()          # frames whose StartFrame->StartFrame span holds one blank frame
 PC_OVER = LABELS['Overscan']
 PC_WAITOVER = LABELS['.WaitOverscan']
@@ -126,6 +130,17 @@ for _l in (SRC / 'bank1.lst').read_text(errors='replace').splitlines():
         break
 if PC_WAIT6 is None:
     sys.exit('label .wait not found in bank1.lst')
+# layout v3: the gameplay cave kernel starts at bank1's BandStart (after the .wait poll + BandPad);
+# bank0's .Row is only the title kernel's entry. ($F103 in bank 1 is the prime's sprite-fetch jmp —
+# it only fires on frames with a visible sprite line, which desynced the phase machine.)
+PC_BANDSTART = None
+for _l in (SRC / 'bank1.lst').read_text(errors='replace').splitlines():
+    _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+BandStart\s*$', _l)
+    if _m:
+        PC_BANDSTART = int(_m.group(1), 16)
+        break
+if PC_BANDSTART is None:
+    sys.exit('label BandStart not found in bank1.lst')
 PC_TITLE = LABELS['CallPad_TitleBand']  # bank0 pad -> bank1 TitleBand (bands 1-2)
 
 # overscan sub-marks for attribution (which caller eats the timer window)
@@ -449,7 +464,7 @@ while frame < 1100:
         # title-transition f2 acc 1491 while real span was 1336c).
         vbl_acc = 0
         vbl_pre = None
-    elif bk in (0, 1) and pc == PC_ROW and phase == PH_VBL:   # layout v3: the kernel lands in the cave bank (1) at .Row
+    elif ((bk == 0 and pc == PC_ROW) or (bk == 1 and pc == PC_BANDSTART)) and phase == PH_VBL:   # layout v3: cave kernel = bank1 BandStart
         vbl_val = vbl_pre if vbl_pre is not None else vbl_acc
         _wall_vbl = mem.wall
         ker_bounds.setdefault(frame, {})['row'] = mem.wall
@@ -500,6 +515,8 @@ while frame < 1100:
                 max_over_work = (over_work, frame + 1)
             # -- evaluate previous frame --
             frame += 1
+            if mem.ram[DROP_IDX] == 0xFE:
+                tally_frames.update((frame - 1, frame))
             frame_ker[frame] = cur_ker or 'cave'   # kind of the frame just
             # finished (cur_ker resets further below — store it NOW)
             if frame >= 2 and vbl_val is not None:
@@ -795,6 +812,14 @@ def _wall_bad(f, v):
         # frame that ends in a blank room-transition frame (bank5): two
         # frames' worth of lines (and the frame after it, which re-syncs), with the same +-1 line wall-phase slack as
         # the death/respawn transition below.
+        # (was +-1.1; 2026-11: the pair is the previous frame CUT at TBgo — it skips its overscan wait —
+        # plus the timer-driven blank frame, so its length follows the overscan work done before the cut:
+        # up to one more line when that work crosses a WSYNC line (measured 561.11, 561.03), plus the
+        # same wall-phase slack. The pair is invisible: the second half is a blank frame.)
+        return abs(v - t) > 1.5
+    if f in tally_frames:
+        # frozen tally scene (DropTarget $FE): SelectActiveObject notes "that frame bypasses the overscan",
+        # so the frame runs exactly one line short (measured 279.05 steady); entry/exit frames land between.
         return abs(v - t) > 1.1
     if f in transition_frames:
         # death/respawn transition: reload chain runs exactly +1 TIM64T
