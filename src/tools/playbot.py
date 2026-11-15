@@ -688,8 +688,14 @@ class Pilot:
                 if j is not None:
                     i = j
                     continue
-                raise GiveUp(f"left the route: in room {room_before}, expected "
-                             f"{cur[0]}/{nxt[0]}")
+                # a wide ceiling/floor link led into a room off the route (layouts past 20 rooms): re-plan from
+                # here (play() routes again from wherever the bot stands); give up only if it keeps happening
+                self.replans = getattr(self, "replans", 0) + 1
+                if self.replans > 8:
+                    raise GiveUp(f"left the route: in room {room_before}, expected "
+                                 f"{cur[0]}/{nxt[0]}")
+                self.say("off route: in room", room_before, "- re-planning")
+                return
             if cur[0] == nxt[0] and (nxt[1], nxt[2]) in self.lv.grids[nxt[0]][1]:
                 self.edge_safe(cur, nxt, lambda _c, _n: self.bomb_strip(_n))
                 continue                          # re-check the same edge, strip gone

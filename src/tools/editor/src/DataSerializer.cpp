@@ -3817,11 +3817,11 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         used.clear();
         for (int l = 1; l <= kStageLevels; ++l) {
             {   // experiment knob: SAVIOR_GEN_ROOMS_CAP caps the room count of levels 21+
-                // Room count: level N has N rooms up to 20, then 20 (measured 2026-11-14): the room tables of the
+                // Room count: level N has N rooms up to 23, then 23 (measured 2026-11-15, exact window packing; 24 does not pack): the room tables of the
                 // 32 levels live in two room banks whose data windows hold ~4.0 KB in total, and the tables do not
-                // pack past 20 rooms per level (22 does not fit; see docs/agents/banks.md). The extra levels grow in
+                // pack past 23 rooms per level (24 does not fit even with an exact packer; see docs/agents/banks.md). The extra levels grow in
                 // doors, keys, power cells and enemy mix instead.
-                int rooms = l < 2 ? 2 : std::min(l, 20);
+                int rooms = l < 2 ? 2 : std::min(l, 23);
                 if (l > 20 && std::getenv("SAVIOR_GEN_ROOMS_CAP"))
                     rooms = std::min(rooms, std::atoi(std::getenv("SAVIOR_GEN_ROOMS_CAP")));
                 walks[l - 1] = LevelLayout(l, rooms);

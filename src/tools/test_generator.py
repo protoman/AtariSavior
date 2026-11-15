@@ -54,8 +54,8 @@ import test_editor_roundtrip as ER   # noqa: E402  (editor build + PY constant)
 import stage_reach as SR           # noqa: E402  (route_segments: power-cell guard)
 
 LEVELS = 32
-ROOM_CAP = 20                            # rooms per level stop growing at 20 (banks plan: the two room banks hold ~4.0 KB)
-ROOMS = 2 + sum(min(n, ROOM_CAP) for n in range(2, LEVELS + 1))   # 451 (level 1 has 2 rooms too)
+ROOM_CAP = 23                            # rooms per level stop growing at 23 (the two room banks hold ~4.0 KB; exact packing, banks plan 2026-11-15)
+ROOMS = 2 + sum(min(n, ROOM_CAP) for n in range(2, LEVELS + 1))   # 484 (level 1 has 2 rooms too)
 GRID_SPAN = 15                          # C1: nibble 15 is the no-room sentinel
 MAX_SHAPES = 128  # format cap: 7-bit shape index (LAYOUT 8, 2026-10-24)
 SHAPE_BUDGET = 128     # the format cap; the REAL limit is the bank3 shapes
@@ -266,7 +266,7 @@ def main() -> int:
             print(f"FAIL: {len(levels)} levels, want {LEVELS}")
             return 1
         counts = [len(level["rooms"]) for level in levels]
-        want_counts = [2] + [min(n, ROOM_CAP) for n in range(2, LEVELS + 1)]   # 2-room floor, capped at 20
+        want_counts = [2] + [min(n, ROOM_CAP) for n in range(2, LEVELS + 1)]   # 2-room floor, capped at ROOM_CAP
         if counts != want_counts:
             print(f"FAIL: rooms per level {counts} != {want_counts}")
             return 1

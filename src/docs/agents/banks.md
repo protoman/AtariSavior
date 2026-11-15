@@ -353,3 +353,12 @@ Every future "move X to bank N" step starts with a reader/caller survey of X.
   follow the role map (`B_HUD`, `B_GAME`, `B_ROOMS`, ... = `banksym.bank_index`). `tests/frozen/` is re-frozen on the new layout
   (`tools/freeze_test_banks.sh`); tests that share `test_cell_map` still call the OLD role names `BANK1..BANK7` (BANK1 = HUD ...),
   `Mem.bank` is the PHYSICAL bank. Bug caught on the way: the bank 4 copy of `ColMask` had only 12 of its 20 entries.
+- **2026-11-15: rooms per level 20 -> 23 on the new structure.** `convert_level._pack_exact` (big-first first-fit, then a bounded
+  depth-first search) packs the room tables into the window slots of banks 6/7 and the extras into bank 5; with it level n has
+  min(n, 23) rooms (484 rooms, was 451). **Capacity finding:** 24 rooms/level does NOT pack even with exact packing: the
+  windows of one room bank hold at most ~8 level tables of >=150 B (window sizes 329/429/340/290/199/207/141/71 minus the
+  level index), so the limit is window fragmentation + total (~4.0 KB for both banks), not the packer. Going further needs
+  bigger contiguous windows (move the pinned code in `bank6.asm` so `$F453-$F600`, `$F700-$F854` merge, i.e. rework of
+  the room-bank code layout) or a smaller enemy-record encoding (enemy records are ~55% of the table bytes). The generator keeps
+  the knob `SAVIOR_GEN_ROOMS_CAP`. `tools/playbot.py` re-plans when a wide ceiling/floor link drops it into a room off the route
+  (level 22 needed this).
