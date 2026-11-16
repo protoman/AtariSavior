@@ -223,6 +223,7 @@ ROUTE_ROOM = 240
 CELL_BUDGET = 90 * 60            # no stretch between refills may pass 90 s
 BAR_FRAMES = 120 * 60
 POWER_CELL = 14
+CELLS_FORCED = True
 EXTRA_MINER = 15
 
 
@@ -310,11 +311,14 @@ def route_segments(level, models):
     # and "leave". Minimise the worst stretch first (it is what the timer
     # cares about), then the current stretch, then the total.
     start = (s, 0, sf, 0, 0)
-    best = {start: (0, 0, 0)}
+    # Pareto sets per node: a label (worst, stretch, total) is only dropped when
+    # another one is <= in all three (a lower worst with a longer current
+    # stretch can still lose later, e.g. a cell kept for the return pass).
+    best = {start: {(0, 0, 0)}}
     stack = [(0, 0, 0, start)]
     while stack:
         worst, total, stretch, node = heapq.heappop(stack)
-        if best.get(node) != (worst, stretch, total):
+        if (worst, stretch, total) not in best[node]:
             continue                    # stale entry
         ri, b, f, got, used = node
         air = grids[ri][0]
@@ -343,13 +347,22 @@ def route_segments(level, models):
             opts = [(nw, ns, nt, used)]
             ci = cell_ix.get((nr, nb, nf))
             if ci is not None and not used >> ci & 1:
-                opts.append((nw, 0, nt, used | 1 << ci))
+                forced = (nw, 0, nt, used | 1 << ci)
+                # CELLS_FORCED: touching a cell takes it (the player cannot
+                # decline a pickup on the cell he walks through)
+                opts = [forced] if CELLS_FORCED else opts + [forced]
             for ow, os_, ot, ou in opts:
                 nn = (nr, nb, nf, ng, ou)
-                if nn not in best or (ow, os_, ot) < best[nn]:
-                    best[nn] = (ow, os_, ot)
-                    heapq.heappush(stack, (ow, ot, os_, nn))
-    reached = [v for k, v in best.items() if k[0] == goal and k[3] == full]
+                lab = (ow, os_, ot)
+                have = best.setdefault(nn, set())
+                if any(h[0] <= ow and h[1] <= os_ and h[2] <= ot for h in have):
+                    continue
+                have.difference_update(
+                    [h for h in have if ow <= h[0] and os_ <= h[1] and ot <= h[2]])
+                have.add(lab)
+                heapq.heappush(stack, (ow, ot, os_, nn))
+    reached = [v for k, vs in best.items() if k[0] == goal and k[3] == full
+               for v in vs]
     if not reached:
         return None
     w, _cur, t = min(reached)

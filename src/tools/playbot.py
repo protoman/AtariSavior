@@ -213,6 +213,15 @@ class Level:
         self.rooms = rooms
         self.at = {(r["room_x"], r["room_y"]): i for i, r in enumerate(rooms)}
         self.grids, self.dead = SR.level_grids(self.level, self.models, self.at)
+        self.cells = set()
+        for i, r in enumerate(rooms):
+            m = self.models[r["model_id"]]
+            u = 12 // max(1, len(m["tiles"]) // m["width"])
+            rafted = any(e.get("type") == 7 for e in r.get("enemies") or [])
+            for e in r.get("enemies") or []:
+                if e.get("type") == SR.POWER_CELL and not rafted:   # a raft room's graph is the only safe way across
+                    self.cells.add((i, min(len(self.grids[i][0]) - 1, int(e["y"]) // max(1, u)),
+                                    int(round(e["x"])) // 2))
         mx = int(self.level["miner_x"])
         self.miner = (self.level["miner_room"],
                       min(BANDS - 1, int(self.level["miner_y"] * 12) // BAND_PX),
@@ -287,8 +296,12 @@ class Level:
                     # the sprite touches it before any sideways step is possible, so take another
                     # shaft of the room (levels 3, 17, 18, 22, 28, 29: a snake under the column).
                     risk = self.arrival_risk(nr, nb, nf) if self.use_risk else 0
+                if self.cell_cost and (nr, nb, nf) in self.cells:
+                    risk += self.cell_cost
                 yield (nr, nb, nf), (1 if strip else 0), \
                     (SR.DANGER if (nb, nf) in gd else 0) + risk
+
+    cell_cost = 0            # >0 while the time bar is full: walk around a power cell, a refill then is wasted (level 29 took both at 104/120 and 17/120)
 
     use_risk = True          # off while play() ranks the miner orders: the detours must not reorder them
 
@@ -1103,6 +1116,7 @@ class Pilot:
                 here = (c.r("RoomNo"), band_of(c.r("RoomY")), cell_of(c.r("RoomX")))
                 if here == tgt:
                     break
+                self.lv.cell_cost = 25 if c.r("BarLevel") > 70 else 0
                 path = self.lv.route(here, tgt)
                 if path is None:
                     raise GiveUp(f"no route {here} -> {tgt}")
