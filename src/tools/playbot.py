@@ -73,6 +73,9 @@ class Console:
         self.mpu = MPU(memory=self)
         self.pc_frame = lab["StartFrame"]
         self.frames = 0
+        self.bar_ram = lab["BarLevel"] & 0x7F
+        self.bar_last = 0
+        self.refills = []              # (frame, room, bar before, bar after)
 
     # bus (the same minimal model every sim in tools/ uses)
     def __getitem__(self, a):
@@ -118,6 +121,10 @@ class Console:
         while not (self.bank == 0 and self.mpu.pc == self.pc_frame):
             self.mpu.step()
         self.frames += 1
+        bar = self.ram[self.bar_ram]
+        if bar > self.bar_last:
+            self.refills.append((self.frames, self.r("RoomNo"), self.bar_last, bar))
+        self.bar_last = bar
 
     def save(self):
         m = self.mpu
@@ -1169,6 +1176,7 @@ def main() -> int:
     ap.add_argument("--mortal", action="store_true")
     ap.add_argument("--frames", type=int, default=9000)
     ap.add_argument("-v", action="store_true")
+    ap.add_argument("--bar", action="store_true", help="print every time-bar refill (power cell)")
     ap.add_argument("--log", help="append one JSON line per death / give-up (last 48 frames, "
                                   "enemies, crunch/phase state, what the bot was doing)")
     ap.add_argument("--safe", action="store_true",
@@ -1186,6 +1194,9 @@ def main() -> int:
         t0 = con.frames
         ok, why, pilot = finish(con, lv, a.mortal, a.v, a.frames, a.safe, a.log, n)
         used = con.frames - t0
+        if a.bar:
+            print(f"           bar refills (frame, room, before->after): "
+                  f"{[(f, r + 1, b, c) for f, r, b, c in con.refills if f > t0 + 5]}")
         print(f"level {n:2d}: {'DONE' if ok else 'FAIL'}  {used:5d} frames  "
               f"deaths {pilot.deaths}  rooms {len(pilot.rooms_seen)}/{len(lv.rooms)}"
               f"  - {why}")

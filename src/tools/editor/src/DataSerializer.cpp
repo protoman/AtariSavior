@@ -3266,6 +3266,12 @@ static int PlanPowerCellsAt(LevelData& lv, const std::vector<ModelData>& models,
     if (level >= 21) {
         budget = std::clamp(rr.route.back().cost * frac20 / 20, 10 * 60, kCellBudget);   // two cells, a third at most (4 latch bits)
     }
+    // The cell sits near the route, not on it, and a player takes a few steps to
+    // reach it: stretches measured by tools/stage_reach.py (cells used once, detour
+    // included) ran up to ~1000 frames longer than the planner's node costs, so the
+    // plan keeps kCellSlack of headroom.
+    constexpr int kCellSlack = 12 * 60;
+    budget = std::max(budget - kCellSlack, 10 * 60);
     const int lead = std::max(budget - 10 * 60, budget / 2);
     if (rr.route.back().cost <= budget) return 0;
     auto modelOf = [&](int id) -> const ModelData* {
