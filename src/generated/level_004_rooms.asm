@@ -17,10 +17,10 @@ LEVEL4_MINER_Y = 96
 ; (the shape must be shared). C11 (2026-10-21): block = 3 row-pool
 ; indices — the hot count/stream is gone (hot derives from PF row 1).
 LEVEL4_RoomShapes:
-  .byte SHAPE_M112 ; room 0 (model 112)
-  .byte SHAPE_M91 ; room 1 (model 91)
-  .byte SHAPE_M71 ; room 2 (model 71)
-  .byte SHAPE_M81 | $80 ; room 3 (model 81)
+  .byte SHAPE_M109 ; room 0 (model 109)
+  .byte SHAPE_M90 ; room 1 (model 90)
+  .byte SHAPE_M74 ; room 2 (model 74)
+  .byte SHAPE_M83 | $80 ; room 3 (model 83)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
 ; (x<<4 | y) normalised to the level origin. Exits are DERIVED at
@@ -38,12 +38,12 @@ LEVEL4_RoomPositions:
 ; none; the enemy record index is derived at room load).
 LEVEL4_RoomCounts:
   .byte $00 ; room 0: 0 record(s)
-  .byte $80 ; room 1: 2 record(s)
+  .byte $40 ; room 1: 1 record(s)
   .byte $40 ; room 2: 1 record(s)
-  .byte $00 ; room 3: 0 record(s)
+  .byte $40 ; room 3: 1 record(s)
 
 ; Enemy data: 3 enemy records across 4 rooms, 3 bytes each (type|dir, x, y).
 LEVEL4_EnemyDataTable:
   .byte $04, 63, 48
-  .byte $02, 19, 84
-  .byte $05, 15, 48
+  .byte $05, 71, 12
+  .byte $02, 8, 48

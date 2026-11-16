@@ -4,7 +4,7 @@
 LEVEL_FORMAT = $08
 LEVEL_DATA_STRIDE = 7
 LEVEL_COUNT = 32
-LEVEL_SPLIT = 23   ; levels 1..LEVEL_SPLIT live in room bank A (bank2), the rest in B (bank5)
+LEVEL_SPLIT = 24   ; levels 1..LEVEL_SPLIT live in room bank A (bank2), the rest in B (bank5)
 
 ; Per-level entry (stride 7, (d) 2026-10-20): miner room/x, both wall
 ; colors, then the level's room-table base and its ROOM COUNT.
@@ -25,7 +25,7 @@ LEVEL_SPLIT = 23   ; levels 1..LEVEL_SPLIT live in room bank A (bank2), the rest
 ;                               1 B/patch, 1 B/feature, then the
 ;                               FEATURE-record stream when the room
 ;                               has feature cells (C11: no hot records).
-LEVEL_SHAPE_COUNT = 125
+LEVEL_SHAPE_COUNT = 123
 SHAPE_M0 = 0
 SHAPE_M1 = 1
 SHAPE_M2 = 2
@@ -149,8 +149,6 @@ SHAPE_M119 = 119
 SHAPE_M120 = 120
 SHAPE_M121 = 121
 SHAPE_M122 = 122
-SHAPE_M123 = 123
-SHAPE_M124 = 124
 
 ; Shape block (C11 2026-10-21): EXACTLY 3 row-pool indices (band
 ;   0/1/2 -> RowPoolPF0/1/2 in models_data.asm; the loader expands
@@ -165,9 +163,6 @@ SHAPE_M124 = 124
 ; bottom_band room must resolve to it; bank6.asm carries the EQU and
 ; test_level_bank asserts the pair).
 LevelDataTable:
-  .byte LEVEL24_MINER_ROOM, LEVEL24_MINER_X, LEVEL24_WALL_COLOR, LEVEL24_WALL_COLOR2
-  .word LEVEL24_RoomShapes
-  .byte 23 ; LEVEL24 rooms
   .byte LEVEL25_MINER_ROOM, LEVEL25_MINER_X, LEVEL25_WALL_COLOR, LEVEL25_WALL_COLOR2
   .word LEVEL25_RoomShapes
   .byte 23 ; LEVEL25 rooms
