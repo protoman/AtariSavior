@@ -1509,15 +1509,41 @@ std::vector<GridPos> LevelLayoutSalt(int level, int rooms, unsigned salt,
     return walk;
 }
 
-// First salt whose goal has nothing below it (salt 0 = the old layout).
+bool HasRoomAt(const std::vector<GridPos>& walk, int x, int y);
+
+// Rooms (not the start, not the goal) with a vertical link and NO side link: the only rooms that
+// can be hot (user rule 2026-11-16: a hot room has no side exit).
+int VerticalOnlyRooms(const std::vector<GridPos>& walk) {
+    int n = 0;
+    for (int i = 1; i + 1 < (int)walk.size(); ++i) {
+        const GridPos& p = walk[i];
+        const bool v = HasRoomAt(walk, p.x, p.y - 1) || HasRoomAt(walk, p.x, p.y + 1);
+        const bool h = HasRoomAt(walk, p.x - 1, p.y) || HasRoomAt(walk, p.x + 1, p.y);
+        if (v && !h) ++n;
+    }
+    return n;
+}
+
+// First salt whose goal has nothing below it (salt 0 = the old layout) AND that offers a vertical-only
+// room (from level 5, for the hot role). When no salt offers one, the one with the most (and a valid goal)
+// wins.
 std::vector<GridPos> LevelLayout(int level, int rooms) {
-    std::vector<GridPos> walk;
+    // ONE vertical-only room from level 5 (a hot role needs it). Asking for one per hot role (up to 3)
+    // swapped 14+ layouts for longer winding ones and level 19 needed a second power cell it could not
+    // place; one keeps salt 0 (the old layout) for every level that already has such a room.
+    const int hotWant = level >= 5 ? 1 : 0;
+    std::vector<GridPos> walk, best;
+    int bestPure = -1;
     for (unsigned salt = 0; salt < 200; ++salt) {
         bool ok = true;
         walk = LevelLayoutSalt(level, rooms, salt, &ok);
-        if (ok || level < 4) break;
+        if (level < 4) break;
+        if (!ok) continue;
+        const int pure = VerticalOnlyRooms(walk);
+        if (pure >= hotWant) return walk;
+        if (pure > bestPure) { bestPure = pure; best = walk; }
     }
-    return walk;
+    return best.empty() ? walk : best;
 }
 
 bool HasRoomAt(const std::vector<GridPos>& walk, int x, int y) {
@@ -2396,6 +2422,17 @@ int SnakeSpot(const RoomData& room, const ModelData& m, int* dir, int* band, flo
     return -1;
 }
 
+// Enemy kinds the stage audit counts (moth, bat, snake, spider, tentacle) and how many a level needs.
+int NeedEnemyKinds(int l) { return l >= 12 ? 4 : l >= 8 ? 3 : l >= 4 ? 2 : 0; }
+int DistinctEnemyKinds(const LevelData& lv) {
+    std::set<int> kinds;
+    for (const RoomData& r : lv.rooms)
+        for (const EnemyData& e : r.enemies)
+            if (e.type == (int)EnemyType::GIANT_MOTH || e.type == (int)EnemyType::BAT || e.type == (int)EnemyType::SNAKE
+                || e.type == (int)EnemyType::SPIDER || e.type == (int)EnemyType::TENTACLE) kinds.insert(e.type);
+    return (int)kinds.size();
+}
+
 int CountType(const LevelData& lv, EnemyType t) {
     int n = 0;
     for (const RoomData& r : lv.rooms)
@@ -2459,7 +2496,13 @@ int PlaceMothsAndSnakes(LevelData& lv, const std::vector<ModelData>& models, int
                     const int victim = pass == 1 ? (int)EnemyType::BAT : (int)EnemyType::SPIDER;
                     // user 2026-11-16: a snake may take any bat or spider; only the level that INTRODUCES
                     // the victim (bat 2, spider 5) keeps its last one (the stage audit wants it there)
-                    if (CountType(lv, (EnemyType)victim) < 2 && l <= (pass == 1 ? 2 : 5)) continue;
+                    if (CountType(lv, (EnemyType)victim) < 2) {
+                        if (l <= (pass == 1 ? 2 : 5)) continue;
+                        // later levels: taking the LAST bat / spider must leave the level its enemy
+                        // variety (the stage audit wants 4 types from level 12; with fewer hot rooms,
+                        // which each carried a bat and a spider, level 31 lost its last bat to a moth)
+                        if (DistinctEnemyKinds(lv) - 1 + (CountType(lv, type) == 0 ? 1 : 0) < NeedEnemyKinds(l)) continue;
+                    }
                     int vi = -1;
                     for (size_t q = 0; q < room.enemies.size(); ++q)
                         if (room.enemies[q].type == victim) vi = (int)q;
@@ -3057,7 +3100,7 @@ int PlaceDoorsAndKeyN(LevelData& lv, const std::vector<ModelData>& models, int l
     for (int j = 0; j < 3 * n; ++j) {
         const bool swapPass = j >= 2 * n;
         const int jj = ((j % n) * ScanStep(3, n, l) + l) % n;
-        if (jj == 0 && j < n) continue;       // the start room is the clean spawn: last resort
+        if (jj == 0) continue;                // the start room is the clean spawn (test_generator: no objects there) - never a key host
         RoomData& r = lv.rooms[jj];
         const ModelData* m = ShapeOf(models, r.model_id);
         if (!m || !r.feature_cells.empty() || HasPatch(r, (int)TileType::LOCKED_DOOR)) continue;
@@ -3936,7 +3979,10 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             }
             auto canHost = [&](int i, Role r) {
                 if (i <= 0 || i >= count - 1) return false;
-                if (r == Role::Hot) return (bool)vroom[i];
+                // user rule 2026-11-16: a hot room has NO side exit. The side aisle (and the
+                // corridor span) is cut through band 1, which erased the hot walls of 120 of the
+                // 130 hot rooms (HotSplit kept 1.0 of 7 hot cells, 23 rooms had none).
+                if (r == Role::Hot) return vroom[i] && !hroom[i];
                 // PHASE (user rule 2026-10-27): a horizontal obstacle only —
                 // the player walks/flies across it left<->right, so the room
                 // needs a SIDE link. Corridors, L, T and + rooms all qualify
@@ -4041,11 +4087,13 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                         }
                         if (n > variety) n = variety;
                         arch = pool[l % n];
-                    } else if (i == 0 && l >= 8) {
+                    } else if (i == 0 && l >= 8 && !hroom[0]) {
                         // The START room drops the player in at cell 4, so its
                         // band 1 MUST keep that column open: arch 14 is
                         // HotDrop, the only start archetype with the drop
-                        // column carved.
+                        // column carved. Only when the start room has NO side
+                        // exit (a hot room has none, 2026-11-16); otherwise it
+                        // stays plain (SHAPE_START opens the drop column).
                         arch = 14;
                     } else if (role == Role::Normal && i > 0
                                && i < count - 1) {

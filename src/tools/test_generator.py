@@ -1032,6 +1032,23 @@ def main() -> int:
                 #     the entry cell as its own exit). On the 20-column mirrored map,
                 #     every live side of a room with >= 2 live sides must reach another
                 #     live side. Gated cells (phase / crunch) count as open.
+                # (e0) HOT = NO SIDE EXIT (user 2026-11-16). The side aisle and the corridor span
+                #      are cut through band 1, which erased the hot walls of 120 of the 130 hot
+                #      rooms (a HotSplit kept 1.0 of its 7 hot cells, 23 rooms none). A hot room
+                #      (not the channel, whose hot ceiling is its own design) has no neighbour to
+                #      its left or right and keeps its barrier: >= 5 hot cells in band 1.
+                _model = shapes[room["model_id"]]
+                if int(_model.get("mid_band_type", 0)) == 1 and "Channel" not in _model.get("name", ""):
+                    _gx, _gy = int(room["room_x"]), int(room["room_y"])
+                    if (_gx - 1, _gy) in pos or (_gx + 1, _gy) in pos:
+                        print(f"FAIL: level {level_n} room {room['room_id'] + 1} is a hot room "
+                              "with a side exit (a hot room has none)")
+                        return 1
+                    _hot = sum(1 for _c in range(10) if band_rows[1][_c] != ".")
+                    if _hot < 5:
+                        print(f"FAIL: level {level_n} room {room['room_id'] + 1} is a hot room "
+                              f"with only {_hot} hot cells in band 1 (its barrier was cut away)")
+                        return 1
                 # (e) HOT RUN-OUT (user 2026-11-10, level 14 room 9): a hot band entered
                 #     from a side needs 2 open cells before its first wall, or the
                 #     inertia carries the player into it.
