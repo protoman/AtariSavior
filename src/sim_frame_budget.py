@@ -116,6 +116,7 @@ PC_ENTER = LABELS['EnterRoom']
 PC_LOADLEVEL = LABELS['LoadLevel']
 PC_RELOAD = LABELS['CallPad_SaveKey']   # game over (was ReloadLevel)
 PC_BMW = LABELS['CallPad_BombMarkWalls']
+PC_GAMESTART = LABELS['GameStart']          # layout v3: game over = LoseLife -> save (bank 4) -> GameStart
 PC_ROW = LABELS['.Row']
 PC_VBLT = LABELS['VBLTimer']     # VBL work window: TIM64T #23 armed here
 PC_WAIT = LABELS['.WaitVBLANK']  # INTIM poll entry = end of pure VBL work
@@ -412,6 +413,13 @@ while frame < 1100:
         title_transition_frames.add(frame + 1)
         title_transition_frames.add(frame + 2)
     _prev_dt = _dt
+    if bk == 0 and pc == PC_GAMESTART and frame >= 2:
+        # game over: the last life is lost, the cartridge save runs and the console restarts into the
+        # title. One heavy frame (save write + whole-machine init, ~5000c) before the title kernel takes
+        # over - the same one-frame hand-off as title->game, not gameplay (the scenario keeps thrusting
+        # with the fire held, so a room with a hot wall kills the player three times).
+        print(f'game over -> title restart at f{frame}')
+        title_transition_frames.update((frame, frame + 1, frame + 2))
     if landed_frame is not None and bk == 0 and frame >= 2 \
             and pc in (PC_RELOAD, PC_BMW):
         transition_frames.add(frame)
