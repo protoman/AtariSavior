@@ -21,6 +21,7 @@
 #include <array>
 #include <cmath>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <filesystem>
 #include <map>
@@ -2356,7 +2357,14 @@ int MothSpot(const RoomData& room, const ModelData& m, int* dir, int* band, floa
 // band 2) with AIR on one side. The snake is placed ONE COLUMN INSIDE the wall
 // (the wall column next to the open side) and faces the open side (user
 // 2026-11-13). Returns the x column (dir in *dir, band in *band) or -1.
-int SnakeSpot(const RoomData& room, const ModelData& m, int* dir, int* band, float minerY) {
+// The snake must sit where the player has a reason to go (user rule 2026-11-16, level 4
+// room 2: a snake in a dead-end hole nobody enters): `onPath(band, aircell)` is true when
+// the route passes that band within a few cells of the snake's mouth, or a pickup (key,
+// power cell, extra miner) lies in the same band right there. Empty = no restriction.
+using PathTest = std::function<bool(int band, int airCell)>;
+
+int SnakeSpot(const RoomData& room, const ModelData& m, int* dir, int* band, float minerY,
+              const PathTest& onPath = nullptr) {
     for (const int b : {1, FloorBand(m), 2}) {
         const float y = BandY(m, b);
         if (BandUsed(room, m, b, minerY)) continue;
@@ -2368,12 +2376,16 @@ int SnakeSpot(const RoomData& room, const ModelData& m, int* dir, int* band, flo
                 const bool airL = c > 0 && CellAir(m, b, c - 1);
                 if (!airR && !airL) continue;
                 const int dr = airR ? 1 : -1;
+                if (onPath && !onPath(b, c + dr)) {
+                    if (std::getenv("SAVIOR_SNAKE_DEBUG")) std::fprintf(stderr, "snake: room x%d y%d band %d cell %d off the route\n", room.room_x, room.room_y, b, c);
+                    continue;
+                }
                 const int x = dr > 0 ? 2 * c + 1 : 2 * c;   // wall column beside the air
                 bool clash = false;
                 for (const EnemyData& e : room.enemies)
                     if (std::abs((int)std::lround(e.x) - x) < 3) clash = true;
                 for (const LampData& l : room.lamps)
-                    if (std::abs((int)std::lround(l.x) - x) < 3) clash = true;
+                    if (std::abs((int)std::lround(l.x) - x) < 3) clash = true;   // convert: one GRP1, >= 3 display columns apart
                 if (clash) continue;
                 *dir = dr;
                 *band = b;
@@ -2392,7 +2404,8 @@ int CountType(const LevelData& lv, EnemyType t) {
 }
 
 // Returns <0 when a quota cannot be met.
-int PlaceMothsAndSnakes(LevelData& lv, const std::vector<ModelData>& models, int l) {
+int PlaceMothsAndSnakes(LevelData& lv, const std::vector<ModelData>& models, int l,
+                        const std::set<std::tuple<int, int, int>>& route = {}) {
     const int n = (int)lv.rooms.size();
     const int mothWant = 1 + (l - 1) / 6;                     // 1..4
     const int snakeWant = l >= 4 ? 1 + (l - 4) / 6 : 0;       // 1..3
@@ -2400,6 +2413,7 @@ int PlaceMothsAndSnakes(LevelData& lv, const std::vector<ModelData>& models, int
     for (int kind = 0; kind < 2; ++kind) {            // 0 = moth, 1 = snake
         const int want = kind == 0 ? mothWant : snakeWant;
         const EnemyType type = kind == 0 ? EnemyType::GIANT_MOTH : EnemyType::SNAKE;
+        for (int radius : {3}) {
         // pass A: a free slot; pass B: swap a bat; pass C: swap a spider
         for (int pass = 0; pass < 3 && CountType(lv, type) < want; ++pass) {
             for (int k = 0; k < n && CountType(lv, type) < want; ++k) {
@@ -2417,6 +2431,28 @@ int PlaceMothsAndSnakes(LevelData& lv, const std::vector<ModelData>& models, int
                         if (e.type == (int)(kind == 0 ? EnemyType::SNAKE : EnemyType::GIANT_MOTH)) other = true;
                     if (other) continue;
                 }
+                // snakes only where the route passes (or a pickup waits): see SnakeSpot
+                PathTest path;
+                if (kind == 1 && !route.empty()) {
+                    path = [&, i, radius](int band, int airCell) {
+                        // user rule 2026-11-16 (level 6 room 6): the player must pass NEAR it - a route
+                        // node of the same band within 3 cells of the snake's mouth (a fall through the
+                        // room touches it, the miner's own band counts: the miner is a route node)
+                        // the miner's own room: the player ends there, so the whole room is on his way
+                        const int reach = (i == lv.miner_room) ? 3 * radius : radius;
+                        for (const int col : {airCell, 2 * kRoomWidth - 1 - airCell})
+                            for (int d = -reach; d <= reach; ++d)
+                                if (route.count({i, band, col + d})) return true;
+                        for (const EnemyData& e : room.enemies) {
+                            if (e.type != (int)EnemyType::KEY && e.type != (int)EnemyType::POWER_CELL
+                                && e.type != (int)EnemyType::EXTRA_MINER) continue;
+                            if ((int)e.y / std::max(1, BandUnits(*m)) != band) continue;
+                            const int col = (int)std::lround(e.x) / 2;
+                            if (std::abs(col - airCell) <= 4 || std::abs(col - (19 - airCell)) <= 4) return true;
+                        }
+                        return false;
+                    };
+                }
                 if (pass == 0) {
                     if (ObjectCount(room) + (lv.miner_room == i ? 1 : 0) >= 2) continue;
                 } else {
@@ -2430,7 +2466,7 @@ int PlaceMothsAndSnakes(LevelData& lv, const std::vector<ModelData>& models, int
                     room.enemies.erase(room.enemies.begin() + vi);
                     int dir = 1, band = 1;
                     const int spot = kind == 0 ? MothSpot(room, *m, &dir, &band, lv.miner_room == i ? lv.miner_y : -1.0f)
-                                               : SnakeSpot(room, *m, &dir, &band, lv.miner_room == i ? lv.miner_y : -1.0f);
+                                               : SnakeSpot(room, *m, &dir, &band, lv.miner_room == i ? lv.miner_y : -1.0f, path);
                     if (spot < 0) { room.enemies.insert(room.enemies.begin() + vi, saved); continue; }
                     if (kind == 0) AddEnemy(room, type, (float)(spot * 2), BandY(*m, band), 1.0f + 0.25f * (l % 4), 13.0f, dir);
                     else AddEnemy(room, type, (float)spot, BandY(*m, band), 1.0f, 0.0f, dir);
@@ -2438,11 +2474,12 @@ int PlaceMothsAndSnakes(LevelData& lv, const std::vector<ModelData>& models, int
                 }
                 int dir = 1, band = 1;
                 const int spot = kind == 0 ? MothSpot(room, *m, &dir, &band, lv.miner_room == i ? lv.miner_y : -1.0f)
-                                           : SnakeSpot(room, *m, &dir, &band, lv.miner_room == i ? lv.miner_y : -1.0f);
+                                           : SnakeSpot(room, *m, &dir, &band, lv.miner_room == i ? lv.miner_y : -1.0f, path);
                 if (spot < 0) continue;
                 if (kind == 0) AddEnemy(room, type, (float)(spot * 2), BandY(*m, band), 1.0f + 0.25f * (l % 4), 13.0f, dir);
                 else AddEnemy(room, type, (float)spot, BandY(*m, band), 1.0f, 0.0f, dir);
             }
+        }
         }
         // The quota is best effort (the small hot levels have no free slot); the level
         // that INTRODUCES the creature must have one (moth: 1, snake: 4).
@@ -3404,6 +3441,49 @@ static int PlanPowerCellsAt(LevelData& lv, const std::vector<ModelData>& models,
 // Levels 21+ carry at least two cells (user 2026-11-13). The budget is a fraction of the route; when the
 // first fraction finds no host for some stretch, a longer budget (fewer cells) is tried, but the level must end
 // with two or more cells.
+// LAMPS belong on the player's path (user rule 2026-11-16, level 4 room 3: the lamp hung
+// away from the route). The lamp goes to ONE SIDE (pseudo-random per level and room) of the
+// gap the player enters the room through: the left or right edge cell of the air run he
+// arrives in, which has a real wall beside it. A 1-tile gap (or a run with no wall
+// beside its edges, such as a whole open band) keeps the lamp where the room builder put it.
+void RelocateLamps(LevelData& lv, const std::vector<ModelData>& models, int level, const ReachResult& rr) {
+    for (int i = 0; i < (int)lv.rooms.size(); ++i) {
+        RoomData& room = lv.rooms[i];
+        if (room.lamps.size() != 1) continue;
+        const ModelData* m = ShapeOf(models, room.model_id);
+        if (!m || m->width != kRoomWidth) continue;
+        int eb = -1, ec = -1;                       // the arrival node of the route
+        for (size_t k = 1; k < rr.route.size(); ++k)
+            if (rr.route[k].room == i && rr.route[k - 1].room != i) {
+                eb = rr.route[k].band; ec = rr.route[k].col; break;
+            }
+        if (eb < 0 || eb >= (int)m->tiles.size() / m->width) continue;
+        auto air = [&](int b, int f) {              // the mirrored 20-column map
+            return f >= 0 && f < 2 * kRoomWidth && CellAir(*m, b, f < kRoomWidth ? f : 2 * kRoomWidth - 1 - f);
+        };
+        if (!air(eb, ec)) continue;
+        int lo = ec, hi = ec;
+        while (air(eb, lo - 1)) --lo;
+        while (air(eb, hi + 1)) ++hi;
+        if (hi - lo + 1 < 2) continue;              // a 1-tile gap: keep the lamp
+        // lamps live in the LEFT half (model cells 0-9, the mirror draws the other side): a gap that
+        // straddles the centre seam only offers its left edge
+        std::vector<int> edges;
+        if (lo > 0 && !air(eb, lo - 1) && lo < kRoomWidth) edges.push_back(lo);
+        if (hi < 2 * kRoomWidth - 1 && !air(eb, hi + 1) && hi < kRoomWidth) edges.push_back(hi);
+        if (edges.empty()) continue;
+        const int col = edges[((level * 7 + i * 13 + 5) >> 1) % edges.size()];
+        const float x = (float)(col * 2);
+        const int u = std::max(1, BandUnits(*m));
+        bool clash = false;
+        for (const EnemyData& e : room.enemies)
+            if (((int)e.y / u == eb) || std::abs((int)std::lround(e.x) - (int)x) < 3) clash = true;
+        if (clash) continue;
+        room.lamps[0].x = x;
+        room.lamps[0].y = BandY(*m, eb);
+    }
+}
+
 int PlanPowerCells(LevelData& lv, const std::vector<ModelData>& models, int level) {
     if (level < 21) return PlanPowerCellsAt(lv, models, level, 0);
     auto cellsIn = [](const LevelData& d) {
@@ -5229,7 +5309,18 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
     }
     // Moths (every level) and snakes (level 4+) go in after the cells and miners.
     for (int l = 1; l <= kStageLevels; ++l) {
-        if (PlaceMothsAndSnakes(levels[l - 1], models, l) < 0) {
+        // one route analysis per level feeds both the lamps and the snakes (the pass is slow)
+        const ReachResult routeRr = AnalyseReach(levels[l - 1], models);
+        RelocateLamps(levels[l - 1], models, l, routeRr);
+        std::set<std::tuple<int, int, int>> routeSet;
+        for (const auto& nd : routeRr.route)
+            routeSet.insert({nd.room, nd.band, nd.col});
+        // the route ends where the player ENTERS the miner's room: from there he falls (or walks) on
+        // to the miner, so the entry column counts in every band of that room
+        for (const auto& nd : routeRr.route)
+            if (nd.room == levels[l - 1].miner_room)
+                for (int b = 0; b < 4; ++b) routeSet.insert({nd.room, b, nd.col});
+        if (PlaceMothsAndSnakes(levels[l - 1], models, l, routeSet) < 0) {
             repair.problems.push_back(
                 "level " + std::to_string(l) + ": no room can host its giant "
                 "moth / snake");
