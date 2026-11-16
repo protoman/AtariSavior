@@ -2457,7 +2457,9 @@ int PlaceMothsAndSnakes(LevelData& lv, const std::vector<ModelData>& models, int
                     if (ObjectCount(room) + (lv.miner_room == i ? 1 : 0) >= 2) continue;
                 } else {
                     const int victim = pass == 1 ? (int)EnemyType::BAT : (int)EnemyType::SPIDER;
-                    if (CountType(lv, (EnemyType)victim) < 2) continue;   // never the level's last bat/spider
+                    // user 2026-11-16: a snake may take any bat or spider; only the level that INTRODUCES
+                    // the victim (bat 2, spider 5) keeps its last one (the stage audit wants it there)
+                    if (CountType(lv, (EnemyType)victim) < 2 && l <= (pass == 1 ? 2 : 5)) continue;
                     int vi = -1;
                     for (size_t q = 0; q < room.enemies.size(); ++q)
                         if (room.enemies[q].type == victim) vi = (int)q;
