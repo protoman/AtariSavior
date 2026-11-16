@@ -278,6 +278,8 @@ def near_label(addr):
 
 OBJ_TOP_IDX = zp_byte_addr('ObjTop') - 0x80
 DROP_IDX = zp_byte_addr('DropTarget') - 0x80
+ROOM_IDX = zp_byte_addr('RoomNo') - 0x80
+frame_room, frame_over = {}, {}
 
 # ---- boot pokes: default Level=1/Room=1 (the flicker repro room);
 # SIM_LEVEL=0 keeps the boot defaults (level 0, start_room 0) ----
@@ -525,6 +527,7 @@ while frame < 1100:
             frame += 1
             if mem.ram[DROP_IDX] == 0xFE:
                 tally_frames.update((frame - 1, frame))
+            frame_room[frame] = mem.ram[ROOM_IDX]; frame_over[frame] = over_val   # RoomNo/overscan of this frame (split report)
             frame_ker[frame] = cur_ker or 'cave'   # kind of the frame just
             # finished (cur_ker resets further below — store it NOW)
             if frame >= 2 and vbl_val is not None:
@@ -1067,6 +1070,19 @@ if _UECOST:
 # count). VBL/OVER cpu budgets are secondary guards.
 _bad_lines = [(f, v, frame_ker.get(f, 'cave')) for f, v in _lines_raw
               if _wall_bad(f, v)]
+# informational split: which room was loaded in each over-budget / off-target frame (the scripted player
+# leaves the poked room through wide links, so a failure may belong to a neighbour)
+if PROBE:
+    _pr = int(SIM_ROOM)
+    _ob = [f for f, v in frame_over.items() if v > OVER_ABSORB and f >= 2 and f not in transition_frames
+           and f not in title_transition_frames]
+    _lb = [f for f, v, k in _bad_lines]
+    print(f'ROOMSPLIT poked room {_pr}: over-absorb frames in room/elsewhere = '
+          f'{sum(frame_room.get(f) == _pr for f in _ob)}/{sum(frame_room.get(f) != _pr for f in _ob)}; '
+          f'off-target frames in room/elsewhere = {sum(frame_room.get(f) == _pr for f in _lb)}/'
+          f'{sum(frame_room.get(f) != _pr for f in _lb)}; '
+          f'max over in room {max([frame_over[f] for f in frame_over if frame_room.get(f) == _pr and f >= 2 and f not in transition_frames and f not in title_transition_frames], default=0)}c; '
+          f'frames in room {sum(1 for f in frame_room if frame_room[f] == _pr and f >= 2)}/{len(frame_room)}')
 checks = [
     (f'VBL work <= {VBL_BUDGET}c (max {max_vbl}c)', max_vbl <= VBL_BUDGET),
     (f'overscan work <= {OVER_ABSORB}c absorb band (max {max_over}c)',
