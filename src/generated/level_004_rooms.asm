@@ -1,6 +1,6 @@
 ; Generated from Level 4 (level 4). Do not edit by hand.
 LEVEL4_START_ROOM = 0
-LEVEL4_WALL_COLOR = $16
+LEVEL4_WALL_COLOR = $36
 LEVEL4_WALL_COLOR2 = $76
 LEVEL4_MINER_ROOM = 131
 LEVEL4_MINER_X = 39
