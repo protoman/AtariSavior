@@ -140,7 +140,7 @@ def main() -> None:
     assert not re.search(r"^\.MwStage3:", mblk, re.M), \
         "moth .MwStage3 label must be gone (S3.2)"
     assert "lda #RcW2" not in mblk, "moth window jump must be gone (S3.2)"
-    assert re.search(r"adc\s+ColOff,X", mblk) \
+    assert re.search(r"lda\s+ColOff,X", mblk) \
         and re.search(r"lda\s+PF0Buf,Y", mblk) \
         and re.search(r"and\s+ColMask,X", mblk), \
         "moth walk must index the cell map (ColOff/ColMask/PF0Buf, 4.1)"

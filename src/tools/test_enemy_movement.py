@@ -336,7 +336,7 @@ def main() -> None:
     assert body.count("(FetchPtr),Y") == 1, \
         "only the spawn record type read stays direct (walk converts to " \
         "cell tests, plan 4.1 — rect reads must be gone)"
-    assert "adc ColOff,X" in body and "and ColMask,X" in body \
+    assert "lda ColOff,X" in body and "and ColMask,X" in body \
         and "lda PF0Buf,Y" in body, \
         "moth walk must be the PHM-style cell walk (plan 4.1)"
     assert "RcBase" not in body and "RcW1" not in body, \
@@ -345,7 +345,7 @@ def main() -> None:
         "wrap/off-screen candidate must turn (plan's mod-256 range passes 255)"
     assert re.search(r"cmp\s+#33", body) and re.search(r"cmp\s+#224", body), \
         "range check = spawn ± 8 tiles mod-256 (cmp #33 / cmp #224)"
-    assert body.count("sbc #7") >= 2, \
+    assert body.count("sbc #7") >= 1, \
         "cols must start at VISIBLE left (Temp-5/-7 bomb convention), not Temp"
     assert "adc #8" in body and "adc #1" in body, \
         "rows must be visual Y+1..Y+8 (GRP1 ObjTop+1 window)"

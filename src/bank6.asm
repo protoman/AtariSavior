@@ -537,15 +537,7 @@ MothDoWalk:
     sbc CollisionX
 .MothC1:
     sta CollisionEndX          ; min text column
-    sec
-    lda Temp
-    cmp #15
-    bcs .Mvl7b
-    sbc #4
-    jmp .MvlB
-.Mvl7b:
-    sbc #7
-.MvlB:
+    lda FetchPtr               ; visible_left again (stashed above; was recomputed from Temp)
     clc
     adc #7                     ; last block = (visible_left + 7) >> 2
     lsr
@@ -610,31 +602,29 @@ MothDoWalk:
 ; before — same ZP, no new allocation). HIT -> jmp .MothTurn (flip dir,
 ; hold position); miss falls into .MothNoHit (commit candidate). No jsr
 ; (bank2 moth never jsrs; stack depth = old walk exactly).
-    lda CollisionCellY
-    sta RectCount
-.MwRow:
-    lda CollisionEndX
-    sta CollisionX
+    ldx CollisionEndX          ; X = min col
+    lda CollisionEndY
+    sec
+    sbc CollisionCellY
+    sta RectCount              ; 0 = one band row, 1 = two (the sprite is 8 lines, a band 36)
 .MwCol:
-    ldx CollisionX          ; (2 B: A is reloaded below anyway)
-    lda RectCount           ; (was ldy/tya: same A, 1 B and 1 c cheaper)
+    lda ColOff,X               ; PF0/PF1/PF2 group offset (0/4/8, N=4 stride 4)
     clc
-    adc ColOff,X            ; PF0/PF1/PF2 group offset (0/4/8, N=4 stride 4)
-    tay
-    lda PF0Buf,Y            ; $C3+row+off — the byte the kernel renders
-    and ColMask,X           ; bit for this source col
-    bne .MwHit              ; solid (Z=0)
-    txa                     ; (was lda CollisionX: X still holds the col)
-    cmp CollisionCellX      ; col == max?
-    beq .MwRowDone
-    inc CollisionX
-    bne .MwCol              ; always (col never wraps to 0)
-.MwRowDone:
+    adc CollisionCellY
+    tay                        ; Y = top-row cell byte; the next row is the next byte
+    lda PF0Buf,Y
+    and ColMask,X              ; bit for this source col
+    bne .MwHit                 ; solid
     lda RectCount
-    cmp CollisionEndY       ; row == bottom?
+    beq .MwNext                ; one row only
+    lda PF0Buf+1,Y
+    and ColMask,X
+    bne .MwHit
+.MwNext:
+    cpx CollisionCellX         ; col == max?
     beq .MothNoHit
-    inc RectCount
-    bne .MwRow              ; always (row never wraps to 0)
+    inx
+    bne .MwCol                 ; always (col never wraps to 0)
 .MwHit:
     jmp .MothTurn           ; wall: flip dir, hold position (no commit)
 .MothNoHit:
