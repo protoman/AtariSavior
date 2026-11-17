@@ -344,6 +344,7 @@ EnemyClk        = $D7           ; 2026-10-26 ENEMY clock: every enemy gate / bob
                                 ;   EnemySpd / 2 (x1 .. x3 by level: tools/test_enemy_speed.py)
 EnemySpd        = $D8           ; half-units per frame: 2 + Level / 5 (x1, x1.5, x2 ...)
 EnemyFrac       = $D9           ; 0/1 carry of the half-unit accumulator
+UE_BLAST_EXTRA = 10             ; extra units an extra pass needs on a bomb-blast frame (see UEGate)
 UE_MIN_INTIM    = 18            ; TIM64T units (64c) of overscan an EXTRA enemy pass needs left
 EnemyPass       = $DA           ; passes left this frame
 ; Attract mode (2026-11, bank5 DemoHook). StickA / DemoOn are EOR-ed onto the real
@@ -3362,6 +3363,44 @@ JFalling:
     sta BombPacked
     jmp NoVMove
 
+
+; ------------------------------------------------------------------------------
+; UEGate - an extra enemy pass starts only while INTIM >= UE_MIN_INTIM (pass + the work after
+; UpdateEnemies). On a bomb-blast frame BombTick runs AFTER the passes and costs far more: the
+; edge frame (BombMarkWalls first cell + strips, up to ~720c), the two slices after it, and the
+; kill/noise frame. Those frames reserve UE_BLAST_EXTRA more units (BombTimer is read BEFORE
+; BombTick's dec: state 1 timer 1 = the edge; state 2 timer 60/59/58 = the kill frame + the slices).
+; A = INTIM (>= 0 here). Out: jmp UEPass (another pass) or UEEdone.
+; ------------------------------------------------------------------------------
+UEGate:
+    tax                         ; X = INTIM
+    lda BombPacked
+    and #%00000011
+    beq .ugPlain                ; no bomb
+    cmp #2
+    beq .ug2
+    lda BombTimer               ; state 1 (fuse): only its last frame is the edge
+    cmp #1
+    beq .ugHeavy
+    bne .ugPlain                ; always
+.ug2:
+    lda BombTimer
+    cmp #58
+    bcc .ugPlain                ; slices are over (BombTimer 57 and below)
+.ugHeavy:
+    txa
+    cmp #UE_MIN_INTIM + UE_BLAST_EXTRA
+    bcc .ugDone
+    jmp UEPass
+.ugPlain:
+    txa
+    cmp #UE_MIN_INTIM
+    bcs .ugPass
+.ugDone:
+    jmp UEEdone
+.ugPass:
+    jmp UEPass
+
     .ds $FBD0 - *, 0            ; #22: pin tramp at $FBD0 — bank2's twin
                                  ;   sits at the same address (pin moved from
                                  ;   $FB84 2026-10-13 for PhaseBlink staging,
@@ -3431,9 +3470,7 @@ UEEpilogue:
     beq UEEdone
     lda INTIM
     bmi UEEdone
-    cmp #UE_MIN_INTIM
-    bcc UEEdone
-    jmp UEPass
+    jmp UEGate                  ; (bank0 hole) the INTIM test, with a bigger reserve on a bomb-blast frame
     .ds $FBF8 - *, 0            ; TitleSequenceFold / FooterFold /
                                  ;   TitlePlayerFold retired with the intro
                                  ;   movie (merged title, 2026-10-19)
