@@ -823,7 +823,7 @@ def story():
     s += [Paragraph(
         "<b>Faster and faster.</b> Every five levels the creatures speed up: "
         "<b>x1.5</b> from level 6, <b>x2</b> from level 11, <b>x2.5</b> from "
-        "level 16.", BODY)]
+        "level 16, where it stays to the end.", BODY)]
     s.append(PageBreak())
 
     # ---- objects
@@ -881,7 +881,7 @@ def story():
               "save your bombs and stay alive.", BODY),
           Paragraph("Levels", H2),
           Paragraph(
-              "There are twenty levels. Each is a network of connected rooms: "
+              "There are thirty-two levels. Each is a network of connected rooms: "
               "leave a room through an opening on any side and you arrive in the "
               "neighbouring room. A level may have one, two or three miners "
               "(one up to level 6, two from level 7, three from level 14), "
@@ -890,8 +890,8 @@ def story():
           Paragraph("When the game ends", H2),
           Paragraph(
               "Lose your last life and it is <b>game over</b>: you return to the "
-              "title screen and the score starts again. Clear the twentieth "
-              "level and you have won; the game returns to the title too. "
+              "title screen and the score starts again. Clear the last "
+              "level (level 32) and you have won; the game returns to the title too. "
               "Press <b>RESET</b> (or the red button) to start a new game, or "
               "pick another level with <b>SELECT</b> or the stick first.", BODY)]
     s.append(PageBreak())
@@ -900,7 +900,7 @@ def story():
     s += head("Saving your game", "High score and SaveKey")
     s += [Paragraph("The high score", H2),
           Paragraph(
-              "When a game ends (game over, or the twentieth level cleared), your "
+              "When a game ends (game over, or the last level cleared), your "
               "score is compared with the <b>high score</b>; if it is higher, it "
               "becomes the new one. On the title screen the score window shows "
               "the level number and, for a second every few seconds, the high "

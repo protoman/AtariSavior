@@ -26,6 +26,15 @@ cover prints them, `tools/release.py` names the artifacts from them).
   around it. Any element on a hot-wall band is hot.
 - The two band colours of a level are different hues now (orange and blue, cyan and red, green
   and pink...) instead of the same colour lightened.
+- **No more landing inside a wall between two rooms.** The water-channel room of levels 11 to
+  32 opened its lower side band all the way to the screen edge while its neighbours open only
+  the upper one, so leaving it by the lower band put the ship inside the neighbour's wall (level
+  32 and 21 more levels, 44 links). The generator now opens a room's side link in one band
+  only, and the build refuses any stage where the two rooms of a side link, or the two rooms of
+  a vertical link, do not open exactly the same bands/columns. `test_link_arrival.py` checks
+  every link of the stage statically and by flying every crossing.
+- Frame budget: all 484 rooms of the 32 levels keep the fixed frame length (the laser hit test
+  scans the enemy list once, the moth only walks with 18 overscan units left).
 
 ## 1.1.0
 

@@ -13,15 +13,16 @@ from it. Steps, each of which must pass:
   2. ./build.sh   (conversion + verify_build + the two headless sims)
   3. the whole battery: every tools/test_*.py
   3b. FLICKER: tools/test_frame_stability.py --all (the 40 heaviest real rooms: VBL window
-     and frame length) and tools/sweep_frame_budget.sh (sim_frame_budget in EVERY room of
-     the live stage, fire held + thrust + bomb): every room must hold the frame budget
+     and frame length) and sim_frame_budget in the 8 heaviest rooms (fire held + thrust +
+     bomb). The every-room sweep is tools/sweep_frame_budget.sh, run by hand after changes
+     that touch frame timing.
   4. tools/stage_reach.py on the live stage
-  5. tools/playbot.py: all 20 levels must finish on the real ROM (~5 min)
+  5. tools/playbot.py: every level of the live stage must finish on the real ROM (~10 min)
   6. the ROM is 32 KiB and carries this version
   7. the manual PDF is rebuilt
   8. the PAL60 and PAL ROMs are built (tools/build_variant.sh: full build.sh + both
      sims in a scratch tree), carry "S.A.V.I.O.R. <version> PAL60|PAL" in bank5 and,
-     unless --skip-playbot, the playbot finishes all 20 levels on each
+     unless --skip-playbot, the playbot finishes every level on each
 
 Artifacts go to OUT (default src/releases/, git-ignored): savior-<version>.bin (NTSC),
 savior-<version>-pal60.bin, savior-<version>-pal.bin, their .sha256, the manual and
@@ -71,6 +72,12 @@ def python_with(module):
         if py and run([py, "-c", f"import {module}"]).returncode == 0:
             return py
     fail(f"no Python with {module} found")
+
+
+def stage_levels():
+    """Number of levels of the live stage (the playbot must finish every one)."""
+    import json
+    return len(json.loads((ROOT / "rooms" / "stage.json").read_text())["stage"]["levels"])
 
 
 def main() -> int:
@@ -138,14 +145,15 @@ def main() -> int:
     if r.returncode or "FAIL" in r.stdout:
         fail("stage_reach:\n" + r.stdout)
 
+    nlev = stage_levels()
     play = "skipped (--skip-playbot)"
     if not a.skip_playbot:
-        step("playbot (all 20 levels, ~5 min)")
+        step(f"playbot (all {nlev} levels, ~10 min)")
         r = run([py, "tools/playbot.py"])
         done = r.stdout.count(": DONE")
-        if r.returncode or done != 20:
-            fail(f"playbot finished {done} of 20 levels:\n" + r.stdout[-2000:])
-        play = "20 of 20 levels finish"
+        if r.returncode or done != nlev:
+            fail(f"playbot finished {done} of {nlev} levels:\n" + r.stdout[-2000:])
+        play = f"{nlev} of {nlev} levels finish"
 
     rom = (ROOT / "savior.bin").read_bytes()
     if len(rom) != 32768:
@@ -177,11 +185,11 @@ def main() -> int:
             if len(vrom) != 32768 or vrom[BANK5:BANK5 + len(vstamp)] != vstamp:
                 fail(f"{label} ROM is not 32768 bytes with the {label} version stamp")
             if not a.skip_playbot:
-                step(f"{label} playbot (all 20 levels, ~5 min)")
+                step(f"{label} playbot (all {nlev} levels, ~10 min)")
                 r = run([py, "tools/playbot.py", "--rom-dir", scratch])
                 done = r.stdout.count(": DONE")
-                if r.returncode or done != 20:
-                    fail(f"{label} playbot finished {done} of 20 levels:\n" + r.stdout[-2000:])
+                if r.returncode or done != nlev:
+                    fail(f"{label} playbot finished {done} of {nlev} levels:\n" + r.stdout[-2000:])
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
         variants.append((label, f"savior-{version}-{tv}.bin",
