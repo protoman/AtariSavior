@@ -87,7 +87,7 @@ EnemyRamP = $C2                  ; free-running frame clock
 EnemyClk = $D7                   ; enemy clock (speed multiplier, kernel.asm)
 EnemyPass       = $DA           ; passes left this frame (kernel.asm EnemyPass)
 INTIM           = $0284
-MOTH_MIN_INTIM  = 16            ; TIM64T units (64c) of overscan the moth walk needs left
+MOTH_MIN_INTIM  = 18            ; TIM64T units (64c) of overscan the moth walk needs left
 EnemySpd = $D8                   ; half-units per frame = 2 + Level / 5
 RoomExits = $DB                  ; b1 = NO room to the west, b0 = NO room to the east
                                  ;   (set by SetRoomExits at every room entry; bank1's bomb
