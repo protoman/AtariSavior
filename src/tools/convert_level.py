@@ -1662,21 +1662,19 @@ def check_stage_connections(models_by_id: dict, levels: list[tuple[int, dict]]) 
                 b = {b for b, row in enumerate(rows_of(east)) if row[0] == "."}
                 a &= {1, 2}
                 b &= {1, 2}
-                if a and b and not (a & b):
+                # EXACT match (user report 2026-11-17, level 32: a room open in
+                # bands 1+2 beside rooms open in band 1 only): the exit fires at
+                # the screen edge in ANY open band and never tests the
+                # neighbour, so a band open on one side only lands the player
+                # inside the wall of the room he enters.
+                if a != b:
                     raise ValueError(
                         f"level {level_n}: rooms {room.get('room_id')} and "
                         f"{east.get('room_id')} are side by side but their "
-                        f"openings are in different bands ({sorted(a)} vs "
-                        f"{sorted(b)}) — the player would arrive inside a "
-                        "wall; open the link in a shared band (1, 2 or both)")
-                if bool(a) != bool(b):
-                    lone = room.get("room_id") if a else east.get("room_id")
-                    raise ValueError(
-                        f"level {level_n}: rooms {room.get('room_id')} and "
-                        f"{east.get('room_id')} are side by side but only "
-                        f"room {lone} has a side opening "
-                        f"({sorted(a) if a else sorted(b)}) — carve the same "
-                        "band on both sides")
+                        f"side openings differ (bands {sorted(a)} vs "
+                        f"{sorted(b)}) — the player leaving by the extra band "
+                        "would arrive inside a wall; carve the SAME bands on "
+                        "both sides")
             # NO OPENING WITHOUT A NEIGHBOUR (user rule 2026-10-24, screenshot
             # layout_invalid_exists.png). The playfield is reflected, so a side
             # link always opens BOTH edges; the end room of a horizontal run
@@ -1724,13 +1722,16 @@ def check_stage_connections(models_by_id: dict, levels: list[tuple[int, dict]]) 
                 dn = {c for c, v in enumerate(rows_of(south)[0]) if v == "."}
                 if room.get("bottom_band"):
                     up = set()
-                missing = sorted(up - dn)
+                # ...and the other way round (a rising player keeps his X too):
+                # a ceiling column open below must have the floor open above.
+                missing = sorted(up ^ dn) if not room.get("bottom_band") \
+                    else sorted(up - dn)
                 if missing:
                     raise ValueError(
                         f"level {level_n}: rooms {room.get('room_id')} (above) "
                         f"and {south.get('room_id')} (below) are stacked, but "
-                        f"the upper room's floor is open at columns {missing} "
-                        f"while the lower room's ceiling is walled there "
+                        f"the upper room's floor and the lower room's ceiling "
+                        f"differ at columns {missing} "
                         f"(floor {sorted(up)}, ceiling {sorted(dn)}) — the "
                         "player keeps his X through the link, so he would land "
                         "inside a wall and stop falling; give both rooms the "

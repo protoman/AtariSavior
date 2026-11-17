@@ -99,6 +99,16 @@ def edge_open(rows, direction: str) -> bool:
     return bool(edge_cells(rows, direction))
 
 
+def open_side_bands(rows) -> set[int]:
+    """The walkable bands whose col-0 cell is open: where a player can leave the
+    room sideways. The exit fires at the screen edge in ANY of these bands, so
+    the neighbour must be open in exactly the same ones (user report 2026-11-17:
+    level 32, a 2-band channel room next to 1-band corridors dropped the player
+    inside the wall)."""
+    horiz = (1, 2) if len(rows) >= 4 else (1,)
+    return {b for b in horiz if b < len(rows) and rows[b][0] == "."}
+
+
 # Structural walls: hot, phase, door and hcrunch are GATED (they open at run
 # time), so only rock/solid/void block a path for this check.
 STRUCTURAL_WALLS = set("#H")   # rock + hot; P/C are gated (open at run time)
@@ -618,6 +628,13 @@ def main() -> int:
                     if edge_open(here, "west") != edge_open(rows[other], "west"):
                         print(f"FAIL: level {level_n} rooms {rid} and {other} "
                               f"disagree on the {name} carve (mirrored cell 0)")
+                        return 1
+                    if open_side_bands(here) != open_side_bands(rows[other]):
+                        print(f"FAIL: level {level_n} rooms {rid + 1} and "
+                              f"{other + 1} open the {name} link in DIFFERENT "
+                              f"bands ({sorted(open_side_bands(here))} vs "
+                              f"{sorted(open_side_bands(rows[other]))}) — the player "
+                              "leaving by the extra band lands inside a wall")
                         return 1
                     if name == "east" and edge_open(here, "west"):
                         passages += 1

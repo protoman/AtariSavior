@@ -22,8 +22,49 @@ import playbot as P  # noqa: E402
 PUSH = {(1, 0): P.RIGHT, (-1, 0): P.LEFT, (0, 1): P.DOWN, (0, -1): P.UP}
 
 
+def landing_mismatches(stage, numbers) -> list[str]:
+    """Static LANDING check on the real playfield grids (user report 2026-11-17, level
+    32: a 2-band side gap beside a 1-band one dropped the player inside a wall).
+    The exit fires at the screen edge in ANY open band/column and never tests the
+    neighbour, so for every link the open cells of the two edges must be IDENTICAL:
+    side links (cell 0 mirrored = f 19 -> 0 east, 0 -> 19 west) in every band,
+    vertical links (the player keeps his X) in every column, both directions.
+    The graph walk below only flies crossings where BOTH sides are open, so a
+    cell open on one side only was never exercised."""
+    out = []
+    for n in numbers:
+        lv = P.Level(stage, n)
+        for ri, room in enumerate(lv.rooms):
+            for dx, fs, fd, name in ((1, 19, 0, "east"), (-1, 0, 19, "west")):
+                nr = lv.at.get((room["room_x"] + dx, room["room_y"]))
+                if nr is None:
+                    continue
+                a, b = lv.grids[ri][0], lv.grids[nr][0]
+                sa = [i for i in range(len(a)) if a[i][fs]]
+                sb = [i for i in range(len(b)) if b[i][fd]]
+                if sa != sb:
+                    out.append(f"level {n}: room {ri + 1} -> {name} room {nr + 1}: "
+                               f"open bands {sa} vs {sb} (landing inside a wall)")
+            nr = lv.at.get((room["room_x"], room["room_y"] + 1))
+            if nr is not None and not room.get("bottom_band"):
+                a, b = lv.grids[ri][0], lv.grids[nr][0]
+                up = [c for c in range(20) if a[len(a) - 1][c]]
+                dn = [c for c in range(20) if b[0][c]]
+                if up != dn:
+                    out.append(f"level {n}: room {ri + 1} above room {nr + 1}: floor "
+                               f"columns {up} vs ceiling columns {dn} (landing inside a wall)")
+    return out
+
+
 def main() -> int:
     stage = json.loads((ROOT / "rooms" / "stage.json").read_text())["stage"]
+    want_all = [int(a) for a in sys.argv[1:]] or range(1, len(stage["levels"]) + 1)
+    problems = landing_mismatches(stage, want_all)
+    if problems:
+        print("FAIL: links whose two edges are not open in the same cells:")
+        for p in problems[:20]:
+            print("  " + p)
+        return 1
     want = [int(a) for a in sys.argv[1:]] or range(1, len(stage["levels"]) + 1)
     bad, checked, lethal, safe = [], 0, {}, set()
     for n in want:

@@ -1343,6 +1343,17 @@ ModelData MakeShapeModel(int modelId, int mask) {
             && model.tiles[1 * kRoomWidth + 0] == (int)TileType::AIR) {
         model.tiles[1 * kRoomWidth + 1] = (int)TileType::AIR;
     }
+    // THE SIDE LINK LIVES IN BAND 1 ONLY (user report 2026-11-17, level 32: "a
+    // horizontal link with a different number of rows for the gap, the player
+    // gets stuck inside a wall"). The room exit fires at the screen edge in ANY
+    // open band and never tests the neighbour, so every room must open the SAME
+    // bands at cell 0. The channel's low band 2 ran edge to edge (cell 0
+    // included), so a player walking out at band 2 landed in the band-1-only
+    // neighbour's wall. Band 2 keeps cell 0 solid: the room is entered at band
+    // 1 and dropped into the channel from cells 1/2 (the hot ceiling starts at
+    // cell 3).
+    if ((mask & SHAPE_H) && model.height == 4)
+        model.tiles[2 * kRoomWidth + 0] = (int)TileType::SOLID_WALL;
     // SEALED AIR (user 2026-11-10: enemies inside holes the player never
     // reaches): air that no opening of the room connects to is decoration at
     // best and an unfightable enemy cage at worst. Wall it up - except the
@@ -3663,26 +3674,18 @@ std::vector<std::string> DataSerializer::StageConnectionProblems(
             if (const RoomData* east = findRoom(room.room_x + 1, room.room_y)) {
                 const ModelData* b = findModel(east->model_id);
                 if (!b) continue;
+                // EXACT match (user report 2026-11-17, level 32): the exit
+                // fires at the screen edge in ANY open band and never tests
+                // the neighbour, so a band open on one side only lands the
+                // player inside the wall of the room he enters.
                 const std::vector<int> sa = sideBands(*a), sb = sideBands(*b);
-                bool shared = false;
-                for (int x : sa) {
-                    for (int y : sb) {
-                        if (x == y) shared = true;
-                    }
-                }
-                if (!sa.empty() && !sb.empty() && !shared) {
+                if (sa != sb) {
                     out.push_back(
                         "level " + std::to_string(level_n) + ": rooms "
                         + std::to_string(room.room_id) + " and "
                         + std::to_string(east->room_id)
                         + " are side by side but open in different bands "
                         "(landing inside a wall)");
-                } else if (sa.empty() != sb.empty()) {
-                    out.push_back(
-                        "level " + std::to_string(level_n) + ": rooms "
-                        + std::to_string(room.room_id) + " and "
-                        + std::to_string(east->room_id)
-                        + " are side by side but only one has a side opening");
                 }
             }
             // NO OPENING WITHOUT A NEIGHBOUR (user rule 2026-10-24): the
@@ -3730,20 +3733,22 @@ std::vector<std::string> DataSerializer::StageConnectionProblems(
                 const ModelData* b = findModel(south->model_id);
                 if (!b || b->width <= 0) continue;
                 if ((int)b->tiles.size() / b->width < 1) continue;
-                bool shared = false, any = false;
-                for (int x = 0; x < kRoomWidth; ++x) {
-                    const bool up = CellAir(*a, bands - 1, x);
-                    const bool dn = CellAir(*b, 0, x);
-                    any = any || up || dn;
-                    shared = shared || (up && dn);
+                // EXACT match: the player keeps his X through the link in both
+                // directions (a water room's open floor is no exit).
+                bool differ = false;
+                if (!room.bottom_band) {
+                    for (int x = 0; x < kRoomWidth; ++x) {
+                        differ = differ || (CellAir(*a, bands - 1, x)
+                                            != CellAir(*b, 0, x));
+                    }
                 }
-                if (any && !shared) {
+                if (differ) {
                     out.push_back(
                         "level " + std::to_string(level_n) + ": rooms "
                         + std::to_string(room.room_id) + " (above) and "
                         + std::to_string(south->room_id)
-                        + " (below) share no open column (landing inside a "
-                        "wall)");
+                        + " (below) open different columns (landing inside "
+                        "a wall)");
                 }
             }
         }
