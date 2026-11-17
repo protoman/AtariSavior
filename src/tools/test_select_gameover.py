@@ -2,8 +2,10 @@
 """SELECT during a game refills the power bar; a game over returns to the title on the level
 that was being played (user 2026-11-11). Flies the real ROM (tools/playbot Console), level 9:
   * BarLevel = 50, press SELECT -> BarLevel is 120 again (it used to stay at 50);
-  * one life left, stand in the level's hot band until the run ends -> the title is back
-    (DropTarget $FF, lives 3, bar full) with Level still 8 (= level 9), not 0.
+  * one life left and an almost empty time bar: the bar runs out, the run ends -> the title is
+    back (DropTarget $FF, lives 3, bar full) with Level still 8 (= level 9), not 0.
+    (It used to stand in a hot band of level 9 room 1; the stage keeps start rooms clean now,
+    so the test no longer depends on any room's content.)
 Run: /home/iuri/python3/bin/python3 tools/test_select_gameover.py
 """
 import sys
@@ -30,9 +32,8 @@ def main() -> int:
         return 1
     con.restore(base)
     con.w("PlayerLives", 1)
-    for i in range(4000):
-        if con.r("DropTarget") == 0 and con.r("PlayerLives") >= 1:
-            con.w("RoomY", 40)                    # level 9 room 1: band 1 is hot
+    con.w("BarLevel", 1)                          # the time bar runs out within a few seconds
+    for i in range(6000):
         con.frame(P.RIGHT if (i // 40) % 2 == 0 else P.LEFT)
         if con.r("PlayerLives") == 3 and con.r("DropTarget") == 0xFF:
             break
@@ -56,7 +57,7 @@ def main() -> int:
     con.frame(P.UP)
     for _ in range(3):
         con.frame(P.NONE)
-    if con.r("Level") != (lvl + 1) % 20:
+    if con.r("Level") != (lvl + 1) % 32:
         print(f"FAIL: UP after the grace no longer steps the level ({con.r('Level') + 1})")
         return 1
     print("test_select_gameover: OK (SELECT refills the bar; game over keeps the level "

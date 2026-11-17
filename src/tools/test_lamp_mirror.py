@@ -136,7 +136,9 @@ assert re.search(r"and #%00000111[^\n]*\n(?:[^\n]*\n){0,4}\s*cmp #LAMP", K), (
     "CEH_Lamp must mask b3 so type 13 hits `cmp #LAMP`")
 b2_lines = B2.splitlines()
 cmp_sites = [i for i, l in enumerate(b2_lines) if l.strip() == "cmp #LAMP"]
-assert len(cmp_sites) == 3, f"bank2 has {len(cmp_sites)} lamp compares, want 3"
+# 2026-11-17: the laser hit test scans the enemy list once (tip + body share the filter), so
+# the laser has ONE lamp compare (LaserTipSpan) plus the bomb-blast one (BombEnemyBlastBody).
+assert len(cmp_sites) == 2, f"bank6 has {len(cmp_sites)} lamp compares, want 2"
 for i in cmp_sites:
     assert any("and #%00000111" in l for l in b2_lines[max(0, i - 6):i]), (
         f"bank2 line {i + 1}: the lamp compare does not mask b3")
