@@ -105,6 +105,13 @@ for _l in (SRC / 'bank4.lst').read_text(errors='replace').splitlines():
         PC_TBGO = int(_m.group(1), 16)
 if PC_TBGO is None:
     sys.exit('label .TBgo not found in bank7.lst')
+# Stage advance (the level-end tally): bank4 TransFinish runs the whole advance in one long frame; that frame and the
+# two after it are hand-off frames like a room change (they were measured as gameplay: 3122c on the frame after).
+PC_TRFIN = None
+for _l in (SRC / 'bank4.lst').read_text(errors='replace').splitlines():
+    _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+TransFinish\s*$', _l)
+    if _m:
+        PC_TRFIN = int(_m.group(1), 16)
 blank_active = False
 blank_start = 0
 blank_lines = []              # length of each blank transition frame, in lines
@@ -313,6 +320,7 @@ _UECOST = bool(os.environ.get('SIM_UECOST'))
 _OVPROF = bool(os.environ.get('SIM_OVPROF'))
 _GOV = int(os.environ.get('SIM_GOV', '0'))
 _gov_drops = 0
+ue_first = ue_extra = 0     # enemy passes: first pass of a frame / extra passes the INTIM gate allowed
 _ovp_bad = [0, {}]
 _phm_calls = {}
 _ovp_good = [0, {}]
@@ -383,6 +391,11 @@ while frame < 1100:
     pc, bk = mpu.pc, mem.bank
     if bk == 0 and pc == LABELS['UEPrologue'] and mem.ram[0x58] == 0:
         frame_bad.append(f'f{frame}: UEPrologue entered with EnemySpd 0 (epilogue has no spd-0 guard)')
+    if bk == 0 and phase == PH_OVER:
+        if pc == LABELS['UEPrologue']:
+            ue_first += 1
+        elif pc == LABELS['UEPass']:
+            ue_extra += 1
     if _GOV and bk == 0 and pc == LABELS['UEEpilogue'] + 6 and phase == PH_OVER:
         # SIM_GOV=N: emulate the INTIM governor (no ROM room yet) - drop the extra pass
         # when fewer than N TIM64T units (or an expired timer) are left
@@ -422,6 +435,8 @@ while frame < 1100:
         # with the fire held, so a room with a hot wall kills the player three times).
         print(f'game over -> title restart at f{frame}')
         title_transition_frames.update((frame, frame + 1, frame + 2))
+    if bk == 4 and pc == PC_TRFIN and frame >= 2:
+        transition_frames.update((frame, frame + 1, frame + 2))
     if landed_frame is not None and bk == 0 and frame >= 2 \
             and pc in (PC_RELOAD, PC_BMW):
         transition_frames.add(frame)
@@ -1013,6 +1028,7 @@ if os.environ.get('SIM_WSLINES'):          # lines between consecutive kernel WS
     for _k, _fs in sorted(_seen.items(), key=lambda kv: -len(kv[1])):
         print(f'WSLINES kernel_lines={_k[0]} frames={len(_fs)} first=f{_fs[0]} odd={list(_k[1])}')
 
+print(f'UEPASSES frames with enemies {ue_first}, extra passes run {ue_extra} (EnemySpd {mem.ram[0x58]})')
 if _GOV:
     print(f'GOV N={_GOV} dropped extra passes: {_gov_drops}')
 if _OVPROF:

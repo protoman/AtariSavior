@@ -345,7 +345,7 @@ EnemyClk        = $D7           ; 2026-10-26 ENEMY clock: every enemy gate / bob
 EnemySpd        = $D8           ; half-units per frame: 2 + Level / 5 (x1, x1.5, x2 ...)
 EnemyFrac       = $D9           ; 0/1 carry of the half-unit accumulator
 UE_BLAST_EXTRA = 10             ; extra units an extra pass needs on a bomb-blast frame (see UEGate)
-UE_MIN_INTIM    = 18            ; TIM64T units (64c) of overscan an EXTRA enemy pass needs left
+UE_MIN_INTIM    = 20            ; TIM64T units (64c) of overscan an EXTRA enemy pass needs left
 EnemyPass       = $DA           ; passes left this frame
 ; Attract mode (2026-11, bank5 DemoHook). StickA / DemoOn are EOR-ed onto the real
 ; SWCHA / INPT4 reads in the three gameplay readers (main joystick read, walk
@@ -2900,16 +2900,16 @@ PlayerHitsMap:
     sec
     lda RoomX
     sbc PlayerDir
-    cmp #15
+    cmp #15                     ; C = the RESP0 target (X - PlayerDir) is >= 15
+    lda RoomX                   ; (C survives the load)
     bcs .off7
-    sec
-    sbc #4                      ; P0 target <15: visible left = X - 4
+    sbc #3                      ; C=0: P0 target <15: visible left = X - 4
     jmp .gotVL
 .off7:
-    sbc #7                      ; P0 target >=15: visible left = X - 7
+    sbc #7                      ; C=1: P0 target >=15: visible left = X - 7
 .gotVL:
-    clc
-    adc PlayerDir              ; reflected sprite's first lit bit is column 1
+    ; (the reflected sprite's first lit bit is column 1: -PlayerDir then +PlayerDir cancels, so the
+    ;  visible left is X-4 / X-7 straight from RoomX)
     ; first block = visible_left / 4 -> text column
     tay                         ; Y = visible_left
     lsr
