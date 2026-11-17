@@ -23,22 +23,22 @@ M3Rows:
 ; Generated from models.json model 4. Do not edit by hand.
 M4Shape:
 M4Rows:
-  .byte $00, $84, $01, $05  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+  .byte $00, $84, $05, $05  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 5. Do not edit by hand.
 M5Shape:
 M5Rows:
-  .byte $02, $86, $01, $05  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+  .byte $02, $86, $05, $05  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 6. Do not edit by hand.
 M6Shape:
 M6Rows:
-  .byte $00, $84, $01, $05  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+  .byte $00, $84, $05, $05  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 7. Do not edit by hand.
 M7Shape:
 M7Rows:
-  .byte $03, $87, $01, $05  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+  .byte $03, $87, $05, $05  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 8. Do not edit by hand.
 M8Shape:
@@ -118,12 +118,12 @@ M22Rows:
 ; Generated from models.json model 23. Do not edit by hand.
 M23Shape:
 M23Rows:
-  .byte $0c, $86, $01, $05  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+  .byte $0c, $86, $05, $05  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 24. Do not edit by hand.
 M24Shape:
 M24Rows:
-  .byte $0d, $87, $01, $05  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+  .byte $0d, $87, $05, $05  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 25. Do not edit by hand.
 M25Shape:
