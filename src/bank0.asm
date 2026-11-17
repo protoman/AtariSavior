@@ -344,7 +344,7 @@ EnemyClk        = $D7           ; 2026-10-26 ENEMY clock: every enemy gate / bob
                                 ;   EnemySpd / 2 (x1 .. x3 by level: tools/test_enemy_speed.py)
 EnemySpd        = $D8           ; half-units per frame: 2 + Level / 5 (x1, x1.5, x2 ...)
 EnemyFrac       = $D9           ; 0/1 carry of the half-unit accumulator
-UE_MIN_INTIM    = 16            ; TIM64T units (64c) of overscan an EXTRA enemy pass needs left
+UE_MIN_INTIM    = 18            ; TIM64T units (64c) of overscan an EXTRA enemy pass needs left
 EnemyPass       = $DA           ; passes left this frame
 ; Attract mode (2026-11, bank5 DemoHook). StickA / DemoOn are EOR-ed onto the real
 ; SWCHA / INPT4 reads in the three gameplay readers (main joystick read, walk
@@ -1431,14 +1431,10 @@ UpdateP0Vertical:
     sta PlayerYSub
     lda #0
     adc vyHi
-    beq .NoVMove
+    beq NoVMove
     bmi .UpSteps
     sta StepsLeft             ; positive = falling (down)
-.JFalling:
-    jsr StepDown
-    dec StepsLeft
-    bne .JFalling
-    beq .NoVMove                ; Z = 1 here (was jmp)
+    jmp FallLoop                ; the fall loop lives in the bank0 hole (2-px fall = one probe); ends at NoVMove
 .UpSteps:
     eor #$ff
     clc
@@ -1448,7 +1444,7 @@ UpdateP0Vertical:
     jsr StepUp
     dec StepsLeft
     bne .JRising
-.NoVMove:
+NoVMove:
     ; fall through to CheckP0Left (removed redundant jmp — target was next insn, 3c/frame)
 
 ; ------------------------------------------------------------------------------
@@ -2951,58 +2947,12 @@ PlayerHitsMap:
 .colsOk:
 
 ; --- Cell walk (cell_collision_plan 2.1): test the PF buffers directly ---
-; The ZP rect cache ($CC-$DF, 5-slot limit) is gone from THIS walker: the
-; render buffers PF0/1/2Buf ARE the map (BombMarkWalls punches bomb holes
-; into them), so room complexity is unbounded and geometry parity is proven
-; by tools/test_cell_map.py (box vs geometry, all models/rooms).
-; Prologue ranges (all left-half space): CollisionCellY = top row,
-; CollisionEndY = bottom row, CollisionEndX = min col, CollisionCellX = max
-; col — cols are endpoint-mirrored above, so ALWAYS 0-19 here (no in-loop
-; mirror; bank2 display-space walkers add their own when they convert).
-; RectCount = running row, CollisionX = running col (both were walk temps
-; before — same ZP, no new allocation).
-; Exits: HIT -> jmp HotOverlapFlag (tail, C=1 contract preserved);
-;        miss -> clc / rts. Stack depth during the walk = old walk exactly
-;        (no jsr added — sim_bomb_fuse gameplay min-SP guard stays $F8).
-    lda CollisionCellY
-    sta RectCount
-.CWRow:
-    lda CollisionEndX
-    sta CollisionX
-    tax                            ; X = col, seeded ONCE per row (bugs.md #31:
-                                   ;   was re-loaded every cell — −8c/cell walk
-                                   ;   trim for the falling+probe heavy frame)
-.CWCol:
-    ldy RectCount
-    tya
-    clc
-    adc ColOff,X            ; PF0/PF1/PF2 group offset (0/3/6)
-    tay
-    lda PF0Buf,Y            ; $C3+row+off — the byte the kernel renders
-    and ColMask,X           ; bit for this source col
-    bne .CWHit              ; solid (Z=0)
-    cpx CollisionCellX      ; col == max? (X == CollisionX, stx below keeps
-    beq .CWRowDone          ;   the memory walk-temp fresh for HotOverlapFlag)
-    inx
-    stx CollisionX
-    bne .CWCol              ; always (col never wraps to 0)
-.CWRowDone:
-    lda RectCount
-    cmp CollisionEndY       ; row == bottom?
-    beq .CWNoHit
-    inc RectCount
-    bne .CWRow              ; always (row never wraps to 0)
-.CWHit:
-    jmp HotOverlapFlag      ; C=1 contract; hot rects unchanged (ROM stream)
-.CWNoHit:
-    ; Phase 4: miss → asym-patch overlay (push-neutral tramp, moth pattern).
-    ; OverlayTramp gates on LineCount ($84 = packed byte, VBL/$8F staged):
-    ; symmetric rooms pay +8c and return here-shaped clc/rts; asym rooms
-    ; cross to bank2 PHMOverlay (patch column + band mask), exit via
-    ; ReturnPad $FBF8 — rts pops THIS call's return (0 pushes total, SP
-    ; guard unchanged). Overlay sets C itself (plain sec — patch cells are
-    ; envelope-guaranteed non-hot, so HotOverlapFlag must not run).
-    jmp OverlayTramp
+; The walk body moved to PhmWalk (bank0 hole after CEH_KeyDisp, 2026-11-16): column-major, one
+; ldy/mask per column and both rows read with the same Y (the player box is at most 2 tile rows).
+; ~100c cheaper per probe than the per-cell loop, and it frees ~40 pre-pad bytes here.
+; Y = visible-left px is handed to the overlay in CollisionX (PHMOverlay no longer recomputes it).
+    sty CollisionX              ; visible_left (Y from the prologue) -> the asym overlay reads it
+    jmp PhmWalk
 
 EnemyOffTable:
     .byte 0,3,6                 ; enemy index * 3 (2026-10-21: 3 B record —
@@ -3323,6 +3273,94 @@ CEH_KeyDisp:
     ora LevelStartRoom
     sta LevelStartRoom
     jmp CellTail                ; refill + blip (hole D: this hole is full)
+
+
+; ------------------------------------------------------------------------------
+; PhmWalk - PlayerHitsMap's cell walk (see the note at the call site). In: CollisionEndX = min col,
+; CollisionCellX = max col (both 0-19, mirrored in the prologue), CollisionCellY = top row,
+; CollisionEndY = bottom row (CellY or CellY+1: the sprite is 22 lines, a band 36). Cell byte =
+; PF0Buf + row + ColOff[col], bit ColMask[col]; the PF buffers are the map (bomb holes included).
+; Out: C=1 via HotOverlapFlag on a solid cell, else OverlayTramp (clear, asym overlay). CollisionX
+; (= visible left) must survive for the overlay - the walk touches only A/X/Y.
+; ------------------------------------------------------------------------------
+PhmWalk:
+    ldx CollisionEndX
+    lda CollisionEndY
+    cmp CollisionCellY
+    bne .pw2
+.pw1:                           ; one tile row
+    lda ColOff,X
+    clc
+    adc CollisionCellY
+    tay
+    lda PF0Buf,Y
+    and ColMask,X
+    bne .pwHit
+    cpx CollisionCellX
+    beq .pwClear
+    inx
+    bne .pw1                    ; always (col never wraps to 0)
+.pw2:                           ; two tile rows: same Y, the next row is the next byte
+    lda ColOff,X
+    clc
+    adc CollisionCellY
+    tay
+    lda PF0Buf,Y
+    and ColMask,X
+    bne .pwHit
+    lda PF0Buf+1,Y
+    and ColMask,X
+    bne .pwHit
+    cpx CollisionCellX
+    beq .pwClear
+    inx
+    bne .pw2
+.pwHit:
+    jmp HotOverlapFlag          ; C=1 contract; hot rects unchanged (ROM stream)
+.pwClear:
+    jmp OverlayTramp            ; miss -> asym-patch overlay (push-neutral tramp)
+
+
+; ------------------------------------------------------------------------------
+; Fall2Probe - two pixels of fall this frame (terminal velocity 1.5 px/f): ONE probe at Y+2 instead of two.
+; The player's box at Y is clear, so if the box at Y+2 is clear the box at Y+1 is too (same columns; every
+; row it touches is a row of Y or of Y+2 - the walk and the asym overlay are both unions over rows).
+; A hit lands him with one more probe at Y+1 (same two probes as the single steps); the floor/exit zone
+; keeps the single steps, so landing, the hot kill and the room exit behave exactly as before. Saves ~250c on the heaviest frame (fall 2 + strafe). Entered by jmp from the
+; fall loop; the plain single-step loop (JFalling) follows it.
+; ------------------------------------------------------------------------------
+FallLoop:                       ; A = StepsLeft (1 or 2)
+    cmp #2
+    bne JFalling
+    lda RoomY
+    cmp #PLAYER_MAX_Y - 1
+    bcs JFalling                ; at/next to the floor: step by step (exit-room path)
+    inc RoomY
+    inc RoomY
+    jsr PlayerHitsMap
+    bcc .f2Air
+    dec RoomY                   ; Y+2 is blocked: one more probe at Y+1 tells where he lands
+    jsr PlayerHitsMap
+    bcc .f2Land                 ; Y+1 clear: step 1 done, step 2 was the blocked probe above
+    dec RoomY                   ; Y+1 blocked too: he stays at Y
+.f2Land:
+    lda #0
+    sta vyLo
+    sta vyHi
+    lda BombPacked
+    ora #%10000000              ; landed - OnGround (StepDown's landing exit, once)
+    sta BombPacked
+    jmp NoVMove
+JFalling:
+    jsr StepDown
+    dec StepsLeft
+    bne JFalling
+    jmp NoVMove
+.f2Air:
+    lda BombPacked
+    and #%01111111              ; still falling - not ground (what StepDown's air exit does)
+    sta BombPacked
+    jmp NoVMove
 
     .ds $FBD0 - *, 0            ; #22: pin tramp at $FBD0 — bank2's twin
                                  ;   sits at the same address (pin moved from

@@ -585,22 +585,9 @@ PHMOverlay:
     ; ball-strip ($ff BandTab entries). D6 envelope: ONE right column
     ; [BallX-7, BallX] px, BallX = 87+8*rc — overlay is additive (cells
     ; painted only where the mirrored cell is open, never hot).
-    ; Exact visible_left (same math as PHM's prologue), then px overlap of
-    ; [vl, vl+6] (PLAYER_WIDTH=7 lit) with the patch column, then band x rows.
-    sec
-    lda RoomX
-    sbc PlayerDir
-    cmp #15
-    bcs .Ov7
-    sec
-    sbc #4
-    jmp .OvVL
-.Ov7:
-    sbc #7
-.OvVL:
-    clc
-    adc PlayerDir               ; A = visible_left px
-    sta CollisionX              ; walk temps are free on the miss path
+    ; Exact visible_left: PHM's prologue computed it (Y) and PhmWalk's caller stored it in CollisionX, so the
+    ; px overlap of [vl, vl+6] (PLAYER_WIDTH=7 lit) with the patch column and the band x rows start right here.
+    ; (CollisionX stays the box's visible left through OvM1Block; both are free to use it as input.)
     lda LineCount
     lsr
     lsr

@@ -1094,7 +1094,7 @@ checks = [
     (f'wall-model lines per kernel target (cave {272.0 + EXTRA_LINES:.1f} / title {267.0 + EXTRA_LINES:.1f}) '
      f'+/-0.15 on all frames >=2 (bad: {_bad_lines[:6]})',
      not _bad_lines),
-    ('bomb dropped (state1 seen)', 1 in bomb_states),
+    ('bomb dropped (state1 seen)', (1 in bomb_states) or PROBE),   # probe: a room that kills the scripted player before he lands (water/hot below the spawn) cannot run the bomb leg, like state2
     ('bomb exploded (state2 seen)', (2 in bomb_states) or PROBE),
     ('enemy present in room', enemy_seen or PROBE),
     (f'measured frames >= {MIN_FRAMES} (got {measured})', measured >= MIN_FRAMES),
