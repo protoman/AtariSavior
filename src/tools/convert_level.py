@@ -155,6 +155,23 @@ def _tv_palette():
     return kPalette
 
 
+DOOR_COLOR_BYTE = 0x1C   # the locked-door stripe (bank0 COLUP1 staging): bright yellow
+
+
+def door_like_color(byte: int) -> bool:
+    """True when a wall / band colour byte could be mistaken for the door stripe.
+
+    User 2026-11-17: a yellow band made it impossible to tell the locked door from the
+    wall. Rule: the whole TIA yellow hue (1), and any colour within 90 (RGB distance, the
+    converter's own palette) of the door's yellow - that also catches the gold/orange and
+    olive neighbours at high luma.
+    """
+    pal = _tv_palette()
+    dr, dg, db = pal[DOOR_COLOR_BYTE >> 4][(DOOR_COLOR_BYTE & 15) >> 1]
+    r, g, b = pal[byte >> 4][(byte & 15) >> 1]
+    return (byte >> 4) == 1 or ((r - dr) ** 2 + (g - dg) ** 2 + (b - db) ** 2) < 90 ** 2
+
+
 def nearest_byte(r: int, g: int, b: int) -> int:
     """Emulator-aware TIA color byte closest to an RGB triple.
 

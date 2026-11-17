@@ -433,7 +433,7 @@ static const int kLevelPalettes[32][3] = {
     {180, 80, 0},    // L1: Red/Orange
     {0, 140, 180},   // L2: Cyan/Blue
     {40, 160, 40},   // L3: Green
-    {180, 140, 0},   // L4: Yellow/Gold
+    {192, 104, 72},  // L4: Rust (was gold: the door stripe is yellow)
     {160, 40, 160},  // L5: Purple
     {180, 60, 60},   // L6: Crimson
     {40, 180, 160},  // L7: Teal
@@ -444,14 +444,14 @@ static const int kLevelPalettes[32][3] = {
     {200, 120, 40},  // L12: Amber
     {80, 160, 200},  // L13: Sky Blue
     {160, 80, 160},  // L14: Violet
-    {180, 180, 60},  // L15: Olive
+    {104, 136, 204}, // L15: Cornflower (was olive)
     {200, 60, 100},  // L16: Magenta
     {60, 180, 80},   // L17: Emerald
     {140, 80, 200},  // L18: Purple Blue
     {200, 140, 80},  // L19: Copper
     {220, 220, 220}, // L20: Silver Gray
     {90, 200, 200},   // L21
-    {200, 200, 80},   // L22
+    {208, 112, 112},  // L22: Salmon red (was yellow)
     {200, 80, 200},   // L23
     {80, 130, 220},   // L24
     {220, 100, 100},   // L25
@@ -459,11 +459,14 @@ static const int kLevelPalettes[32][3] = {
     {220, 140, 60},   // L27
     {170, 90, 220},   // L28
     {60, 200, 140},   // L29
-    {220, 200, 100},   // L30
+    {140, 208, 140},   // L30: Light green (was pale gold)
     {200, 100, 60},   // L31
     {240, 240, 240}   // L32
 };
 
+// NO wall or band colour may be in the DOOR's yellow family (the locked-door stripe is TIA $1C,
+// bright yellow: a yellow band made doors impossible to tell from the wall; user 2026-11-17).
+// convert_level.door_like_color() defines "too close"; tools/test_generator.py rejects it.
 // Row-1 band colour per level (user 2026-11-11: "increase the contrast of the band colors;
 // orange+red, red+blue, pink+green... are all fine"). It used to be the level colour lifted
 // by 40 (nearly the same hue); now a different hue on purpose, at a similar brightness so the
@@ -473,7 +476,7 @@ static const int kLevelPalettes2[32][3] = {
     {220, 70, 30},   // L2:  cyan + red-orange
     {220, 80, 180},  // L3:  green + pink
     {90, 70, 220},   // L4:  gold + blue-violet
-    {170, 200, 50},  // L5:  purple + yellow-green
+    {92, 156, 92},   // L5:  purple + green
     {40, 170, 190},  // L6:  crimson + cyan
     {210, 50, 60},   // L7:  teal + red
     {70, 120, 220},  // L8:  ochre + blue
@@ -492,15 +495,15 @@ static const int kLevelPalettes2[32][3] = {
     {220, 90, 60},   // L21
     {70, 90, 220},   // L22
     {80, 200, 90},   // L23
-    {220, 170, 60},   // L24
+    {208, 128, 92},   // L24: orange-salmon (was gold)
     {60, 190, 170},   // L25
     {190, 70, 200},   // L26
     {60, 170, 220},   // L27
-    {200, 210, 70},   // L28
+    {132, 180, 104},   // L28: green (was yellow)
     {220, 70, 120},   // L29
     {90, 100, 200},   // L30
     {70, 200, 200},   // L31
-    {232, 232, 92}   // L32: silver + pale gold
+    {196, 156, 236}   // L32: silver + pale violet
 };
 
 // ---------------------------------------------------------------------------

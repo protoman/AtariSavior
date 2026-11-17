@@ -369,6 +369,16 @@ def main() -> int:
                       f"(same hue, or luma too far apart)")
                 return 1
 
+        # --- no wall / band colour looks like the locked door (user 2026-11-17) ---
+        # The door stripe is TIA $1C yellow; a yellow band hid it.
+        for level_n, level in enumerate(levels, start=1):
+            for what, k in (("wall", "wall_"), ("band", "wall2_")):
+                x = C.nearest_byte(level[k + "r"], level[k + "g"], level[k + "b"])
+                if C.door_like_color(x):
+                    print(f"FAIL: level {level_n} {what} colour ${x:02x} is too close to the "
+                          f"locked-door yellow (${C.DOOR_COLOR_BYTE:02x})")
+                    return 1
+
         # --- spiders sit on a whole cell (release 0.8 shot 003) -------------
         # An 8 px sprite on an ODD display column straddles two cells and is
         # drawn half inside the next wall; RelocateSpider used to try odd ones.
