@@ -192,9 +192,9 @@ def main() -> None:
     ceh_body = KERNEL.split("CEH_HasMore:")[1].split("CEHNext:")[0]
     assert "lda EnemyRamY,Y" in ceh_body, "CheckEnemyHit must read EnemyRamY"
     assert "sta ActiveObjectY" in ceh_body
-    laser = BANK2.split("LaserHitTestBody:")[1].split("EnemyOffTable:")[0]
+    laser = BANK2.split("\nLaserTipEnemy:")[1].split("\nEBLCellCheck:")[0]
     assert "sbc EnemyRamY,X" in laser, "LaserHitTest must read EnemyRamY"
-    assert "(EnemyDataLo),Y" not in laser.split(".LHHit")[0], \
+    assert "(EnemyDataLo),Y" not in laser.split("LaserTipSpan")[0], \
         "LaserHitTest vertical test still reads ROM y"
 
     # --- dispatch + snake gate -------------------------------------------

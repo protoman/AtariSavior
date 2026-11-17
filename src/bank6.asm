@@ -571,13 +571,8 @@ MothDoWalk:
     and LineCount
     beq .MwSym                ; strip not painted in the moth's band rows
     lda LineCount
-    lsr
-    lsr
-    lsr
-    lsr                       ; n = right_col+1
-    asl
-    asl
-    asl                       ; 8n
+    and #$F0                  ; n = right_col+1 (high nibble)
+    lsr                       ; 8n
     clc
     adc #79                   ; BallX = 79+8n = 87+8*rc
     sta CollisionX            ; walk re-inits CollisionX at .MwRow — free
@@ -711,6 +706,11 @@ LaserWallClamp:
     lsr
     jsr BandRowFromLine
     sta CollisionCellY          ; top band row
+    sta CollisionEndY           ; bottom row = same unless RoomY+5 starts a new
+    lda RoomY                   ;   4-line group (RoomY&3 = 3) that also opens
+    and #3                      ;   a band — then redo the lookup (saves ~28c
+    cmp #3                      ;   on 3 frames of 4)
+    bne .LWrowsDone
     lda RoomY
     clc
     adc #5
@@ -718,13 +718,11 @@ LaserWallClamp:
     lsr
     jsr BandRowFromLine
     sta CollisionEndY           ; bottom band row
+.LWrowsDone:
     ; --- tip col (display space): the ONLY cell the contact tests ---
-    lda PlayerDir
-    bne .LWtipL
     lda CollisionX              ; right: tip = A (caller keeps A <= 159)
-    jmp .LWtipC
-.LWtipL:
-    lda CollisionX
+    ldx PlayerDir
+    beq .LWtipC
     sec
     sbc #7                      ; left: tip = A-7
     bcs .LWtipC
@@ -732,22 +730,14 @@ LaserWallClamp:
 .LWtipC:
     sta RectCount               ; tip px scratch (mirror walk re-inits it)
     lda RoomMetaA               ; MetaA
-    lsr
-    lsr
-    lsr
-    lsr                         ; m1_col+1 (0 = no M1 patch)
+    and #$F0                    ; m1_col+1 in the high nibble (0 = no M1 patch)
     beq .LWm1Skip
     lda EnemyDeadMask
     and #$10                    ; b4 = M1 strip destroyed -> transparent
     bne .LWm1Skip
     lda RoomMetaA               ; reload MetaA (dead test clobbered A)
     lsr
-    lsr
-    lsr
-    lsr
-    asl
-    asl
-    asl
+    and #$F8                    ; (m1_col+1) * 8
     sec
     sbc #1                      ; M1X
     sec
@@ -1836,14 +1826,26 @@ S1Fin:
 ; Clobbers A/X/Y/FetchPtr + RectCount (the wall clamp re-inits it anyway);
 ; Temp is NOT touched (the joystick shadow stays live for the caller).
 LaserTipEnemy:
+    ; ONE scan of the enemy list serves both tests (2026-11-17: the tip pass and
+    ; the body pass each repeated the dead/vertical filter, ~210c per laser
+    ; frame — the last overscan overruns in the moth+laser rooms). A live
+    ; enemy in the beam rows whose span overlaps the body ([A-7,A] x [eX-7,eX])
+    ; goes to LaserTipSpan out of line, which (a) acts at once if it also
+    ; covers the tip pixel (tip beats wall) or (b) remembers the FIRST such
+    ; target in ObjBase1 (slot, $FF = none) / ObjTop1 (result) for
+    ; LaserClampDone, which runs only when the wall tip cell is clear.
+    ; ObjBase1/ObjTop1 are VBLANK-staged kernel values: free scratch here.
+    lda #$FF
+    sta ObjBase1                ; no body candidate yet
     lda CollisionX
     ldx PlayerDir
     beq .LTEtip
     sec
     sbc #7                      ; left-facing tip = A-7 (drawn [A-7, A])
-    bcc .LTEnone                ; tip off screen left: no enemy
+    bcs .LTEtip
+    lda #$FF                    ; tip off screen left: no tip enemy ($FF never matches)
 .LTEtip:
-    sta RectCount               ; tip px (wall clamp scratch; re-inited there)
+    sta RectCount               ; tip px (wall clamp re-inits RectCount)
     lda EnemyDataLo
     sta FetchPtr
     lda EnemyDataHi
@@ -1851,47 +1853,32 @@ LaserTipEnemy:
     ldx #0
 .LTEloop:
     cpx EnemyCount
-    bcs .LTEnone
+    bcs .LTEdone
     lda EnemyDeadMask
     and EnemyBitTable,X
-    bne .LTEnext
+    bne LaserTipNext
     lda RoomY
     sec
     sbc EnemyRamY,X
     clc
-    adc #5                      ; same vertical window as the body scan
+    adc #5                      ; (RoomY-eY)+5 in [0..8] = eY in [RoomY-3, RoomY+5]
     cmp #9                      ; beam rows RoomY+4..5 vs enemy [Y, Y+7]
-    bcs .LTEnext
+    bcs LaserTipNext
     lda EnemyRamX,X
     sec
-    sbc RectCount               ; eX - tip
-    bcc .LTEnext                ; eX < tip: sprite ends left of the tip
-    cmp #8                      ; eX in [tip, tip+7]: sprite covers the tip
-    bcs .LTEnext
-    ldy EnemyOffTable,X         ; type offset into the staged record
-    lda (FetchPtr),Y            ; direct — enemy records are in THIS bank
-    and #%00000111              ; type 13 = the wall-mirrored lamp: without
-                                ;   the mask it read as an enemy and was killed
-    cmp #LAMP
-    beq .LTElamp
-    cmp #KEY
-    bcs .LTEnext                ; 6/7 (keys, power cells 14->6, extra miners
-                                ;   15->7, the raft) are not targets: the beam
-                                ;   passes through them
-    lda EnemyDeadMask
-    ora EnemyBitTable,X
-    sta EnemyDeadMask
-    lda #$50                    ; kill — caller adds #$50 score
-    jmp ReturnPad
-.LTElamp:
-    lda #1                      ; lamp — caller crashes it (dark room)
-    jmp ReturnPad
-.LTEnext:
+    sbc CollisionX
+    clc
+    adc #7                      ; kill == drawn overlap: beam [A-7,A] x enemy
+                                ; [eX-7,eX] -> (eX-A)+7 in [0..14]
+    cmp #15
+    bcs LaserTipNext
+    jmp LaserTipSpan            ; overlaps the beam body (out of line)
+LaserTipNext:
     inx
     bne .LTEloop
-.LTEnone:
-    lda #0
-    jmp LaserWallClamp
+.LTEdone:
+    jmp LaserWallClamp          ; no sprite on the tip pixel: wall test, then
+                                ;   LaserClampDone acts on the remembered body hit
 
 
 ; EBLCellCheck - the per-record tail of EBLER_Loop (moved out of line, the room
@@ -2009,63 +1996,55 @@ LaserHitTestBody:
                                 ; solid cell must win: snake), then the wall
                                 ; clamp -> enemy loop via LaserClampDone
 LaserClampDone:
-    ; --- Stage (P3.1): enemy record pointer — loop writes no FetchPtr ---
-    lda EnemyDataLo
-    sta FetchPtr
-    lda EnemyDataHi
-    sta FetchPtr+1
-    ldx #0
-.LHLoop:
-    cpx EnemyCount
-    bcs .LHTOut
-    lda EnemyDeadMask
-    and EnemyBitTable,X
-    bne .LHNext
-    lda RoomY
-    sec
-    sbc EnemyRamY,X
-    clc
-    adc #5                      ; (RoomY-eY)+5 in [0..8] = eY in [RoomY-3, RoomY+5]
-    cmp #9                      ; out of beam rows RoomY+4..5
-    bcs .LHNext
-    lda EnemyRamX,X
-    sec
-    sbc CollisionX
-    clc
-    adc #7                      ; kill == drawn overlap: beam [A-7,A] x
-                                ; enemy [eX-7,eX] (SAME arg-box convention
-                                ; CheckEnemyHit uses for RoomX vs eX) ->
-                                ; eX in [A-7, A+7] <=> (eX-A)+7 in [0..14].
-                                ; S6b's adc #14 was a 7px-LEFT shift: it
-                                ; killed empty space left of the beam and
-                                ; missed every enemy overlapping the tip
-                                ; from the right (laser_collision_tip_bug).
-    cmp #15                     ; bcs -> miss
-    bcs .LHNext
-.LHHit:
-    ldy EnemyOffTable,X         ; type offset into staged record
-    lda (FetchPtr),Y            ; direct — level data in this bank (was fold)
-    and #%00000111              ; type 13 = the wall-mirrored lamp: without
-                                ;   the mask it read as an enemy and was killed
-    cmp #LAMP
-    beq .LHLamp
-    cmp #KEY
-    bcs .LHNext                 ; 6/7: keys, power cells, extra miners, rafts are
-                                ;   not targets
-    lda EnemyDeadMask
-    ora EnemyBitTable,X
-    sta EnemyDeadMask
-    lda #$50                    ; result: kill — caller adds #$50 score
-    jmp ReturnPad                   ; ReturnPad → bank0 caller (A/Z/C preserved)
-.LHLamp:
-    lda #1                      ; result: lamp — caller crashes the lamp
-    jmp ReturnPad
-.LHNext:
-    inx
-    bne .LHLoop
+    ; wall tip clear: act on the first body-span target LaserTipEnemy kept
+    ldx ObjBase1
+    bmi .LHTOut
+    ldy ObjTop1
+    jmp LaserAct
 .LHTOut:
     lda #0                      ; result: miss (Z set for caller's beq)
     jmp ReturnPad
+LaserTipSpan:
+    ; X = slot, enemy overlaps the beam body. Target types only.
+    ldy EnemyOffTable,X         ; type offset into the staged record
+    lda (FetchPtr),Y            ; direct — enemy records are in THIS bank
+    and #%00000111              ; type 13 = the wall-mirrored lamp: without
+                                ;   the mask it read as an enemy and was killed
+    cmp #LAMP
+    beq .LTSlamp
+    cmp #KEY
+    bcc .LTSkill
+    jmp LaserTipNext            ; 6/7 (keys, power cells 14->6, extra miners
+                                ;   15->7, the raft) are not targets: the beam
+                                ;   passes through them
+.LTSkill:
+    ldy #$50                    ; kill — caller adds #$50 score
+    bne .LTStip                 ; always
+.LTSlamp:
+    ldy #1                      ; lamp — caller crashes it (dark room)
+.LTStip:
+    lda EnemyRamX,X
+    sec
+    sbc RectCount               ; eX - tip
+    bcc .LTScand                ; eX < tip: sprite ends left of the tip
+    cmp #8                      ; eX in [tip, tip+7]: sprite covers the tip px
+    bcs .LTScand
+LaserAct:                       ; X = slot, Y = result ($50 kill / 1 lamp)
+    cpy #1
+    beq .LTSret                 ; lamp: no dead mark
+    lda EnemyDeadMask
+    ora EnemyBitTable,X
+    sta EnemyDeadMask
+.LTSret:
+    tya
+    jmp ReturnPad               ; ReturnPad -> bank0 caller (A/Z preserved)
+.LTScand:
+    lda ObjBase1
+    bpl .LTSkeep                ; first target only (dead mask hides it next frame)
+    stx ObjBase1
+    sty ObjTop1
+.LTSkeep:
+    jmp LaserTipNext
 
 
     ; Tally entry tramp slice RETIRED here (repack chunk 3, 2026-10-20): the

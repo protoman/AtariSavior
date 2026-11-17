@@ -108,6 +108,10 @@ def main() -> None:
     # --- bank2 body: tip-cell wall + own-body kill window ------------------
     hit = text2.split("LaserHitTestBody:")[1].split("EnemyOffTable:")
     hit = hit[0] if isinstance(hit, list) else hit  # keep str slice
+    # the body scan is ONE pass now (2026-11-17): LaserTipEnemy (filters + body
+    # window) + LaserTipSpan/LaserAct/LaserClampDone after LaserHitTestBody
+    scan = text2.split("\nLaserTipEnemy:")[1].split("\nEBLCellCheck:")[0]
+    hit = scan + "\n" + hit
     hit = "\n".join(l.split(";")[0] for l in hit.splitlines())  # ignore comments
     assert "adc #5" in hit and "cmp #9" in hit, "vertical window changed"
     # kill == drawn overlap (beam [A-7,A] x enemy [eX-7,eX] — the arg-box
@@ -116,17 +120,17 @@ def main() -> None:
     assert "adc #14" not in hit, "S6b left-shifted kill window still present"
     assert "ora EnemyBitTable,X" in hit and "sta EnemyDeadMask" in hit, \
         "kill path changed"
-    assert "cmp #LAMP" in hit and ".LHLamp" in hit, \
+    assert "cmp #LAMP" in hit and ".LTSlamp" in hit, \
         "lamp crash path changed"
     # result protocol: 0 / $50 / 1 lamp / 2 wall through ReturnPad
-    assert "lda #$50" in hit and "lda #0" in hit and "jmp ReturnPad" in hit, \
+    assert "ldy #$50" in hit and "lda #0" in hit and "jmp ReturnPad" in hit, \
         "body must return its result through ReturnPad"
     assert "jmp LaserTipEnemy" in hit, \
         "body must tail-jmp LaserTipEnemy first (sprite covering the tip px " \
         "must beat the wall — snake-in-wall report 2026-10-20)"
-    tip = text2.split("LaserTipEnemy:")[1].split("LaserWallClamp:")[0]
+    tip = text2.split("\nLaserTipEnemy:")[1].split("\nEBLCellCheck:")[0]
     tip = "\n".join(l.split(";")[0] for l in tip.splitlines())
-    assert "cmp #8" in tip and "sbc RectCount" in tip, \
+    assert "cmp #8" in hit and "sbc RectCount" in hit, \
         "tip-enemy pass must use the eX in [tip, tip+7] containment window"
     assert "jmp LaserWallClamp" in tip, \
         "LaserTipEnemy must fall into LaserWallClamp when no sprite covers " \

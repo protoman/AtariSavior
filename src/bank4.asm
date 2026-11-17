@@ -589,19 +589,14 @@ PHMOverlay:
     ; px overlap of [vl, vl+6] (PLAYER_WIDTH=7 lit) with the patch column and the band x rows start right here.
     ; (CollisionX stays the box's visible left through OvM1Block; both are free to use it as input.)
     lda LineCount
-    lsr
-    lsr
-    lsr
-    lsr                         ; n = right_col+1 (1..10)
+    and #$F0                    ; n = right_col+1 (1..10) in the high nibble
     beq .OvClear                ; 2026-10-23: n = 0 means this room has NO ball
                                 ;   column. Without this the test invented a
                                 ;   phantom ball at x79 (BallX = 79 + 8n) and a
                                 ;   player standing near it was routed to the
                                 ;   shutter/right-door path, so the LEFT (M1)
                                 ;   door test never ran — the door never blocked.
-    asl
-    asl
-    asl                         ; 8n
+    lsr                         ; (n<<4)>>1 = 8n
     clc
     adc #79                     ; BallX = 79+8n = 87+8*rc (patch right edge)
     sta RectCount               ; scratch (NOT CollisionCellX): the prologue
@@ -652,14 +647,9 @@ OvM1Block:
     and #$01                    ; Phase 5: b0 = M1 strip on the RIGHT half
     tax                         ;   (door band mask is $02 → b0 free)
     lda RoomPF0Lo               ; reload MetaA
-    lsr
-    lsr
-    lsr
-    lsr                         ; m1_col+1 (0 = no M1 patch)
+    and #$F0                    ; m1_col+1 (0 = no M1 patch) in the high nibble
     beq .OvM1no
-    asl
-    asl
-    asl                         ; 8*(m1_col+1)
+    lsr                         ; 8*(m1_col+1)
     clc
     adc M1OffTab,X              ; -1 (left, $FF) / +79 (right, $4f) → the
                                 ;   side's M1X (7+8*col / 87+8*col) — MUST
