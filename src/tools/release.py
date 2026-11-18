@@ -184,6 +184,14 @@ def main() -> int:
             vstamp = f"S.A.V.I.O.R. {version} {label}".encode() + b"\0"
             if len(vrom) != 32768 or vrom[BANK5:BANK5 + len(vstamp)] != vstamp:
                 fail(f"{label} ROM is not 32768 bytes with the {label} version stamp")
+            # The variant's frame length is its own calibration (colors.inc units): sim the
+            # heaviest room on the variant's ROM (2026-11: PAL ran 311 lines for a release).
+            step(f"{label} frame budget (heaviest room, scratch tree)")
+            lv, rm = heavy[0].split(",")
+            r = subprocess.run([py, "sim_frame_budget.py"], cwd=scratch, text=True,
+                               capture_output=True, env=dict(os.environ, SIM_LEVEL=lv, SIM_ROOM=rm))
+            if r.returncode or "SIM OK" not in r.stdout:
+                fail(f"{label} frame-budget sim failed:\n" + r.stdout[-2500:])
             if not a.skip_playbot:
                 step(f"{label} playbot (all {nlev} levels, ~10 min)")
                 r = run([py, "tools/playbot.py", "--rom-dir", scratch])
@@ -207,7 +215,7 @@ def main() -> int:
         f"rom      {rom_out.name}  32768 bytes  sha256 {sha}\n"
         + "".join(f"rom      {n}  32768 bytes  sha256 {h}  ({lab})\n" for lab, n, h in variants)
         + f"battery  {len(tests)} tests, 0 failures\n"
-        f"flicker  test_frame_stability --all OK (40 heaviest rooms); sim_frame_budget OK in the {sweep_rooms} heaviest rooms\n"
+        f"flicker  test_frame_stability --all OK (40 heaviest rooms); sim_frame_budget OK in the {sweep_rooms} heaviest rooms (NTSC), the heaviest room (PAL60, PAL)\n"
         f"playbot  {play}\n")
     if a.tag:
         r = run(["git", "tag", "-a", f"v{version}", "-m", f"S.A.V.I.O.R. {version}"])

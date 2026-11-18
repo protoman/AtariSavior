@@ -21,7 +21,11 @@ from pathlib import Path
 # 8 blue, 9 cyan, C green, F brown).
 # 312-line frame: NTSC runs 272 lines (V 31 + O 44 units of 64 cycles); the extra ~40
 # lines (3040 cycles = ~47 units) are split between the two waits.
-VBL_PAL, OVER_PAL = 60, 71      # PAL: the same +9 VBL units as NTSC (see VBL_NTSC)
+# 2026-11-18: OVER_PAL 71 -> 72. The PAL frame was a constant 311 lines since the NTSC overscan
+# went 45 -> 48 (1.1.0 work): sim_frame_budget on the PAL build showed 311.0 in EVERY frame, even in
+# an empty room (the release never simmed the PAL builds). 132 units (60+72, 61+71 and 62+70
+# all measured) give exactly 312 lines; 131 gives 311.
+VBL_PAL, OVER_PAL = 60, 72
 VBL_NTSC, OVER_NTSC = 45, 48
 NTSC_LINES = 280    # (1.1.0: OVER 45 -> 48: the laser/collision walk in the heaviest rooms needs ~2975c of
                     # overscan, over the 2880c window - frames stretched by 4-14 lines; each unit is one line)
