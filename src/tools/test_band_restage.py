@@ -40,7 +40,7 @@ ROOMS = SRC / "rooms"
 # mixes the test-owned level layout with live labels → EnterRoom reads the
 # wrong table and the run never returns.)
 for _i in range(8):
-    setattr(_CM, f"BANK{_i}", (SRC / f"bank{_i}.bin").read_bytes())
+    setattr(_CM, f"BANK{_i}", (SRC / f"bank{ {0:0,1:2,2:6,3:5,4:4,5:7,6:1,7:3}[_i] }.bin").read_bytes())
 Mem = _CM.Mem
 
 need0 = {"EnterRoom", "RoomBandColor", "LevelPFDataLo", "LevelPFDataHi",
@@ -74,29 +74,32 @@ levels = []
 for n, payload in enumerate(payloads, start=1):
     names = {f"LEVEL{n}_RoomShapes", f"LEVEL{n}_RoomCounts",
              f"LEVEL{n}_EnemyDataTable"}
-    got = parse_labels(SRC / "bank2.lst", names)
+    got = parse_labels(SRC / "bank6.lst", names)
+    in_b = bool(names - got.keys())         # not in room bank A: it is in room bank B (bank5)
+    if in_b:
+        got = parse_labels(SRC / "bank7.lst", names)
     missing = names - got.keys()
     if missing:
-        sys.exit(f"bank2.lst labels missing: {sorted(missing)}")
-    levels.append((n, got, payload))
+        sys.exit(f"bank6.lst/bank7.lst labels missing: {sorted(missing)}")
+    levels.append((n, got, payload, in_b))
 
-ZMETA = parse_labels(SRC / "bank2.lst", {"RoomMetaA", "RoomMetaB"})
+ZMETA = parse_labels(SRC / "bank6.lst", {"RoomMetaA", "RoomMetaB"})
 if {"RoomMetaA", "RoomMetaB"} - ZMETA.keys():
-    sys.exit(f"bank2.lst labels missing: {sorted(ZMETA)}")
+    sys.exit(f"bank6.lst labels missing: {sorted(ZMETA)}")
 
 # C3 (2026-10-20): the row dictionary — the shape block stores 3 indices and
 # the loader expands them through these three SoA columns into PF0Buf.
-POOL = parse_labels(SRC / "bank3.lst",
-                    {"RowPoolPF0", "RowPoolPF1", "RowPoolPF2",
-                     "RoomNoStream"})
+POOL = parse_labels(SRC / "bank4.lst",
+                    {"RowPoolPF0", "RowPoolPF1", "RowPoolPF2"})
+POOL.update(parse_labels(SRC / "bank5.lst", {"RoomNoStream"}))
 if {"RowPoolPF0", "RowPoolPF1", "RowPoolPF2", "RoomNoStream"} - POOL.keys():
-    sys.exit(f"bank2.lst labels missing: {sorted(set(POOL) or {'RowPool'})}")
+    sys.exit(f"bank6.lst labels missing: {sorted(set(POOL) or {'RowPool'})}")
 nostream = POOL["RoomNoStream"]
 
 
 
 def enter_room(mem: Mem, table: int, room_count: int, room: int,
-               level: int = 1) -> None:
+               level: int = 1, in_b: bool = False) -> None:
     """Stage what LoadLevel stages (C4): the level block base + its room count.
     The RoomPositions / RoomCounts / enemy-record bases are the block's
     +n / +2n / +3n offsets (C2 2026-10-20: 3 B shape-index room records),
@@ -109,6 +112,7 @@ def enter_room(mem: Mem, table: int, room_count: int, room: int,
     # with `Level` ($A3) — LoadLevelB2 sets it in the real game; the harness
     # stages what LoadLevel would (level is 1-based on the command line).
     r[L0["Level"] - 0x80] = level - 1
+    r[0xDB - 0x80] = 0x80 if in_b else 0   # RoomExits b7: which room bank the A/B stubs enter (LoadLevel sets it)
     mpu = MPU(memory=mem)
     mpu.pc = L0["EnterRoom"]
     mpu.a = room
@@ -134,8 +138,8 @@ def main() -> int:
     shape_count = int(re.search(r"^LEVEL_SHAPE_COUNT = (\d+)$",
                                 idx_text, re.M).group(1))
     model_blocks = parse_labels(
-        SRC / "bank3.lst", {f"M{mid}Shape" for mid in range(shape_count)})
-    for n, syms, level in levels:
+        SRC / "bank4.lst", {f"M{mid}Shape" for mid in range(shape_count)})
+    for n, syms, level, in_b in levels:
         table = syms[f"LEVEL{n}_RoomShapes"]
         enemy_data = syms[f"LEVEL{n}_EnemyDataTable"]
         rooms = level["rooms"]
@@ -143,7 +147,7 @@ def main() -> int:
                   for r in rooms]
         for i, room in enumerate(rooms):
             mem = Mem()
-            enter_room(mem, table, len(rooms), i, n)
+            enter_room(mem, table, len(rooms), i, n, in_b)
             band = mem.ram[L0["RoomBandColor"] - 0x80]
             want_on = bool(room.get("bottom_band"))
             if want_on:
@@ -194,7 +198,8 @@ def main() -> int:
                     "must have no record stream)")
             # C13 (N=4): the shape block is EXACTLY the 4 row-pool
             # indices at block + 0..3 (band 0-3); band 1's b7 = hot.
-            blocks = _CM.BANK3
+            blocks = _CM.BANK4           # shape blocks + row pool (bank4)
+            ext = _CM.BANK3              # extras streams stay in bank3
             idx = blocks[shape - 0xF000:shape - 0xF000 + 4]
             hot = bool(MODELS[int(model)].get("mid_band_type"))
             assert (idx[1] & 0x80) == (0x80 if hot else 0), (
@@ -275,12 +280,12 @@ def main() -> int:
                 assert hot_ptr != shape and hot_ptr != nostream, (
                     f"level {n} room {i}: feature room must point the record "
                     "stream at its extras record")
-                assert blocks[hot_ptr - 0xF000] >= 1, (
+                assert ext[hot_ptr - 0xF000] >= 1, (
                     f"level {n} room {i}: extras record stream count should "
-                    f"be >= 1 (got {blocks[hot_ptr - 0xF000]})")
-                assert blocks[hot_ptr - 0xF000 + 1] & 0x80, (
+                    f"be >= 1 (got {ext[hot_ptr - 0xF000]})")
+                assert ext[hot_ptr - 0xF000 + 1] & 0x80, (
                     f"level {n} room {i}: extras stream class "
-                    f"${blocks[hot_ptr - 0xF000 + 1]:02X} must be a FEATURE "
+                    f"${ext[hot_ptr - 0xF000 + 1]:02X} must be a FEATURE "
                     "record (b7 set) — C11 dropped the hot records")
             else:
                 assert hot_ptr == nostream, (

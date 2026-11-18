@@ -33,7 +33,7 @@ FROZEN = SRC / "tests" / "frozen"
 
 
 def labels(bank, names):
-    got = parse_labels(FROZEN / f"bank{bank}.lst", set(names))
+    got = parse_labels(FROZEN / f"bank{ {0:0,1:2,2:6,3:5,4:4,5:7,6:1,7:3}[bank] }.lst", set(names))
     miss = set(names) - got.keys()
     if miss:
         sys.exit(f"frozen bank{bank}.lst labels missing: {sorted(miss)}")
@@ -78,7 +78,7 @@ for level, want in ((0, 2), (4, 2), (5, 3), (9, 3), (10, 4), (14, 4), (15, 5),
     mem = CM.Mem()
     poke(mem, L2, "Level", level)
     poke(mem, L2, "DropTarget", 0) if "DropTarget" in L2 else None
-    run(mem, 2, L2["LoadLevelB2"], L2["LF_TailSwap"])
+    run(mem, 6, L2["LoadLevelB2"], L2["LF_TailSwap"])
     got = peek(mem, L2, "EnemySpd")
     assert got == want, (f"Level {level}: EnemySpd={got}, want {want} "
                          f"(x{want / 2:g})")
@@ -138,9 +138,9 @@ for spd in (2, 5):
                              f"frames, want {FRAMES} (extra passes dropped, first kept)")
 
 # --- 3. no enemy motion still reads a shared clock ---------------------------------
-K = (SRC / "kernel.asm").read_text()
-B1 = (SRC / "bank1.asm").read_text()
-B2 = (SRC / "bank2.asm").read_text()
+K = (SRC / "bank0.asm").read_text()
+B1 = (SRC / "bank2.asm").read_text()
+B2 = (SRC / "bank6.asm").read_text()
 
 
 def body(text, start, end):

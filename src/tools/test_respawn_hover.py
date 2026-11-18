@@ -17,12 +17,12 @@ import re
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parent.parent
-K = (SRC / "kernel.asm").read_text()
-# C2 (2026-10-20): LoadLevel's body lives in bank2 (LoadLevelB2); kernel.asm
+K = (SRC / "bank0.asm").read_text()
+# C2 (2026-10-20): LoadLevel's body lives in bank2 (LoadLevelB2); bank0.asm
 # keeps only the pad + the drop-in tail (LF_B0Tail).
-B2 = (SRC / "bank2.asm").read_text()
+B2 = (SRC / "bank6.asm").read_text()
 
-B1 = (SRC / "bank1.asm").read_text()
+B1 = (SRC / "bank2.asm").read_text()
 GRAVITY = int(re.search(r"^GRAVITY\s*=\s*\$([0-9A-Fa-f]+)", K, re.M).group(1), 16)
 JET_MAX = int(re.search(r"^JET_MAX\s*=\s*\$([0-9A-Fa-f]+)", K, re.M).group(1), 16)
 
@@ -35,7 +35,7 @@ assert re.search(r"lda #\$FF\s*\n\s*sta Hover", ll), \
     "LoseLife must arm Hover = $FF (waiting for input)"
 # LoadLevel clears Hover (stage entry lands normally): the body moved to bank2
 # (C2), the bank0 half must stay a pad-only entry so the drop-in tail runs.
-assert re.search(r"\nLoadLevel:\n\s+sta \$1FF6", K), \
+assert re.search(r"\nLoadLevel:\n\s+sta BK_ROOMS", K), \
     "bank0 LoadLevel must stay the $FC20 entry pad ($1FF6 -> bank2 body)"
 loadlvl = B2[B2.index("\nLoadLevelB2:"):]
 loadlvl = loadlvl[:loadlvl.index("\n    jmp LF_TailSwap")]

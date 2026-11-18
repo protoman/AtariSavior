@@ -21,7 +21,17 @@ from pathlib import Path
 # 8 blue, 9 cyan, C green, F brown).
 # 312-line frame: NTSC runs 272 lines (V 31 + O 44 units of 64 cycles); the extra ~40
 # lines (3040 cycles = ~47 units) are split between the two waits.
-VBL_PAL, OVER_PAL = 51, 71
+# 2026-11-18: OVER_PAL 71 -> 72. The PAL frame was a constant 311 lines since the NTSC overscan
+# went 45 -> 48 (1.1.0 work): sim_frame_budget on the PAL build showed 311.0 in EVERY frame, even in
+# an empty room (the release never simmed the PAL builds). 132 units (60+72, 61+71 and 62+70
+# all measured) give exactly 312 lines; 131 gives 311.
+VBL_PAL, OVER_PAL = 60, 72
+VBL_NTSC, OVER_NTSC = 45, 48
+NTSC_LINES = 280    # (1.1.0: OVER 45 -> 48: the laser/collision walk in the heaviest rooms needs ~2975c of
+                    # overscan, over the 2880c window - frames stretched by 4-14 lines; each unit is one line)
+                    # was 272: the heaviest rooms need VBL work up to ~2700c (bank0 staging + the
+                    # bank6 prologue) so the VBL window grew 31 -> 45 units; the cave itself is 8 lines shorter
+                    # cave is 8 lines shorter than the old kernel's (9 units = 7.6 lines)
 
 HUE_MAP = {0: 0, 1: 2, 2: 4, 3: 4, 4: 6, 5: 8, 6: 10, 7: 13, 8: 11, 9: 9,
            10: 9, 11: 7, 12: 5, 13: 3, 14: 2, 15: 4}
@@ -41,10 +51,10 @@ def main() -> int:
     pal50 = tv == "pal"
     lines += [f"TV_PAL = {1 if tv != 'ntsc' else 0}      ; PAL colours",
               f"TV_50HZ = {1 if pal50 else 0}          ; 312-line, 50 Hz frame",
-              f"VBL_UNITS = {VBL_PAL if pal50 else 31}      ; TIM64T units of VBLANK work window",
-              f"OVER_UNITS = {OVER_PAL if pal50 else 44}     ; TIM64T units of overscan",
+              f"VBL_UNITS = {VBL_PAL if pal50 else VBL_NTSC}      ; TIM64T units of VBLANK work window",
+              f"OVER_UNITS = {OVER_PAL if pal50 else OVER_NTSC}     ; TIM64T units of overscan",
               f"TICKS_PER_SEC = {50 if pal50 else 60}   ; frames per power-bar step",
-              f"TV_CAVE_LINES = {312 if pal50 else 272}      ; scanlines of a gameplay frame (title: 5 fewer)"]
+              f"TV_CAVE_LINES = {312 if pal50 else NTSC_LINES}      ; scanlines of a gameplay frame (title: 3 more)"]
     for c in range(256):
         v = c if tv == "ntsc" else pal_byte(c)
         lines.append(f"NC_{c:02X} = ${v:02X}")

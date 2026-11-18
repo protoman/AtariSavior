@@ -47,8 +47,9 @@ def lst_labels(path):
 
 
 L0 = lst_labels(FROZEN / "bank0.lst")
-L2 = lst_labels(FROZEN / "bank2.lst")
-L3 = lst_labels(FROZEN / "bank3.lst")   # C7: shape blocks + extras (bank3)
+L2 = lst_labels(FROZEN / "bank6.lst")
+L3 = lst_labels(FROZEN / "bank5.lst")   # C7: extras (bank3)
+L7 = lst_labels(FROZEN / "bank4.lst")   # 2026-11-10: shape blocks live in bank4
 PC_STARTFRAME = L0["StartFrame"]
 
 import test_fixtures as FX  # noqa: E402
@@ -255,12 +256,12 @@ def vcrunch_bbox_overlaps(room, rows, wl, wr):
     Hot records: after packed count + hot count, 5B each
     [class, x, y, w, h] — x = 4px display col (left half), y = band."""
     rr = f"M{MODEL[room]}Shape"
-    off = (L3[rr] - 0xF000) & 0xFFFF
-    count = BANKS[3][off]
-    hot = BANKS[3][off + 1 + 2 * count]
+    off = (L7[rr] - 0xF000) & 0xFFFF
+    count = BANKS[4][off]
+    hot = BANKS[4][off + 1 + 2 * count]
     base = off + 2 + 2 * count
     for i in range(hot):
-        cls, x, y, w, h = BANKS[3][base + 5 * i:base + 5 * i + 5]
+        cls, x, y, w, h = BANKS[4][base + 5 * i:base + 5 * i + 5]
         if cls != 0x81:
             continue
         if not any(y <= r < y + h for r in rows):

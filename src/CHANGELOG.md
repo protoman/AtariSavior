@@ -3,6 +3,82 @@
 Release versions live in `VERSION` (build.sh stamps them into the ROM, the manual
 cover prints them, `tools/release.py` names the artifacts from them).
 
+## 1.2.0
+
+**Rebuilt ROM structure, 32 levels (1.1.1 was never released: its fixes ship here)**
+
+- **The ROM is rebuilt** (layout v3): code first, then the room models, then the levels, with
+  the boot stub in every bank, bank selectors by role, and the level data split over two room
+  banks (A: levels 1-24, B: levels 25-32).
+- **32 levels, 484 rooms** (was 20), all inside the frame budget; the generator ramps rooms,
+  creatures, miners and speed up to level 32.
+
+Everything that was planned for 1.1.1:
+
+- **Pillars, async walls and doors are solid again.** The 1.1.0 cave kernel reused `$8F` as
+  scratch, which zeroed the packed collision byte bank3 stages there for the HUD to copy, so
+  every pillar (ball/M1 strip), bomb wall and locked door could be walked through. The
+  kernel's scratch byte moved (`S1Adj` shares `$92` with `CtxNext`); `test_async_wall.py` walks
+  into every start-room patch of the real ROM.
+- The rescue miner stands on the side opposite the REAL entrance (the neighbour on the map, not
+  the room listed before the goal: levels 7 and 19 had him on the wrong side) and every miner
+  - the goal one and the extra ones - faces the entrance (it was always facing right).
+- No bat sits in a pocket of one or two cells that nobody can reach (level 3 room 2, level 6
+  room 2, level 19 room 16, level 20 room 14 had one): the generator keeps bats in air runs of
+  at least four cells and the stage lost those four useless bats.
+- SELECT during a game resets the power bar and its clock.
+- After a game over the title comes back on the level you were playing (with or without a
+  SaveKey), and ignores every key for about a second, so the taps that were flying the ship
+  neither step the level nor start a new game.
+- A pillar (ball strip) on a hot band kills on touch, like the left pillar and the hot walls
+  around it. Any element on a hot-wall band is hot.
+- The two band colours of a level are different hues now (orange and blue, cyan and red, green
+  and pink...) instead of the same colour lightened.
+- **No more landing inside a wall between two rooms.** The water-channel room of levels 11 to
+  32 opened its lower side band all the way to the screen edge while its neighbours open only
+  the upper one, so leaving it by the lower band put the ship inside the neighbour's wall (level
+  32 and 21 more levels, 44 links). The generator now opens a room's side link in one band
+  only, and the build refuses any stage where the two rooms of a side link, or the two rooms of
+  a vertical link, do not open exactly the same bands/columns. `test_link_arrival.py` checks
+  every link of the stage statically and by flying every crossing.
+- Frame budget: all 484 rooms of the 32 levels keep the fixed frame length (the laser hit test
+  scans the enemy list once, the moth only walks with 18 overscan units left).
+- **PAL frame is 312 lines again.** Since the NTSC overscan grew from 45 to 48 units the PAL
+  picture ran one line short (311 lines, a constant). The PAL overscan is 72 units now (132 units
+  are exactly 312 lines), and the release also simulates the heaviest room on the PAL60 and PAL
+  builds.
+- **No band or wall colour looks like a door.** The locked door's stripe is bright yellow, and
+  some levels used the same yellow for their band (or a near-yellow wall). The generator never
+  picks a yellow-family colour for a wall or a band now, and `test_generator.py` fails on one.
+
+## 1.1.0
+
+**New cave kernel, new levels, slower raft**
+
+- New HERO-style gameplay kernel (bank 6): a steadier picture. The frame is now a fixed 280
+  lines (NTSC; the VBL window holds the prologue and the overscan window the collision work even in the heaviest rooms), the flicker
+  that rolled the picture in rooms with two creatures is gone, and the player art no longer
+  repeats rows at band boundaries.
+- **The raft is half as fast** (0.75 px/frame at full speed, 0.5 while it takes off), so it
+  is possible to step off it where the room asks you to.
+- The 20 stages were regenerated with new level rules:
+  - vertical rooms vary: the four bands are never all the same width and the top opening
+    differs from the bottom one; wide caverns link rooms, so the same shaft no longer
+    repeats;
+  - hot rock appears from level 5 and as HERO-style barriers (a wide space with narrow,
+    offset gaps), not as painted tunnels;
+  - a hot band entered from the side leaves 2 open cells to stop in (inertia), and rooms
+    with a raft keep 2 free columns under the hot ceiling at each water edge;
+  - every room is checked to be crossable (water/raft rooms that could not be crossed are
+    gone), and no creature or lamp sits in air the player cannot reach;
+  - every level from 5 has a room with two objects.
+- Editor: Generate shows a progress bar; the crusher is drawn on both sides of the room
+  and animated like in the game; the level map marks it with inward arrows.
+- Internal: the shape library moved to bank 7 (2.8 KB window, up from 747 bytes; 121 shapes);
+  `build.sh` skips the slow frame-budget simulation unless `FULL_SIMS=1` (releases always
+  run it, plus a frame-budget sweep of every room and a frame-stability check of the
+  heaviest ones); the bot flies the stage you see in the editor.
+
 ## 1.0.2
 
 **Smoother picture, joystick on the title, demo mode**

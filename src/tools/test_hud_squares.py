@@ -20,8 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 from test_cell_map import BANK1, parse_labels, FROZEN  # noqa: E402
 
-L = parse_labels(FROZEN / "bank1.lst", {"SquarePat", "MinerPat"})
-assert {"SquarePat", "MinerPat"} <= L.keys(), "frozen bank1.lst lacks the tables"
+L = parse_labels(FROZEN / "bank2.lst", {"SquarePat", "MinerPat"})
+assert {"SquarePat", "MinerPat"} <= L.keys(), "frozen bank2.lst lacks the tables"
 sq = BANK1[L["SquarePat"] - 0xF000:][:6]
 mp = BANK1[L["MinerPat"] - 0xF000:][:8]
 

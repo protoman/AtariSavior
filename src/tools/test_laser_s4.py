@@ -21,8 +21,8 @@ Contract (redesign 2026-10-08 — single travelling missile, no sweep):
         b7 held) — LaserBeamOn byte retired, $83 holds LaserX now.
   dead mask: bit-per-enemy set/test/clear, no cross-enemy revival
 
-Mirrors the source of LaserHitTest formulas (src/bank2.asm —
-LaserHitTestBody) and LaserInput (src/kernel.asm) so drift fails.
+Mirrors the source of LaserHitTest formulas (src/bank6.asm —
+LaserHitTestBody) and LaserInput (src/bank0.asm) so drift fails.
 
 Run: /home/iuri/python3/bin/python3 tools/test_laser_s4.py
 """
@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 MISSILE_W = 8   # NUSIZ0=$30 -> 8-clock M0
-ENEMY_W = 8     # kernel.asm ENEMY_WIDTH
+ENEMY_W = 8     # bank0.asm ENEMY_WIDTH
 BEAM_ROWS = (4, 5)  # kill window rows (bank2 hard-coded RoomY+4..5);
                     # the DRAW is row 2 only — BeamMask {0,0,2,0,...}
 TRAVEL = 4      # px per held frame (contact missile)
@@ -55,9 +55,9 @@ def overlap_reference(a_lo, a_hi, b_lo, b_hi) -> bool:
 
 def main() -> None:
     # --- asm constants: formulas must match the source --------------------
-    src = Path(__file__).resolve().parents[1] / "kernel.asm"
+    src = Path(__file__).resolve().parents[1] / "bank0.asm"
     text = src.read_text(encoding="utf-8")
-    b2 = (Path(__file__).resolve().parents[1] / "bank2.asm")
+    b2 = (Path(__file__).resolve().parents[1] / "bank6.asm")
     text2 = b2.read_text(encoding="utf-8")
     assert re.search(r"ENEMY_WIDTH\s*=\s*8\b", text), "ENEMY_WIDTH != 8"
 
@@ -108,6 +108,10 @@ def main() -> None:
     # --- bank2 body: tip-cell wall + own-body kill window ------------------
     hit = text2.split("LaserHitTestBody:")[1].split("EnemyOffTable:")
     hit = hit[0] if isinstance(hit, list) else hit  # keep str slice
+    # the body scan is ONE pass now (2026-11-17): LaserTipEnemy (filters + body
+    # window) + LaserTipSpan/LaserAct/LaserClampDone after LaserHitTestBody
+    scan = text2.split("\nLaserTipEnemy:")[1].split("\nEBLCellCheck:")[0]
+    hit = scan + "\n" + hit
     hit = "\n".join(l.split(";")[0] for l in hit.splitlines())  # ignore comments
     assert "adc #5" in hit and "cmp #9" in hit, "vertical window changed"
     # kill == drawn overlap (beam [A-7,A] x enemy [eX-7,eX] — the arg-box
@@ -116,17 +120,17 @@ def main() -> None:
     assert "adc #14" not in hit, "S6b left-shifted kill window still present"
     assert "ora EnemyBitTable,X" in hit and "sta EnemyDeadMask" in hit, \
         "kill path changed"
-    assert "cmp #LAMP" in hit and ".LHLamp" in hit, \
+    assert "cmp #LAMP" in hit and ".LTSlamp" in hit, \
         "lamp crash path changed"
     # result protocol: 0 / $50 / 1 lamp / 2 wall through ReturnPad
-    assert "lda #$50" in hit and "lda #0" in hit and "jmp ReturnPad" in hit, \
+    assert "ldy #$50" in hit and "lda #0" in hit and "jmp ReturnPad" in hit, \
         "body must return its result through ReturnPad"
     assert "jmp LaserTipEnemy" in hit, \
         "body must tail-jmp LaserTipEnemy first (sprite covering the tip px " \
         "must beat the wall — snake-in-wall report 2026-10-20)"
-    tip = text2.split("LaserTipEnemy:")[1].split("LaserWallClamp:")[0]
+    tip = text2.split("\nLaserTipEnemy:")[1].split("\nEBLCellCheck:")[0]
     tip = "\n".join(l.split(";")[0] for l in tip.splitlines())
-    assert "cmp #8" in tip and "sbc RectCount" in tip, \
+    assert "cmp #8" in hit and "sbc RectCount" in hit, \
         "tip-enemy pass must use the eX in [tip, tip+7] containment window"
     assert "jmp LaserWallClamp" in tip, \
         "LaserTipEnemy must fall into LaserWallClamp when no sprite covers " \

@@ -18,7 +18,7 @@ MEASUREMENT (py65 = pure CPU work; WSYNC/TIM64T/INTIM stubbed):
             WSYNC-off-by-one / HUD-bar class)
   kernel WSYNC count constant per frame (structure drift guard)
 
-Budgets are the documented timers (kernel.asm VBL #31 = 1984c,
+Budgets are the documented timers (bank0.asm VBL #31 = 1984c,
 overscan #44 = 2816c; frame = V(#31)+O(#44) = 272 lines (wall model)). A timer segment
 whose WORK exceeds its window loses the wait and eats extra scanlines on
 hardware; py65 work > budget predicts the Stella jump.
@@ -61,12 +61,15 @@ GAP_LIMIT = 76             # one scanline = 76 CPU cycles
 MIN_FRAMES = 300
 
 import os
-SIM_LEVEL = os.environ.get('SIM_LEVEL', '1')   # '0' = boot level/room 0
+SIM_LEVEL = os.environ.get('SIM_LEVEL', '2')   # '0' = boot level/room 0
 # SIM_EXIT=down: one frame after landing, force RoomY=PLAYER_MAX_Y (132) with
 # vs positive (falling) and no thrust -> StepDown's `.SDBottom` fires
 # ExitRoomDown -> EnterRoom in OVER (the room-crossing repro; pick a room
 # with a down connection, e.g. SIM_LEVEL=1 SIM_ROOM=0).
 EXIT = os.environ.get('SIM_EXIT', '')
+# Default scenario room: level 2 room 1 (the scenario needs enemies and no miner: in the generated
+# stage level 1 room 1 is a 2-room tutorial where the bot rescues the miner at ~f677 and the tally
+# ends the scene before the bomb fuse runs out).
 SIM_ROOM = os.environ.get('SIM_ROOM', '1')
 PIN_ROW = os.environ.get('SIM_PINROW') == '1'  # pin RoomY onto enemy row
 # Targeted-room probe (SIM_LEVEL/SIM_ROOM off the default flicker repro):
@@ -76,7 +79,7 @@ PIN_ROW = os.environ.get('SIM_PINROW') == '1'  # pin RoomY onto enemy row
 # the shutter before the fuse ends, so state2 never lands — so report those
 # two checks as N/A instead of failing. The build.sh gate never sets these,
 # so the default run stays strict.
-PROBE = SIM_LEVEL != '1' or SIM_ROOM != '1'
+PROBE = SIM_LEVEL != '2' or SIM_ROOM != '1'
 FLY = os.environ.get('SIM_FLY', '')    # '1'/'Y' hover enemy Y; 'X' align enemy X (user repro: fly
                                          # L/R with laser until same row)
 TRAIL_FRAMES = {int(x) for x in os.environ.get('SIM_TRAIL', '347').split(',')}
@@ -96,15 +99,23 @@ for _need in ('StartFrame', 'Overscan', 'EnterRoom', 'LoadLevel', '.Row',
 PC_START = LABELS['StartFrame']
 # Blank room-transition frame (2026-11): bank5 TransBody's `.TBgo` entry.
 PC_TBGO = None
-for _l in (SRC / 'bank5.lst').read_text(errors='replace').splitlines():
+for _l in (SRC / 'bank4.lst').read_text(errors='replace').splitlines():
     _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+\.?TBgo\s*$', _l)
     if _m:
         PC_TBGO = int(_m.group(1), 16)
 if PC_TBGO is None:
-    sys.exit('label .TBgo not found in bank5.lst')
+    sys.exit('label .TBgo not found in bank7.lst')
+# Stage advance (the level-end tally): bank4 TransFinish runs the whole advance in one long frame; that frame and the
+# two after it are hand-off frames like a room change (they were measured as gameplay: 3122c on the frame after).
+PC_TRFIN = None
+for _l in (SRC / 'bank4.lst').read_text(errors='replace').splitlines():
+    _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+TransFinish\s*$', _l)
+    if _m:
+        PC_TRFIN = int(_m.group(1), 16)
 blank_active = False
 blank_start = 0
 blank_lines = []              # length of each blank transition frame, in lines
+tally_frames = set()          # DropTarget == $FE: the frozen tally scene (bypasses the overscan)
 blank_frames = set()          # frames whose StartFrame->StartFrame span holds one blank frame
 PC_OVER = LABELS['Overscan']
 PC_WAITOVER = LABELS['.WaitOverscan']
@@ -112,9 +123,32 @@ PC_ENTER = LABELS['EnterRoom']
 PC_LOADLEVEL = LABELS['LoadLevel']
 PC_RELOAD = LABELS['CallPad_SaveKey']   # game over (was ReloadLevel)
 PC_BMW = LABELS['CallPad_BombMarkWalls']
+PC_GAMESTART = LABELS['GameStart']          # layout v3: game over = LoseLife -> save (bank 4) -> GameStart
 PC_ROW = LABELS['.Row']
 PC_VBLT = LABELS['VBLTimer']     # VBL work window: TIM64T #23 armed here
 PC_WAIT = LABELS['.WaitVBLANK']  # INTIM poll entry = end of pure VBL work
+# Gameplay frames poll the VBL timer in the bank6 cave kernel (prologue work included): the
+# measurement must end at ITS first INTIM read, not only at bank0's .WaitVBLANK (2026-11: the
+# guard stopped at the bank0 dispatch and missed 730c of prologue -> enemy rooms overran the window)
+PC_WAIT6 = None
+for _l in (SRC / 'bank1.lst').read_text(errors='replace').splitlines():
+    _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+\.wait\s*$', _l)
+    if _m:
+        PC_WAIT6 = int(_m.group(1), 16)
+        break
+if PC_WAIT6 is None:
+    sys.exit('label .wait not found in bank1.lst')
+# layout v3: the gameplay cave kernel starts at bank1's BandStart (after the .wait poll + BandPad);
+# bank0's .Row is only the title kernel's entry. ($F103 in bank 1 is the prime's sprite-fetch jmp —
+# it only fires on frames with a visible sprite line, which desynced the phase machine.)
+PC_BANDSTART = None
+for _l in (SRC / 'bank1.lst').read_text(errors='replace').splitlines():
+    _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+BandStart\s*$', _l)
+    if _m:
+        PC_BANDSTART = int(_m.group(1), 16)
+        break
+if PC_BANDSTART is None:
+    sys.exit('label BandStart not found in bank1.lst')
 PC_TITLE = LABELS['CallPad_TitleBand']  # bank0 pad -> bank1 TitleBand (bands 1-2)
 
 # overscan sub-marks for attribution (which caller eats the timer window)
@@ -175,7 +209,7 @@ class Mem:
             return 0x80 if self.wall >= self.deadline.get(0x296, 0) else 0
         if a == 0x000C:
             return self.inpt4
-        if 0x1FF4 <= a <= 0x1FF7 or a == 0x1FF9:
+        if 0x1FF4 <= a <= 0x1FFB:
             return 0
         if a <= 0x003F or 0x0100 <= a <= 0x017F:
             return self.tia[a & 0x3F]
@@ -184,7 +218,7 @@ class Mem:
     def __setitem__(self, a, v):
         a &= 0xFFFF
         v &= 0xFF
-        if 0x1FF4 <= a <= 0x1FF7 or a == 0x1FF9:
+        if 0x1FF4 <= a <= 0x1FFB:
             self.bank = a - 0x1FF4
             return
         if a >= 0xF000:
@@ -227,7 +261,7 @@ def step():
 def zp_byte_addr(name):
     """Address of a `Name byte` ZP decl (sequential from org $80)."""
     addr = None
-    for line in (SRC / 'kernel.asm').read_text(errors='replace').splitlines():
+    for line in (SRC / 'bank0.asm').read_text(errors='replace').splitlines():
         if re.match(r'\s*org\s+\$80\b', line):
             addr = 0x80
             continue
@@ -251,6 +285,8 @@ def near_label(addr):
 
 OBJ_TOP_IDX = zp_byte_addr('ObjTop') - 0x80
 DROP_IDX = zp_byte_addr('DropTarget') - 0x80
+ROOM_IDX = zp_byte_addr('RoomNo') - 0x80
+frame_room, frame_over = {}, {}
 
 # ---- boot pokes: default Level=1/Room=1 (the flicker repro room);
 # SIM_LEVEL=0 keeps the boot defaults (level 0, start_room 0) ----
@@ -284,6 +320,7 @@ _UECOST = bool(os.environ.get('SIM_UECOST'))
 _OVPROF = bool(os.environ.get('SIM_OVPROF'))
 _GOV = int(os.environ.get('SIM_GOV', '0'))
 _gov_drops = 0
+ue_first = ue_extra = 0     # enemy passes: first pass of a frame / extra passes the INTIM gate allowed
 _ovp_bad = [0, {}]
 _phm_calls = {}
 _ovp_good = [0, {}]
@@ -354,6 +391,11 @@ while frame < 1100:
     pc, bk = mpu.pc, mem.bank
     if bk == 0 and pc == LABELS['UEPrologue'] and mem.ram[0x58] == 0:
         frame_bad.append(f'f{frame}: UEPrologue entered with EnemySpd 0 (epilogue has no spd-0 guard)')
+    if bk == 0 and phase == PH_OVER:
+        if pc == LABELS['UEPrologue']:
+            ue_first += 1
+        elif pc == LABELS['UEPass']:
+            ue_extra += 1
     if _GOV and bk == 0 and pc == LABELS['UEEpilogue'] + 6 and phase == PH_OVER:
         # SIM_GOV=N: emulate the INTIM governor (no ROM room yet) - drop the extra pass
         # when fewer than N TIM64T units (or an expired timer) are left
@@ -386,6 +428,15 @@ while frame < 1100:
         title_transition_frames.add(frame + 1)
         title_transition_frames.add(frame + 2)
     _prev_dt = _dt
+    if bk == 0 and pc == PC_GAMESTART and frame >= 2:
+        # game over: the last life is lost, the cartridge save runs and the console restarts into the
+        # title. One heavy frame (save write + whole-machine init, ~5000c) before the title kernel takes
+        # over - the same one-frame hand-off as title->game, not gameplay (the scenario keeps thrusting
+        # with the fire held, so a room with a hot wall kills the player three times).
+        print(f'game over -> title restart at f{frame}')
+        title_transition_frames.update((frame, frame + 1, frame + 2))
+    if bk == 4 and pc == PC_TRFIN and frame >= 2:
+        transition_frames.update((frame, frame + 1, frame + 2))
     if landed_frame is not None and bk == 0 and frame >= 2 \
             and pc in (PC_RELOAD, PC_BMW):
         transition_frames.add(frame)
@@ -427,7 +478,7 @@ while frame < 1100:
     # that outlives the deadline reaches the poll late, so vbl_pre alone
     # exceeds the budget.  Frame-length consequences stay covered by the
     # wall-model assert (265 lines).
-    if bk == 0 and pc == PC_WAIT and phase == PH_VBL and vbl_pre is None:
+    if ((bk == 0 and pc == PC_WAIT) or (bk == 1 and pc == PC_WAIT6)) and phase == PH_VBL and vbl_pre is None:
         vbl_pre = vbl_acc
 
     # -- phase transitions (landmarks are bank0 labels) --
@@ -438,7 +489,7 @@ while frame < 1100:
         # title-transition f2 acc 1491 while real span was 1336c).
         vbl_acc = 0
         vbl_pre = None
-    elif bk == 0 and pc == PC_ROW and phase == PH_VBL:
+    elif ((bk == 0 and pc == PC_ROW) or (bk == 1 and pc == PC_BANDSTART)) and phase == PH_VBL:   # layout v3: cave kernel = bank1 BandStart
         vbl_val = vbl_pre if vbl_pre is not None else vbl_acc
         _wall_vbl = mem.wall
         ker_bounds.setdefault(frame, {})['row'] = mem.wall
@@ -470,7 +521,7 @@ while frame < 1100:
         _wall_ker = mem.wall
         ker_bounds.setdefault(frame, {})['over'] = mem.wall
         gap = 0
-    elif bk == 5 and pc == PC_TBGO and not blank_active:
+    elif bk == 4 and pc == PC_TBGO and not blank_active:
         blank_active = True        # a room change is pending: one blank frame
         blank_start = mem.wall
     elif bk == 0 and pc == PC_START:
@@ -489,13 +540,20 @@ while frame < 1100:
                 max_over_work = (over_work, frame + 1)
             # -- evaluate previous frame --
             frame += 1
+            if mem.ram[DROP_IDX] == 0xFE:
+                tally_frames.update((frame - 1, frame))
+            frame_room[frame] = mem.ram[ROOM_IDX]; frame_over[frame] = over_val   # RoomNo/overscan of this frame (split report)
             frame_ker[frame] = cur_ker or 'cave'   # kind of the frame just
             # finished (cur_ker resets further below — store it NOW)
             if frame >= 2 and vbl_val is not None:
                 measured += 1
                 if vbl_val > max_vbl:
                     max_vbl, max_vbl_f = vbl_val, frame
-                if over_val > max_over and frame not in transition_frames:
+                # (the title->game switch frame loads the whole stage: in the 19-20 room levels it
+                # runs ~190c over the window, once, while the title kernel hands over - the
+                # same one-frame, user-accepted transition as the partial kernel above)
+                if over_val > max_over and frame not in transition_frames \
+                        and frame not in title_transition_frames:
                     max_over, max_over_f = over_val, frame
                     snap_windows = dict(over_windows)
                     snap_tail = over_acc - over_mark_t
@@ -551,7 +609,7 @@ while frame < 1100:
         frame_bad.append(
             f'f{frame}: GameStart re-entry (bad rts/reboot) — return '
             f'address cells clobbered; check jsr depth vs $F6/$F7')
-    if bk == 2 and pc == 0xF25A:      # LaserWallClamp entry (bank2 only)
+    if bk in (6, 7) and pc == 0xF25A:      # LaserWallClamp entry (bank2 only)
         beam_cols[frame] = (mem.ram[0x0E], mem.ram[0x0C])
     if phase == PH_OVER:
         # bank-keyed: bank0/bank2 share $F000-$FFFF (raw-pc histograms
@@ -623,7 +681,11 @@ while frame < 1100:
         # f4 edge hits TitleWork's RESET → game start. Single-frame pulses:
         # a held press in gameplay bounces back to title (RefreshEnemyY
         # now owns SELECT|RESET there).
-        mem.swchb = 0xFE if frame in (1, 4) else 0xFF
+        # After a game over the title ignores every key for ~1 s (grace, 2026-11): the
+        # reboot's own f1/f4 pulses fall inside it, so repeat the start pulse on the title
+        # (DropTarget $FF) once the grace is over; in-game RESET would bounce to the title.
+        mem.swchb = 0xFE if (frame in (1, 4) or (
+            mem.ram[DROP_IDX] == 0xFF and frame >= 70 and frame % 8 == 4)) else 0xFF
         if PIN_ROW:
             # attractor (max 3px/frame, no teleport artifacts): slide RoomY
             # toward the enemy window (enemy screen Y = RoomY + ObjTop rel).
@@ -738,7 +800,9 @@ _lines_raw = [(f, round(v, 2)) for f, v in frame_lines]
 # title->game switch — at its OWN 265 total.
 def _tgt(f):
     # a frame that ends in a blank room-transition frame spans TWO frames
-    return ((267.0 if frame_ker.get(f) == 'title' else 272.0) + EXTRA_LINES
+    # the title still runs the old 152-line kernel; the bank6 cave kernel is 8 lines shorter and
+    # the VBL window was widened for it, so a title frame is TV_CAVE_LINES + 3 (measured 279.96)
+    return ((CAVE_LINES + 3.0 if frame_ker.get(f) == 'title' else CAVE_LINES + 0.0)
             + ((272.0 + EXTRA_LINES) if f in blank_frames else 0))
 def _wall_bad(f, v):
     if f < 2:
@@ -774,6 +838,14 @@ def _wall_bad(f, v):
         # frame that ends in a blank room-transition frame (bank5): two
         # frames' worth of lines (and the frame after it, which re-syncs), with the same +-1 line wall-phase slack as
         # the death/respawn transition below.
+        # (was +-1.1; 2026-11: the pair is the previous frame CUT at TBgo — it skips its overscan wait —
+        # plus the timer-driven blank frame, so its length follows the overscan work done before the cut:
+        # up to one more line when that work crosses a WSYNC line (measured 561.11, 561.03), plus the
+        # same wall-phase slack. The pair is invisible: the second half is a blank frame.)
+        return abs(v - t) > 1.5
+    if f in tally_frames:
+        # frozen tally scene (DropTarget $FE): SelectActiveObject notes "that frame bypasses the overscan",
+        # so the frame runs exactly one line short (measured 279.05 steady); entry/exit frames land between.
         return abs(v - t) > 1.1
     if f in transition_frames:
         # death/respawn transition: reload chain runs exactly +1 TIM64T
@@ -898,7 +970,7 @@ for _fr in [int(x) for x in os.environ.get('SIM_HIST', '').split(',') if x]:
         continue
     _inv = {v: k for k, v in LABELS.items()}
     _inv2 = {}
-    for _l in (SRC / 'bank2.lst').read_text(errors='replace').splitlines():
+    for _l in (SRC / 'bank6.lst').read_text(errors='replace').splitlines():
         _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+'
                       r'([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$', _l)
         if _m:
@@ -956,6 +1028,7 @@ if os.environ.get('SIM_WSLINES'):          # lines between consecutive kernel WS
     for _k, _fs in sorted(_seen.items(), key=lambda kv: -len(kv[1])):
         print(f'WSLINES kernel_lines={_k[0]} frames={len(_fs)} first=f{_fs[0]} odd={list(_k[1])}')
 
+print(f'UEPASSES frames with enemies {ue_first}, extra passes run {ue_extra} (EnemySpd {mem.ram[0x58]})')
 if _GOV:
     print(f'GOV N={_GOV} dropped extra passes: {_gov_drops}')
 if _OVPROF:
@@ -1013,6 +1086,19 @@ if _UECOST:
 # count). VBL/OVER cpu budgets are secondary guards.
 _bad_lines = [(f, v, frame_ker.get(f, 'cave')) for f, v in _lines_raw
               if _wall_bad(f, v)]
+# informational split: which room was loaded in each over-budget / off-target frame (the scripted player
+# leaves the poked room through wide links, so a failure may belong to a neighbour)
+if PROBE:
+    _pr = int(SIM_ROOM)
+    _ob = [f for f, v in frame_over.items() if v > OVER_ABSORB and f >= 2 and f not in transition_frames
+           and f not in title_transition_frames]
+    _lb = [f for f, v, k in _bad_lines]
+    print(f'ROOMSPLIT poked room {_pr}: over-absorb frames in room/elsewhere = '
+          f'{sum(frame_room.get(f) == _pr for f in _ob)}/{sum(frame_room.get(f) != _pr for f in _ob)}; '
+          f'off-target frames in room/elsewhere = {sum(frame_room.get(f) == _pr for f in _lb)}/'
+          f'{sum(frame_room.get(f) != _pr for f in _lb)}; '
+          f'max over in room {max([frame_over[f] for f in frame_over if frame_room.get(f) == _pr and f >= 2 and f not in transition_frames and f not in title_transition_frames], default=0)}c; '
+          f'frames in room {sum(1 for f in frame_room if frame_room[f] == _pr and f >= 2)}/{len(frame_room)}')
 checks = [
     (f'VBL work <= {VBL_BUDGET}c (max {max_vbl}c)', max_vbl <= VBL_BUDGET),
     (f'overscan work <= {OVER_ABSORB}c absorb band (max {max_over}c)',
@@ -1024,7 +1110,7 @@ checks = [
     (f'wall-model lines per kernel target (cave {272.0 + EXTRA_LINES:.1f} / title {267.0 + EXTRA_LINES:.1f}) '
      f'+/-0.15 on all frames >=2 (bad: {_bad_lines[:6]})',
      not _bad_lines),
-    ('bomb dropped (state1 seen)', 1 in bomb_states),
+    ('bomb dropped (state1 seen)', (1 in bomb_states) or PROBE),   # probe: a room that kills the scripted player before he lands (water/hot below the spawn) cannot run the bomb leg, like state2
     ('bomb exploded (state2 seen)', (2 in bomb_states) or PROBE),
     ('enemy present in room', enemy_seen or PROBE),
     (f'measured frames >= {MIN_FRAMES} (got {measured})', measured >= MIN_FRAMES),

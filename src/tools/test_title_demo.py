@@ -15,7 +15,7 @@ game; the theme plays on $FF.
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parent.parent
-SOURCES = ("kernel.asm", "bank1.asm", "bank2.asm", "bank3.asm")
+SOURCES = ("bank0.asm", "bank2.asm", "bank6.asm", "bank5.asm")
 
 
 def section(source: str, start: str, end: str) -> str:
@@ -31,9 +31,9 @@ for name in SOURCES:
     for dead in ("TitleDemo", "DemoPhase", "TitleSequence:"):
         assert dead not in source, f"intro demo code remains in {name}"
 
-kernel = (SRC / "kernel.asm").read_text()
-bank1 = (SRC / "bank1.asm").read_text()
-bank2 = (SRC / "bank2.asm").read_text()
+kernel = (SRC / "bank0.asm").read_text()
+bank1 = (SRC / "bank2.asm").read_text()
+bank2 = (SRC / "bank6.asm").read_text()
 
 # --- one $FF title state: boot, DropStep and the return path ---------------
 assert "TitleIntro:" not in kernel, "retired splash handler came back"
@@ -89,7 +89,7 @@ assert ".LDigitLoop" not in title, "digits band was retired with the black scree
 for src, name in ((kernel, "kernel"), (bank1, "bank1")):
     assert "CallPad_TitleKernel:" not in src, \
         f"{name} still carries the retired TitleKernel pad"
-assert "CallPad_TitleBand:\n    sta $1FF5" in kernel, \
+assert "CallPad_TitleBand:\n    sta BK_HUD" in kernel, \
     "kernel must keep the TitleBand sta half"
 assert "CallPad_Overscan:" not in kernel and "CallPad_Overscan:" not in bank1, \
     "CallPad_Overscan had no caller and was deleted with the tail-pad packing"

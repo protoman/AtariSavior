@@ -35,10 +35,10 @@ REL = 0xFF                 # SWCHB: both released (active low)
 RST = 0xFE                 # RESET pressed
 SEL = 0xFD                 # SELECT pressed
 
-kernel_src = (SRC / "kernel.asm").read_text()
+kernel_src = (SRC / "bank0.asm").read_text()
 m = re.search(r"^LEVEL_COUNT\s*=\s*(\d+)", kernel_src, re.M)
 if not m:
-    sys.exit("LEVEL_COUNT not found in kernel.asm")
+    sys.exit("LEVEL_COUNT not found in bank0.asm")
 LEVEL_COUNT = int(m.group(1))
 
 

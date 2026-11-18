@@ -26,7 +26,7 @@ SRC = ROOT
 sys.path.insert(0, str(ROOT / "tools"))
 from convert_level import _gen_data_size  # noqa: E402
 
-BANKS = {0: "kernel.asm", 1: "bank1.asm", 2: "bank2.asm", 3: "bank3.asm"}
+BANKS = {0: "bank0.asm", 1: "bank2.asm", 2: "bank6.asm", 3: "bank5.asm"}
 
 
 def rows(lst: Path) -> list[tuple[int, bool, str]]:

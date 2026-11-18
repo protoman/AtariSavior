@@ -33,7 +33,7 @@ from py65.devices.mpu6502 import MPU  # noqa: E402
 
 FROZEN = ROOT / "tests" / "frozen"
 
-L1 = parse_labels(FROZEN / "bank1.lst", {"MenuMain"})
+L1 = parse_labels(FROZEN / "bank2.lst", {"MenuMain"})
 L0 = parse_labels(FROZEN / "bank0.lst",
                   {"PlayerLives", "PlayerBombs", "LevelStartRoom", "LineCount",
                    "BombX", "Level", "TickCounter", "BarLevel"})
@@ -77,7 +77,7 @@ def run_band(key_held, lives=3):
     r[Z["BombX"]] = 0
     r[Z["Level"]] = 0
     r[Z["TickCounter"]] = 30
-    mem.bank = 1
+    mem.bank = 2
     mpu = MPU(memory=mem)
     mpu.pc = L1["MenuMain"]
     mpu.a = mpu.x = mpu.y = 0

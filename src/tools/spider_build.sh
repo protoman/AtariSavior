@@ -99,7 +99,7 @@ PY
 echo "spider_build: building the demo ROM (sims skipped — they probe live content) ..."
 ( cd "$DIR" && SIM_PY=/bin/false ./build.sh "$OUT" )
 cp "$DIR/bank0.lst" "${OUT%.bin}.bank0.lst"
-cp "$DIR/bank1.lst" "${OUT%.bin}.bank1.lst"
+cp "$DIR/bank2.lst" "${OUT%.bin}.bank2.lst"
 
 restore
 echo "spider_build: rebuilding the live ROM ..."

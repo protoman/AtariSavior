@@ -47,14 +47,14 @@ BANKS = [bytearray(open(FROZEN / f"bank{i}.bin", "rb").read()) for i in range(8)
 # Zero M0/M1 hot counts (life-loss would end the sweep); strips stay real.
 for _name in ("M0Shape",):   # level 1 room 0 = model 0 (C5: shape)
                                    # L1R2 block was removed with it)
-    for _l in (FROZEN / "bank3.lst").read_text(errors="replace").splitlines():
+    for _l in (FROZEN / "bank4.lst").read_text(errors="replace").splitlines():
         _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+" + _name + r"\s*$", _l)
         if _m:
             _a = int(_m.group(1), 16) - 0xF000
-            BANKS[3][_a] = 0                          # hot count = 0
+            BANKS[4][_a] = 0                          # hot count = 0
             break
     else:
-        sys.exit(f"{_name} label missing in bank3.lst")
+        sys.exit(f"{_name} label missing in bank4.lst")
 
 
 def lst_labels(path):
@@ -67,8 +67,9 @@ def lst_labels(path):
 
 
 L0 = lst_labels(FROZEN / "bank0.lst")
-L2 = lst_labels(FROZEN / "bank2.lst")
-L3 = lst_labels(FROZEN / "bank3.lst")   # C7: shape blocks + extras
+L2 = lst_labels(FROZEN / "bank6.lst")
+L3 = lst_labels(FROZEN / "bank5.lst")   # C7: extras
+L7 = lst_labels(FROZEN / "bank4.lst")   # 2026-11-10: shape blocks + row pool
 
 def shape_pf(model):
     """The 9 PF bytes of model `model`'s shape: C3 row-pool expansion.
@@ -76,12 +77,12 @@ def shape_pf(model):
     A shape block is `hot count | 5 B/record | 3 row indices`; the loader
     (bank2 B3RoomBlocks) expands the indices through RowPoolPF0/1/2 into
     PF0Buf, so this reads the SAME bytes via the label addresses."""
-    at = L3[f"M{model}Rows"] - 0xF000
-    idx = BANKS[3][at:at + 3]
+    at = L7[f"M{model}Rows"] - 0xF000
+    idx = BANKS[4][at:at + 3]
     out = bytearray()
     for col in ("RowPoolPF0", "RowPoolPF1", "RowPoolPF2"):
-        base = L3[col] - 0xF000
-        out += bytes(BANKS[3][base + i] for i in idx)
+        base = L7[col] - 0xF000
+        out += bytes(BANKS[4][base + i] for i in idx)
     return bytes(out)
 
 
@@ -198,8 +199,8 @@ def load_room(room):
     pf9, a_rr = shape_pf(model), L3["RoomNoStream"]   # C11: no stream in a shape
     # C5: MetaA/MetaB live in the level's AsyncExtras record (level 1 room 0
     # is the async room, ordinal 1 -> +1/+2).
-    mem.ram[I_PF0LO] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
-    mem.ram[I_PF0HI] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
+    mem.ram[I_PF0LO] = BANKS[5][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
+    mem.ram[I_PF0HI] = BANKS[5][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     # ROM: C3 row-pool expansion of the shape's 3 indices
@@ -213,7 +214,7 @@ def load_room(room):
 
 def meta_a(room):
     """MetaA = the room extras record's +1 (C5: the pair left the block)."""
-    return BANKS[3][L3["LEVEL1_AsyncExtras"] + 1 - 0xF000]
+    return BANKS[5][L3["LEVEL1_AsyncExtras"] + 1 - 0xF000]
 
 
 CASE_Y = (24, 45, 96)      # 24 = spawn/band0, 45 = straddle, 96 = band 2
@@ -294,8 +295,8 @@ def main() -> None:
                         pack = mem.ram[I_PACK]
                         if pack and m1x is not None:
                             bt, bb = rows
-                            if pack & BANKS[2][OV_HEAD - 0xF000 + bt] & \
-                                    BANKS[2][OV_TAIL - 0xF000 + bb]:
+                            if pack & BANKS[6][OV_HEAD - 0xF000 + bt] & \
+                                    BANKS[6][OV_TAIL - 0xF000 + bb]:
                                 pl = 18 + (pack >> 4) * 2
                                 d = tip >> 2
                                 if 0 <= d - pl <= 1:

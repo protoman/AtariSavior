@@ -1,0 +1,562 @@
+    processor 6502
+    seg code
+    include "colors.inc"            ; TV_CAVE_LINES (the transition frame length, trans.inc)
+    include "banks.inc"             ; BK_* bank selectors by role (docs/agents/banks.md)
+    org $F000
+; The power-up pad every bank carries: `lda #0 / sta $1FF4` selects bank0, whose
+; $F005 is `jmp GameStart`. The restart ops (game over, last stage cleared) jump
+; here: the run restarts at the title and never returns to the caller.
+Restart:
+    lda #0
+    sta BK_GENERAL
+; ==============================================================================
+; Bank4 — SaveKey service (docs/savekey_design.md, user 2026-10-28).
+; ==============================================================================
+; A 24LC256 I2C EEPROM on the RIGHT controller port: pin 3 = SDA = SWCHA bit 2,
+; pin 4 = SCL = SWCHA bit 3 (Stella SaveKey.cxx). Open drain by hand: the SWCHA
+; latch bits stay 0 and a line is driven LOW by setting its SWACNT bit (output)
+; or RELEASED by clearing it (input, pulled up in the key). Nothing is ever
+; driven high. Bit-banged without delays: every SWACNT store is >= 4 cycles
+; (3.4 us), far above the chip's 400 kHz timing.
+;
+; ONE 12-byte record at SK_ADDR (16-byte aligned: it never straddles a 64-byte
+; page), staged in SkBuf for the whole call:
+;   0-1 magic $53,$01 (the 2nd byte is the format version)   2 state (1 = save)
+;   3 level (0-based)   4 lives   5-7 score (packed BCD Th,Hu,Te)
+;   8-10 HIGH score (packed BCD)  11 checksum = $A5 eor bytes 0-10
+; A bad magic/checksum is "no data": the game starts fresh and the next write
+; repairs it. No key (NACK on the control byte) aborts every op at once.
+;
+; SkService (A = op), C=0 when it did something, C=1 when there was nothing to do
+;   0 BOOT        title power-on: Level := the saved stage; the high score goes
+;                 to SkHi (vyLo/vyHi/PlayerYSub) for the title to show
+;   1 RESUME      RESET on the saved stage: lives + score := the saved ones
+;   2 CHECKPOINT  stage advance (the caller already did `inc Level`): save {Level,
+;                 lives, score}; high = max(high,score). Level >= LEVEL_COUNT =
+;                 the last stage was cleared: same as GAMEOVER
+;   3 GAMEOVER    erase the save; high = max(high, score); then RESTART at the
+;                 title (never returns; with no key it just restarts)
+; Clobbers A/X/Y, SkB/SkN/SkT/SkL and SkBuf. Leaves SWACNT = 0 (bus released).
+; Hotspot for this bank: $1FF8 (F4: bank = addr - $1FF4).
+; ==============================================================================
+SWCHA       = $0280
+SWACNT      = $0281
+SK_SDA      = $04               ; SWCHA/SWACNT bit of pin 3
+SK_SCL      = $08               ; SWCHA/SWACNT bit of pin 4
+SK_BOTH     = SK_SDA|SK_SCL
+SK_ADDR_H   = $7F               ; record block $7FE0 (open question: AtariVox list)
+SK_ADDR_L   = $E0
+SK_CTRL_W   = $A0               ; 1010 000 R/W
+SK_CTRL_R   = $A1
+SK_REC_LEN  = 12
+R_STATE     = 2
+R_LEVEL     = 3
+R_LIVES     = 4
+R_SCORE     = 5
+R_HIGH      = 8
+R_CHK       = 11
+LIVES_MAX   = 8
+LEVEL_COUNT = 32                ; hand copy of the kernel's LEVEL_COUNT
+
+; Game variables (hand copies of kernel.asm; check_equ_sync pairs the names)
+Level       = $A3
+PlayerLives = $AC
+EnemyRamP   = $C2               ; free-running frame clock (bank0 RefreshEnemyY)
+ScoreTh     = $F3
+ScoreHu     = $F4
+ScoreTe     = $F5
+
+; Scratch: dead at every call site (title / level load) - see the design doc.
+SkB         = $88               ; byte being shifted (kernel Temp)
+SkN         = $89               ; op flag (kernel ZPSpare89, free)
+SkT         = $8B               ; (kernel CollisionX)
+SkL         = $8E               ; loop counter (kernel CollisionEndX)
+SkHi        = $93               ; high score handed to the title: vyLo, vyHi, PlayerYSub
+                                ;   (dead on the title; bank0 TitleScore reads them)
+SkBuf       = $C3               ; 12 bytes = PF0Buf..PF2Buf (rebuilt by the room load)
+
+; ------------------------------------------------------------------------------
+; I2C primitives. Between bits SCL is low; STOP/START leave the bus released/low.
+; ------------------------------------------------------------------------------
+SkStart:                        ; bus released -> START, SCL low
+    lda #SK_SDA
+    sta SWACNT                  ; SDA falls while SCL is high
+    lda #SK_BOTH
+    sta SWACNT
+    rts
+
+SkStop:                         ; any state -> STOP, bus released
+    lda #SK_BOTH
+    sta SWACNT                  ; SDA low, SCL low
+    lda #SK_SDA
+    sta SWACNT                  ; SCL high
+    lda #0
+    sta SWACNT                  ; SDA rises while SCL is high
+    rts
+
+SkRestart:                      ; SCL low -> repeated START, SCL low
+    lda #SK_SCL
+    sta SWACNT                  ; release SDA
+    lda #0
+    sta SWACNT                  ; release SCL
+    jmp SkStart
+
+; Send A, MSB first; returns C=0 when the chip ACKed. SCL low, SDA low on exit.
+SkSend:
+    sta SkB
+    ldx #8
+.SkBit:
+    asl SkB
+    ldy #SK_BOTH                ; bit 0: SDA low
+    bcc .SkOut
+    ldy #SK_SCL                 ; bit 1: SDA released
+.SkOut:
+    sty SWACNT                  ; data valid, SCL low
+    tya
+    and #SK_SDA
+    sta SWACNT                  ; SCL high
+    sty SWACNT                  ; SCL low
+    dex
+    bne .SkBit
+    lda #SK_SCL
+    sta SWACNT                  ; release SDA for the ACK
+    lda #0
+    sta SWACNT                  ; SCL high: the chip holds SDA low for an ACK
+    lda SWCHA
+    and #SK_SDA
+    sta SkT
+    lda #SK_SCL
+    sta SWACNT                  ; SCL low
+    lda #SK_BOTH
+    sta SWACNT                  ; SDA low again
+    lda SkT
+    cmp #1                      ; C = 1 when SDA stayed high (NACK)
+    rts
+
+; Receive a byte into A. C=1 on entry -> NACK it (the last byte), C=0 -> ACK.
+SkRecv:
+    lda #0
+    rol                         ; A = the ACK bit to send (1 = NACK)
+    sta SkT
+    lda #SK_SCL
+    sta SWACNT                  ; SDA released, SCL low
+    ldx #8
+.SkRb:
+    lda #0
+    sta SWACNT                  ; SCL high
+    lda SWCHA
+    and #SK_SDA
+    cmp #1                      ; C = the data bit
+    rol SkB
+    lda #SK_SCL
+    sta SWACNT                  ; SCL low
+    dex
+    bne .SkRb
+    ldy #SK_BOTH                ; ACK: SDA low
+    lda SkT
+    beq .SkAck
+    ldy #SK_SCL                 ; NACK: SDA released
+.SkAck:
+    sty SWACNT
+    tya
+    and #SK_SDA
+    sta SWACNT                  ; SCL high
+    sty SWACNT                  ; SCL low
+    lda #SK_SCL
+    sta SWACNT                  ; release SDA
+    lda SkB
+    rts
+
+; ------------------------------------------------------------------------------
+; Record transactions
+; ------------------------------------------------------------------------------
+SkSum:                          ; A = $A5 eor SkBuf[0..10]
+    lda #$A5
+    ldy #R_CHK-1
+.SkS1:
+    eor SkBuf,y
+    dey
+    bpl .SkS1
+    rts
+
+; SkLoad: read the record into SkBuf.
+; C=0 valid. C=1 with A=0: no key (nothing else is worth trying); A=1: bad data.
+SkLoad:
+    lda #0
+    sta SWCHA                   ; latch low for pins 3/4 (never drive high)
+    sta SWACNT
+    jsr SkStart
+    lda #SK_CTRL_W
+    jsr SkSend
+    bcs .SkAbsent
+    lda #SK_ADDR_H
+    jsr SkSend
+    lda #SK_ADDR_L
+    jsr SkSend
+    jsr SkRestart
+    lda #SK_CTRL_R
+    jsr SkSend
+    ldy #0
+.SkRd:
+    sty SkL
+    cpy #SK_REC_LEN-1           ; C=1 for the last byte: NACK it
+    jsr SkRecv
+    ldy SkL
+    sta SkBuf,y
+    iny
+    cpy #SK_REC_LEN
+    bne .SkRd
+    jsr SkStop
+    lda SkBuf
+    cmp #$53
+    bne .SkBad
+    lda SkBuf+1
+    cmp #$01
+    bne .SkBad
+    jsr SkSum
+    cmp SkBuf+R_CHK
+    bne .SkBad
+    clc
+    rts
+.SkAbsent:
+    jsr SkStop
+    lda #0
+    sec
+    rts
+.SkBad:
+    lda #1
+    sec
+    rts
+
+; SkStore: complete the record (magic + checksum) and write it, then ACK-poll the
+; chip's write cycle (<= 5 ms). C=0 written, C=1 the chip never answered.
+SkStore:
+    lda #$53
+    sta SkBuf
+    lda #$01
+    sta SkBuf+1
+    jsr SkSum
+    sta SkBuf+R_CHK
+    jsr SkStart
+    lda #SK_CTRL_W
+    jsr SkSend
+    bcs .SkWfail
+    lda #SK_ADDR_H
+    jsr SkSend
+    lda #SK_ADDR_L
+    jsr SkSend
+    ldy #0
+.SkWr:
+    sty SkL
+    lda SkBuf,y
+    jsr SkSend
+    ldy SkL
+    iny
+    cpy #SK_REC_LEN
+    bne .SkWr
+    jsr SkStop
+    lda #200
+    sta SkL                     ; poll up to 200 times
+.SkPoll:
+    jsr SkStart
+    lda #SK_CTRL_W
+    jsr SkSend
+    jsr SkStop                  ; (keeps C)
+    bcc .SkWdone                ; ACK: the write cycle is over
+    dec SkL
+    bne .SkPoll
+    sec
+    jmp SkRelease
+.SkWfail:
+    jsr SkStop
+    sec
+    jmp SkRelease
+.SkWdone:
+    clc
+SkRelease:                      ; leave the bus released (C kept)
+    lda #0
+    sta SWACNT
+    ldx SkN
+    dex
+    dex
+    dex                         ; (dex keeps C) SkN = 3: game over / run won
+    bne .SkBack
+    lda Level                   ; game over / run won: the title comes back on the level
+    cmp #LEVEL_COUNT            ;   just played (no SaveKey needed): GameStart keeps
+    bcc .SkKeep                 ;   Level when these two bytes hold the magic
+    lda #0
+    sta Level
+.SkKeep:
+    lda #$5A
+    sta SkT
+    lda #$A5
+    sta SkL
+    jmp Restart
+.SkBack:
+    jmp ReturnPad               ; back to the bank0 caller (the C flag survives)
+
+; ------------------------------------------------------------------------------
+; Ops
+; ------------------------------------------------------------------------------
+SkService:
+    sta SkN                     ; the op: SkRelease restarts the run when it is 3
+    tax
+    beq SkBoot
+    dex
+    beq SkResume
+    dex
+    beq SkCheckpoint
+    dex
+    beq .SkGO
+    jmp SkTitle                 ; 4 = the title's score window
+.SkGO:
+    jmp SkWriter                ; 3 = game over
+
+
+SkBoot:
+    jsr SkLoad
+    bcs SkNothing
+    ldy #2
+.SkHi:
+    lda SkBuf+R_HIGH,y          ; the title shows the high score now and then
+    sta SkHi,y
+    dey
+    bpl .SkHi
+    lda SkBuf+R_LEVEL           ; (state 0 = no run to resume, but the level of the
+    cmp #LEVEL_COUNT            ;   last run stays selected: user 2026-11-11)
+    bcs SkNothing
+    sta Level
+    jmp SkOk
+SkNothing:
+    sec
+    jmp SkRelease
+
+SkOk:
+    clc
+    jmp SkRelease
+
+SkResume:
+    jsr SkLoad
+    bcs SkNothing
+    lda SkBuf+R_STATE
+    beq SkNothing
+    lda SkBuf+R_LEVEL
+    cmp Level
+    bne SkNothing              ; another stage was picked: fresh start
+    lda SkBuf+R_LIVES
+    cmp #LIVES_MAX+1
+    bcs SkNothing
+    sta PlayerLives
+    ldy #2
+.SkSc:
+    lda SkBuf+R_SCORE,y
+    sta ScoreTh,y
+    dey
+    bpl .SkSc
+    jmp SkOk
+
+; The two writers share SkPrep (entered by `jmp`, so the call chain stays at
+; pad 2 + SkLoad 2 + a leaf 2 = 6 stack bytes - the stack mirror is only 8 wide).
+; SkN = 2 checkpoint, 3 game over. A missing key ends the op, bad data leaves a
+; zero high score. SkBuf[R_HIGH..] = max(old high, current score) on the way out.
+SkCheckpoint:
+    lda Level
+    cmp #LEVEL_COUNT
+    bcc SkWriter                ; a stage advance
+    lda #3
+    sta SkN                     ; the last stage was cleared: the run is over
+SkWriter:
+    jsr SkLoad
+    bcc .SkHave
+    cmp #0
+    bne .SkBadData
+    sec                         ; absent: do not touch anything
+    jmp SkRelease
+.SkBadData:
+    lda #0
+    sta SkBuf+R_HIGH
+    sta SkBuf+R_HIGH+1
+    sta SkBuf+R_HIGH+2
+.SkHave:
+    ldy #0
+.SkCmp:
+    lda ScoreTh,y
+    cmp SkBuf+R_HIGH,y
+    bne .SkDiff
+    iny
+    cpy #3
+    bne .SkCmp
+    beq .SkMerged               ; equal
+.SkDiff:
+    bcc .SkMerged               ; score < high
+    ldy #2
+.SkCp:
+    lda ScoreTh,y
+    sta SkBuf+R_HIGH,y
+    dey
+    bpl .SkCp
+.SkMerged:
+    lda SkN
+    cmp #3
+    beq .SkOver
+    lda #1
+    sta SkBuf+R_STATE
+    lda Level
+    sta SkBuf+R_LEVEL
+    lda PlayerLives
+    sta SkBuf+R_LIVES
+    ldy #2
+.SkSv:
+    lda ScoreTh,y
+    sta SkBuf+R_SCORE,y
+    dey
+    bpl .SkSv
+    jmp SkStore
+.SkOver:
+    lda Level                   ; the title comes back on the level just played
+    cmp #LEVEL_COUNT            ;   (a cleared last stage wraps to the first)
+    bcc .SkOvLv
+    lda #0
+.SkOvLv:
+    sta SkBuf+R_LEVEL
+    lda #0
+    sta SkBuf+R_STATE
+    sta SkBuf+R_SCORE
+    sta SkBuf+R_SCORE+1
+    sta SkBuf+R_SCORE+2
+    lda #3
+    sta SkBuf+R_LIVES
+    jmp SkStore
+
+; Op 4 TITLE (every title frame, no I2C): the HUD score window shows the 1-based
+; stage number (packed BCD, 000001 = stage 1) and, for 64 of every 256 frames
+; (EnemyRamP $80-$BF; it restarts at $F0 on every LoadLevel, so SELECT always
+; shows the stage first), the HIGH SCORE BOOT left in SkHi. No high score (no key,
+; blank chip) = the stage number only. DropArm's title path writes the same stage
+; number once per LoadLevel (SELECT); this keeps it right in between.
+SkTitle:
+    lda Level
+    clc
+    adc #1
+    ldx #0
+.SkTen:
+    cmp #10
+    bcc .SkOnes
+    sbc #10
+    inx
+    bne .SkTen                  ; (X <= 2: always taken)
+.SkOnes:
+    sta SkB
+    txa
+    asl
+    asl
+    asl
+    asl
+    ora SkB
+    sta ScoreTe                 ; packed BCD: tens, ones
+    lda #0
+    sta ScoreTh
+    sta ScoreHu
+    lda EnemyRamP
+    and #$C0
+    cmp #$80
+    bne .SkTdone                ; only clock $80-$BF (64 of 256 frames) shows it
+    lda SkHi
+    ora SkHi+1
+    ora SkHi+2
+    beq .SkTdone                ; no high score yet
+    ldx #2
+.SkTHi:
+    lda SkHi,x
+    sta ScoreTh,x
+    dex
+    bpl .SkTHi
+.SkTdone:
+    jmp ReturnPad
+
+; ---- the SHAPE STEP of the room load (moved from bank3 2026-11-10, from bank7 to bank4 (the models share bank4) 2026-11-14) ------------------
+; bank3 B3RoomBlocks (at $F453) does `sta BK_MODELS`; the next fetch (+3) is the jmp below.
+; ShapeStep7 expands the room's shape block into the PF buffers and stages the hot flag in
+; RoomMetaB; `sta $1FF7` at +6 returns to bank3 (B3Meta, +9).
+FetchPtr = $E5
+RoomPF0Lo = $99
+RoomMetaB = $9A
+PF0Buf = $C3
+PF1Buf = $C7
+PF2Buf = $CB
+TILE_ROWS = 4
+    org $F453 + 3
+    jmp ShapeStep7
+    org $F453 + 6
+    sta BK_EXTRAS
+    org $F460
+ShapeStep7:
+    lda RoomPF0Lo
+    and #$7F                        ; shape index, 7 bits (128 shapes)
+    asl                             ; *2: LEVEL_ShapeTable is a word table
+    tax
+    lda LEVEL_ShapeTable,X          ; block address = the table entry
+    sta FetchPtr
+    lda LEVEL_ShapeTable+1,X
+    sta FetchPtr+1
+    ldy #TILE_ROWS-1
+.sp:
+    lda (FetchPtr),Y                ; row index for this band (b7 = band 1's hot flag)
+    and #$7F
+    tax
+    lda RowPoolPF0,X
+    sta PF0Buf,Y
+    lda RowPoolPF1,X
+    sta PF1Buf,Y
+    lda RowPoolPF2,X
+    sta PF2Buf,Y
+    dey
+    bpl .sp
+    ldy #1
+    lda (FetchPtr),Y                ; band-1 index | hot b7
+    and #$80
+    lsr                             ; $80 -> $40 (MetaB b6)
+    sta RoomMetaB
+    jmp $F453 + 6                   ; sta $1FF7 -> bank3 B3Meta
+
+; ---- DATA WINDOW: shape blocks + row pool + shape address table ----------------------
+; (models_data.asm via generated/spill_bank3_shapes.asm; convert_level.py capacity-checks
+; it as _BANK3_SHAPES_SLOT = $F4C0-$FBF7, below bank4's ReturnPad.)
+    .ds $F4C0 - *, 0
+    include "generated/spill_bank3_shapes.asm"
+
+
+; ------------------------------------------------------------------------------
+; Cross-bank twins (bank0 is the caller; every pad is split across the banks):
+;   entry  A=$FC08: bank0 runs `sta $1FF8`; the fetch at $FC0B comes from HERE
+;          = `jmp SkService` (bank0's own bytes at $FC0B are never fetched)
+;   return $FBF8: this `sta $1FF4` selects bank0, whose `rts` at $FBFB returns
+;          to the caller (bank0's ReturnPad is the same two instructions)
+; ------------------------------------------------------------------------------
+    .ds $FBD0 - *, 0
+    sta BK_ROOMS                   ; twin of bank0's EnterRoom pad (the transition frame jumps here)
+    .ds $FBF8 - *, 0
+ReturnPad:
+    sta BK_GENERAL
+    .ds $FC08 - *, 0
+    sta BK_SAVE                    ; twin of CallPad_SaveKey (the `jmp` below is fetched after it)
+    .ds $FC0B - *, 0
+    jmp SkService
+    .ds $FC20 - *, 0
+    sta BK_ROOMS                   ; twin of LoadLevel (bank2 serves the jmp at $FC23)
+    .ds $FC58 - *, 0
+    sta BK_GENERAL                 ; bank0 $FC5B = jmp StartFrame
+    jmp TransBody                  ; $FC5B: fetched after bank0's `sta BK_TRANS` pad at $FC58
+    .ds $FC61 - *, 0
+    jmp TransFinish                ; $FC61: after bank0's second pad at $FC5E
+    .ds $FC64 - *, 0
+    jmp TransAfterSave             ; $FC64: after bank0's third pad at $FC61
+    .ds $FC70 - *, 0
+RomVersion:
+    include "version.asm"
+    include "trans.inc"
+
+    .ds $FFFA - *, 0
+    .word $F000
+    .word $F000
+    .word $F000

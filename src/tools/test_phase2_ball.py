@@ -27,7 +27,7 @@ Regenerate: snapshot a GREEN build — after ./build.sh + the battery pass,
 whenever an intended TIA-writing change lands (the strip list above
 carries the standing phase1→2 deltas; the snapshot then catches
 UNintended drift from that point). The old "git show HEAD:bank1/2"
-recipe died 2026-10-14: verify_build's .PhRec sync needs a bank2.lst
+recipe died 2026-10-14: verify_build's .PhRec sync needs a bank6.lst
 that has the label, and HEAD predates the uncommitted feature-stream
 work — revisit once that work is committed.
 If missing, the bit-identical leg is skipped (invariants still run).
@@ -49,16 +49,24 @@ for _l in (FROZEN / "bank0.lst").read_text(errors="replace").splitlines():
                   r"([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$", _l)
     if _m:
         LABELS.setdefault(_m.group(2), int(_m.group(1), 16))
-for _need in ("StartFrame", ".Row", "Overscan"):
+for _need in ("StartFrame", "Overscan"):
     if _need not in LABELS:
         sys.exit(f"label {_need} not found in bank0.lst")
+# 2026-11: the cave kernel is bank6 (generated); its first band entry is `BandPad`.
+_B6 = {}
+for _l in (FROZEN / "bank1.lst").read_text(errors="replace").splitlines():
+    _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(BandPad)\s*$", _l)
+    if _m:
+        _B6[_m.group(2)] = int(_m.group(1), 16)
+if "BandPad" not in _B6:
+    sys.exit("label BandPad not found in bank1.lst")
 PC_START = LABELS["StartFrame"]
-PC_ROW = LABELS[".Row"]
+PC_ROW = _B6["BandPad"]
 PC_OVER = LABELS["Overscan"]
 
 FRAMES = 60
 CTRLPF, ENABL, RESBL, HMBL = 0x0A, 0x1F, 0x14, 0x24
-HMOVE = 0x2A                     # project equate (kernel.asm:62)
+HMOVE = 0x2A                     # project equate (bank0.asm:62)
 
 
 class Mem:
@@ -160,7 +168,7 @@ def run(rom: Path) -> dict:
             # console RESET pulses (intro 2026-10-06): f1 leaves $FD intro,
             # f4 hits TitleWork RESET -> game start (same as sim)
             mem.swchb = 0xFE if frame in (1, 4) else 0xFF
-        if bk == 0 and pc == PC_ROW and frame >= 0:
+        if bk == 1 and pc == PC_ROW and frame >= 0:
             cave_rows += 1
             ctrlpf_at_row.append((frame, mem.last.get(CTRLPF)))
             enabl_at_row.append((frame, mem.last.get(ENABL)))

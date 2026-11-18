@@ -27,10 +27,12 @@ import argparse
 import collections
 import heapq
 import json
+import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+LEVEL_COUNT = int(re.search(r"^LEVEL_COUNT\s*=\s*(\d+)", (ROOT / "bank0.asm").read_text(), re.M).group(1))   # the ROM's level count
 sys.path.insert(0, str(ROOT / "tools"))
 from test_cell_map import parse_labels  # noqa: E402
 import stage_reach as SR  # noqa: E402
@@ -42,7 +44,7 @@ NAMES = ("RoomX", "RoomY", "RoomNo", "DropTarget", "Level", "PlayerLives",
          "MinerX", "MinerY", "LevelStartRoom", "BarLevel", "PlayerBombs",
          "StartFrame", "PF0Buf", "PF1Buf", "PF2Buf", "vyHi", "RoomRectsLo",
          "RoomRectsHi", "RoomPF0Lo", "RoomPF0Hi", "LevelConnSpare", "LevelPFDataLo",
-         "LevelPFDataHi", "LevelRoomN", "EnemyRamX", "EnemyRamY", "EnemyRamD")
+         "LevelPFDataHi", "LevelRoomN", "EnemyRamX", "EnemyRamY", "EnemyRamD", "TickCounter", "PlayerDir")
 BANDS = 4
 BAND_PX = 36
 PLAYER_H = 22
@@ -71,6 +73,9 @@ class Console:
         self.mpu = MPU(memory=self)
         self.pc_frame = lab["StartFrame"]
         self.frames = 0
+        self.bar_ram = lab["BarLevel"] & 0x7F
+        self.bar_last = 0
+        self.refills = []              # (frame, room, bar before, bar after)
 
     # bus (the same minimal model every sim in tools/ uses)
     def __getitem__(self, a):
@@ -116,6 +121,10 @@ class Console:
         while not (self.bank == 0 and self.mpu.pc == self.pc_frame):
             self.mpu.step()
         self.frames += 1
+        bar = self.ram[self.bar_ram]
+        if bar > self.bar_last:
+            self.refills.append((self.frames, self.r("RoomNo"), self.bar_last, bar))
+        self.bar_last = bar
 
     def save(self):
         m = self.mpu
@@ -141,7 +150,7 @@ class Console:
         self.frame()
         for _ in range(3):
             self.frame()
-        self.w("Level", (level - 2) % 20)      # one SELECT edge = Level + 1
+        self.w("Level", (level - 2) % LEVEL_COUNT)      # one SELECT edge = Level + 1
         self.swchb = 0xFD
         self.frame()
         self.swchb = 0xFF
@@ -204,11 +213,35 @@ class Level:
         self.rooms = rooms
         self.at = {(r["room_x"], r["room_y"]): i for i, r in enumerate(rooms)}
         self.grids, self.dead = SR.level_grids(self.level, self.models, self.at)
+        self.cells = set()
+        for i, r in enumerate(rooms):
+            m = self.models[r["model_id"]]
+            u = 12 // max(1, len(m["tiles"]) // m["width"])
+            rafted = any(e.get("type") == 7 for e in r.get("enemies") or [])
+            for e in r.get("enemies") or []:
+                if e.get("type") == SR.POWER_CELL and not rafted:   # a raft room's graph is the only safe way across
+                    self.cells.add((i, min(len(self.grids[i][0]) - 1, int(e["y"]) // max(1, u)),
+                                    int(round(e["x"])) // 2))
         mx = int(self.level["miner_x"])
         self.miner = (self.level["miner_room"],
                       min(BANDS - 1, int(self.level["miner_y"] * 12) // BAND_PX),
                       min(19, mx * 1))
         self.extras = SR.extra_miner_nodes(self.level, self.models)
+        # the level's KEY (type 6): collected first, so every locked door of the level opens
+        # locked doors: (room, band, full col) cells that are WALLS until the key is held
+        self.doors = set()
+        self.doors_open = True
+        for i, r in enumerate(rooms):
+            for pt in r.get("asym_patches") or []:
+                if len(pt) >= 3 and pt[2] == 9:
+                    side = pt[3] if len(pt) > 3 else 0
+                    self.doors.add((i, pt[0], pt[1] if side == 1 else 10 + pt[1]))
+        self.key = None
+        for i, r in enumerate(rooms):
+            for e in r.get("enemies") or []:
+                if e.get("type") == 6:
+                    kb = min(BANDS - 1, int(round(e["y"] * 12)) // BAND_PX)
+                    self.key = (i, kb, min(19, (int(round(e["x"])) * 4 + 3) // 8))
         # raft rooms: the water row can only be entered by dropping onto the raft,
         # which waits at its spawn cell (x column / 2) until somebody stands on it
         self.raft_cell = {}
@@ -241,6 +274,8 @@ class Level:
         for nr, nb, nf in outs:
             ga, gb, gd = self.grids[nr]
             if 0 <= nb < len(ga) and 0 <= nf < 20 and ga[nb][nf]:
+                if not self.doors_open and (nr, nb, nf) in self.doors:
+                    continue              # a locked door is a wall until the key is held
                 if nr == ri and nr in self.raft_cell and nb == BANDS - 1 \
                         and b == BANDS - 2 and nf != self.raft_cell[nr]:
                     continue              # the water row: only onto the raft
@@ -252,8 +287,36 @@ class Level:
                     out_dx = -1 if nf < 10 else 1
                     if not (nr == ri and nb == b and nf - f == out_dx):
                         continue
+                risk = 0
+                if nr != ri or nb > b:
+                    # arriving in another room: EnterRoom puts every enemy back on its authored
+                    # spot, so a patroller starting near the arrival column is hit on the first
+                    # frame (level 25 room 6: snake at x 67, arrival x 71). Prefer another column.
+                    # A DROP (nb > b) into a band whose floor holds a patroller is the same hit:
+                    # the sprite touches it before any sideways step is possible, so take another
+                    # shaft of the room (levels 3, 17, 18, 22, 28, 29: a snake under the column).
+                    risk = self.arrival_risk(nr, nb, nf) if self.use_risk else 0
+                if self.cell_cost and (nr, nb, nf) in self.cells:
+                    risk += self.cell_cost
                 yield (nr, nb, nf), (1 if strip else 0), \
-                    (SR.DANGER if (nb, nf) in gd else 0)
+                    (SR.DANGER if (nb, nf) in gd else 0) + risk
+
+    cell_cost = 0            # >0 while the time bar is full: walk around a power cell, a refill then is wasted (level 29 took both at 104/120 and 17/120)
+
+    use_risk = True          # off while play() ranks the miner orders: the detours must not reorder them
+
+    ARRIVAL_RISK = 15        # a detour of up to 15 cells beats a hazard column (a bomb strip costs 40; 35 made level 29 run out of time)
+
+    def arrival_risk(self, room, band, cell):
+        """ARRIVAL_RISK when a hazard enemy of `room` starts within 28 px of cell `cell` in `band`."""
+        px = 8 * cell + 4
+        for e in self.rooms[room].get("enemies") or []:
+            if e.get("type") not in (0, 1, 2, 3, 4):
+                continue
+            eb = min(BANDS - 1, int(round(e["y"] * 12)) // BAND_PX)
+            if eb == band and abs(int(e["x"] * 4) + 3 - px) <= 28:
+                return self.ARRIVAL_RISK
+        return 0
 
     def route(self, start, goal):
         """Cheapest cell path start -> goal (a bomb strip or a spider zone costs
@@ -284,6 +347,11 @@ class Level:
 # ---------------------------------------------------------------------------
 # the pilot
 # ---------------------------------------------------------------------------
+class OffEdge(Exception):
+    """The ROM put us in a room the current edge neither starts nor ends in (a wide link
+    crossed at another column, a respawn): abandon the edge and resync the plan."""
+
+
 class GiveUp(Exception):
     pass
 
@@ -352,7 +420,7 @@ class Pilot:
         return {"f": c.frames, "room": c.r("RoomNo") + 1, "x": c.r("RoomX"),
                 "y": c.r("RoomY"), "vy": c.r("vyHi"), "sw": sw & 0xFF,
                 "hover": c.r("Hover"), "clock": c.ram[0xC2 & 0x7F],
-                "dm": c.ram[0xBA & 0x7F], "enemies": en, "doing": self.doing}
+                "dm": c.ram[0xBA & 0x7F], "bar": c.r("BarLevel"), "enemies": en, "doing": self.doing}
 
     def explain(self, rows):
         """Facts about the last frame before a life was lost, and the cause they point
@@ -396,6 +464,9 @@ class Pilot:
                 causes.append("hot rock?")
         if room.get("bottom_band") and y >= 112:
             causes.append("water")
+        if r.get("bar", 99) <= 1:
+            causes = ["time bar empty"]       # LoseLife from the level timer, not an enemy
+            facts.append(f"BarLevel {r['bar']}: the bot used up the level's time")
         if not causes:
             causes.append("?")
         return "/".join(causes), facts
@@ -421,6 +492,8 @@ class Pilot:
         if not self.mortal:
             c.w("PlayerLives", 8)
         rn = c.r("RoomNo")
+        if getattr(self, "edge_rooms", None) and rn not in self.edge_rooms:
+            raise OffEdge()
         if rn != self.last_room:
             self.last_room = rn
             self.bombs_tried = {}
@@ -462,6 +535,18 @@ class Pilot:
                                        # him out through the ceiling (an exit up)
         if band == BANDS - 1 and self.lv.rooms[self.c.r("RoomNo")].get("bottom_band"):
             hi = 2                     # the water kills from y 115: fly y 108..114
+        if band == BANDS - 1:
+            # a wide floor opens a south exit under any column: fly high in the last band
+            # when the room has a room below, or sagging a few px leaves the cave
+            me = self.lv.rooms[self.c.r("RoomNo")]
+            if any(o.get("room_x") == me.get("room_x")
+                   and o.get("room_y") == me.get("room_y", 0) + 1
+                   for o in self.lv.rooms):
+                hi = min(hi, 4)
+        room_ = self.lv.rooms[self.c.r("RoomNo")]
+        if band + 1 == 1 and self.lv.models[room_["model_id"]].get("mid_band_type"):
+            hi = min(hi, 6)            # the hot row is right below: the 22-px box must not
+                                       # reach it (level 22 room 14: feet in the rock at y 14)
         if self.hi_override is not None:
             hi = self.hi_override
         crow = self.crunch_band(self.lv.rooms[self.c.r("RoomNo")])
@@ -489,10 +574,20 @@ class Pilot:
                 continue
             for cell in (col, 19 - col):
                 lo, hi = 8 * cell, 8 * cell + 8
-                ahead = (lo - x) if dx > 0 else (x - hi)
-                if -4 <= ahead <= 26:
-                    ph = c.ram[0xC2 & 0x7F] % 90
-                    if ph < 45 or ph > 62:        # ON, or OFF with < 28 frames left
+                if x - 7 < hi and x > lo:
+                    continue                      # already inside the span: waiting here is the
+                                                  # crush (level 26 room 10: stopped at x 24) - go on
+                ahead = (lo - x) if dx > 0 else (x - hi - 7)
+                if -4 <= ahead <= 20:
+                    raw = c.ram[0xC2 & 0x7F]
+                    ph = raw % 90
+                    need = max(ahead, 0) + 22     # walk to the wall + cross it (8 + 7 px) + margin
+                                                  # (<= 42 of the 45 OFF frames, so a window exists)
+                    # the 8-bit clock wraps 255 -> 0 and 256 is not a multiple of 90: the wall
+                    # switches ON at the wrap, so the OFF window ends there if that comes first
+                    # (level 9 room 3: raw 255 = phase 75, the wall came on 15 frames early)
+                    left = min(90 - ph, 256 - raw)
+                    if ph < 45 or left < need:        # ON, or OFF with too few frames left
                         return True
         return False
 
@@ -519,6 +614,7 @@ class Pilot:
         wall is clear for most of the period and a dash across fits the dwell +
         retract window: the crunch is a timing gate, not a forced kill."""
         c = self.c
+        run_room = c.r("RoomNo")
         room = room or self.lv.rooms[c.r("RoomNo")]
         rows = [fc[0] for fc in room.get("feature_cells") or [] if fc[2] == 12]
         if not rows:
@@ -532,9 +628,26 @@ class Pilot:
         # the flight as (x, y) points: a node's y is its band's hover height; the
         # player moves 1.4 px/frame sideways and 1.2 px/frame vertically
         pts = [(x, 36 * b_ + 12) for x, b_ in run]
+        # start from where he REALLY is (a flight that was delayed by a fight or a
+        # hover is lower / further on than its first node)
+        pts[0] = (c.r("RoomX"), min(float(c.r("RoomY")), pts[0][1] + 40.0)
+                  if c.r("RoomNo") == run_room else pts[0][1])
         track = [(pts[0][0], -200.0)] * delay        # still in the room before
         for (xa, ya), (xb, yb) in zip(pts, pts[1:]):
-            vy_ = 1.0 if yb < ya else 1.4          # the jet climbs slowly, he falls faster
+            if yb > ya:
+                # a FALL starts from rest and speeds up (measured: 0.0325 px/frame^2, cap
+                # 1.4 px/frame - a drop through a 36-px band from a hover takes ~60
+                # frames, not the 26 a constant 1.4 px/frame would give)
+                x_, y_, v_ = float(xa), float(ya), 0.0
+                for _i in range(400):
+                    if y_ >= yb and abs(x_ - xb) < 0.7:
+                        break
+                    track.append((x_, y_))
+                    x_ += max(-1.4, min(1.4, xb - x_))
+                    y_ = min(float(yb), y_ + v_)
+                    v_ = min(1.4, v_ + 0.0325)
+                continue
+            vy_ = 1.0                              # the jet climbs slowly
             n_ = max(1, int(max(abs(xb - xa) / 1.4, abs(yb - ya) / vy_)))
             for i_ in range(n_):
                 track.append((xa + (xb - xa) * i_ / n_, ya + (yb - ya) * i_ / n_))
@@ -554,6 +667,9 @@ class Pilot:
                             return False
             return True
         self.doing = f"waiting for the crunch (run {run[0]}..{run[-1]})"
+        if c.r("RoomY") + 22 > top and c.r("RoomY") < bot and c.r("RoomNo") == run_room:
+            return dur          # already INSIDE the row: holding still here is the one
+                                # move that always loses to the closing shutter - go on
         for _ in range(400):
             if c.ram[0xBA & 0x7F] & 0x80:
                 return                              # spent: parked for the visit
@@ -569,6 +685,7 @@ class Pilot:
         room = self.lv.rooms[c.r("RoomNo")]
         recs = room.get("enemies") or []
         mask = c.ram[0xBA & 0x7F]
+        ahead = False
         for i in range(min(3, c.r("EnemyCount"), len(recs))):
             if mask >> i & 1 or recs[i]["type"] not in (0, 1, 2, 4):
                 continue                          # dead, or not killable: only spider / bat /
@@ -581,8 +698,11 @@ class Pilot:
                 self.threat_dx = ex - x
                 if self.shoot_wait < 400:
                     return True
-        else:
-            self.shoot_wait = 0
+                ahead = True
+        if not ahead:
+            self.shoot_wait = 0               # (the old for/else reset it after a timeout too, so a
+                                              # moth the laser never hit held the bot for ever:
+                                              # level 29 room 14, 9000 frames)
         return False
 
     def to_x(self, x_t, band, maxf=400):
@@ -602,8 +722,19 @@ class Pilot:
                     # that do not patrol (stationary bats) never come to us.
                     dx_ = self.threat_dx
                     sw = self.altitude(band)
-                    if abs(dx_) > 28 and self.c.frames % 6 == 0:
-                        sw = (RIGHT if x_t > x else LEFT) & sw
+                    toward = RIGHT if dx_ > 0 else LEFT
+                    away = LEFT if dx_ > 0 else RIGHT
+                    facing_ok = self.c.r("PlayerDir") == (0 if dx_ > 0 else 1)   # 0 right, 1 left
+                    if abs(dx_) > 28:
+                        if self.c.frames % 6 == 0:
+                            sw = (RIGHT if x_t > x else LEFT) & sw
+                    elif not facing_ok:
+                        # the held laser needs the enemy IN FRONT (level 20: it stood facing away).
+                        # Back off to 16 px first, then one tap turns him: hysteresis, or the
+                        # turn and the back-off alternate every frame (level 22: 1700 frames)
+                        sw = (away if abs(dx_) < 16 else toward) & sw
+                    elif abs(dx_) < 7:
+                        sw = away & sw        # facing it but it is on top of us
             else:
                 # the 22-px box still overlaps the band above/below: sideways
                 # now would crush him in a wall edge (the spawn at RoomY 24)
@@ -625,14 +756,35 @@ class Pilot:
                 if room_before == nxt[0]:
                     i += 1
                     continue
-                raise GiveUp(f"left the route: in room {room_before}, expected "
-                             f"{cur[0]}/{nxt[0]}")
+                # a WIDE link (cavern floor/ceiling spanning several columns) lets the
+                # player cross the vertical edge at any column, not only the planned
+                # one: resync on the first later path node in the room we are in
+                j = next((k for k in range(i + 1, len(path))
+                          if path[k][0] == room_before), None)
+                if j is not None:
+                    i = j
+                    continue
+                # a wide ceiling/floor link led into a room off the route (layouts past 20 rooms): re-plan from
+                # here (play() routes again from wherever the bot stands); give up only if it keeps happening
+                self.replans = getattr(self, "replans", 0) + 1
+                if self.replans > 8:
+                    raise GiveUp(f"left the route: in room {room_before}, expected "
+                                 f"{cur[0]}/{nxt[0]}")
+                self.say("off route: in room", room_before, "- re-planning")
+                return
             if cur[0] == nxt[0] and (nxt[1], nxt[2]) in self.lv.grids[nxt[0]][1]:
                 self.edge_safe(cur, nxt, lambda _c, _n: self.bomb_strip(_n))
                 continue                          # re-check the same edge, strip gone
             self.path, self.path_i = path, i
             self.doing = f"edge {cur}->{nxt}"
-            ok = self.edge_safe(cur, nxt)
+            self.edge_rooms = {cur[0], nxt[0]}
+            try:
+                ok = self.edge_safe(cur, nxt)
+            except OffEdge:
+                continue
+            finally:
+                self.edge_rooms = None
+                self.hi_override = None       # a retry variant must not outlive its edge
             self.say(f"edge {cur}->{nxt} ok={ok} now room {c.r('RoomNo')} "
                      f"x={c.r('RoomX')} y={c.r('RoomY')}")
             if c.r("RoomNo") == nxt[0] and not ok:
@@ -674,10 +826,17 @@ class Pilot:
         side = 1 if col < 10 else -1
         air = self.lv.grids[ri][0]
         stand = None
-        for d in (1, 2):
-            f = col + side * d
-            if 0 <= f < 20 and air[b][f] and (b + 1 >= len(air) or not air[b + 1][f]):
-                stand = (ri, b, f)
+        # The blast only tests columns (StripBlastCheck ignores Y, like stage_reach.level_grids), so a
+        # floor in ANY band of the room on the centre side works: levels 17 / 23 room 9 have none in
+        # the strip's own band. Same band first, then the others.
+        for bb in [b] + [k for k in range(len(air)) if k != b]:
+            for d in (1, 2):
+                f = col + side * d
+                if 0 <= f < 20 and air[bb][f] and (bb + 1 >= len(air) or not air[bb + 1][f]) \
+                        and (bb == b or self.lv.route(self.here(), (ri, bb, f)) is not None):
+                    stand = (ri, bb, f)
+                    break
+            if stand:
                 break
         if stand is None:
             raise GiveUp(f"no floor to bomb the strip {strip} from")
@@ -693,16 +852,21 @@ class Pilot:
             self.say("walk to the bomb spot", stand, "path", path[:3], "...")
             self.fly(path)
         f = stand[2]
-        if not self.to_x(x_for_cell(f), b):
+        sb = stand[1]                            # the band we stand in (may differ from the strip's)
+        if not self.to_x(x_for_cell(f), sb):
             raise GiveUp("cannot align at the bomb spot")
         if not self.land():
             raise GiveUp("cannot stand on the floor to plant a bomb")
         self.hold(DOWN, 4)                       # plant (edge on the floor)
         away = max(0, min(19, f + side * 3))
         self.say("bomb planted at", c.pos(), "retreat to cell", away)
-        self.to_x(x_for_cell(away), b)
+        self.to_x(x_for_cell(away), sb)
         self.land()
         self.hold(NONE, 230)                     # ~3 s fuse + the flash
+        bit = 0x10 if col < 10 else 0x08         # EnemyDeadMask: b4 = left (M1) strip, b3 = right (ball) strip
+        if not c.ram[0xBA & 0x7F] & bit:
+            raise GiveUp(f"the strip {strip} survived the bomb planted at cell {f} band {sb + 1} "
+                         f"(dead mask ${c.ram[0xBA & 0x7F]:02X}): check the generator's bomb-spot rule")
         self.lv.grids[ri][1].discard((b, col))
         self.say("strip", strip, "should be open")
 
@@ -799,6 +963,8 @@ class Pilot:
         if not self.to_x(x_for_cell(f0), b0):
             return False
         top = BAND_PX * b1 + 4
+        if b1 > b0:
+            self.wait_clear_below(x_for_cell(f0), b0, f0=f0)
         for _ in range(200):
             y = c.r("RoomY")
             if band_of(y) == b1 and (b1 < b0 and y <= BAND_PX * b1 + 14 or b1 > b0):
@@ -812,8 +978,67 @@ class Pilot:
             self.step(sw)
         return False
 
+    def hazard_below(self, x, y, band=None):
+        """A live hazard enemy within 20 px of column x, level with or below y (the drop lands on it).
+        With `band`: only one standing in that landing band (an enemy two bands down is not our drop)."""
+        c = self.c
+        recs = self.lv.rooms[c.r("RoomNo")].get("enemies") or []
+        mask = c.ram[0xBA & 0x7F]
+        for i in range(min(3, c.r("EnemyCount"), len(recs))):
+            if mask >> i & 1 or recs[i]["type"] not in (0, 1, 2, 3, 4):
+                continue
+            ex = c.ram[(c.lab["EnemyRamX"] & 0x7F) + i]
+            ey = c.ram[(c.lab["EnemyRamY"] & 0x7F) + i]
+            if band is not None and not BAND_PX * band - 12 <= ey < BAND_PX * (band + 1) + 22:
+                continue
+            if abs(ex - x) <= 20 and ey >= y - 12:
+                return True
+        return False
+
+    def flyer_below(self, x, band):
+        """A live moth / bat in the landing band within 20 px of column x (they home in on us)."""
+        c = self.c
+        recs = self.lv.rooms[c.r("RoomNo")].get("enemies") or []
+        mask = c.ram[0xBA & 0x7F]
+        for i in range(min(3, c.r("EnemyCount"), len(recs))):
+            if mask >> i & 1 or recs[i]["type"] not in (1, 4):
+                continue
+            ex = c.ram[(c.lab["EnemyRamX"] & 0x7F) + i]
+            ey = c.ram[(c.lab["EnemyRamY"] & 0x7F) + i]
+            if abs(ex - x) <= 20 and BAND_PX * (band + 1) - 12 <= ey < BAND_PX * (band + 2) + 22:
+                return True
+        return False
+
+    def wait_clear_below(self, x, band, maxf=60, f0=None):
+        """Hold at the top of a drop while an enemy sits under the shaft. A snake or spider
+        patrols away (or not: see the report); a moth / bat HOMES IN on our column, so step
+        aside along the band, face the shaft and let it come up level with us: the held laser
+        kills it there (level 32 room 18: dropped onto a moth hovering under the gap)."""
+        c = self.c
+        if f0 is not None and self.flyer_below(x, band):
+            ri = c.r("RoomNo")
+            air = self.lv.grids[ri][0]
+            for off in (3, -3, 2, -2, 4, -4):
+                f = f0 + off
+                if 0 <= f < 20 and all(air[band][g] for g in range(min(f0, f), max(f0, f) + 1)):
+                    if self.to_x(x_for_cell(f), band):
+                        toward = RIGHT if f0 > f else LEFT
+                        for _ in range(150):
+                            if not self.flyer_below(x, band):
+                                break
+                            if c.r("PlayerDir") != (0 if f0 > f else 1):
+                                self.step(toward & self.altitude(band))      # one tap turns him
+                            else:
+                                self.step(self.altitude(band))
+                        self.to_x(x_for_cell(f0), band)
+                    break
+        for _ in range(maxf):
+            if not self.hazard_below(x, self.c.r("RoomY"), band + 1):
+                return
+            self.step(self.altitude(band))
+
     def ride(self, cur, nxt):
-        """Along the WATER row: the raft is the only floor. It moves (1-1.5 px per
+        """Along the WATER row: the raft is the only floor. It moves (0.5-0.75 px per
         frame, right first) only while he stands on it, so after landing on it the
         bot lets it carry him and steps off when the target cell comes by."""
         c = self.c
@@ -862,6 +1087,7 @@ class Pilot:
         import itertools
         start = (c.r("RoomNo"), band_of(c.r("RoomY")), cell_of(c.r("RoomX")))
         best = None
+        self.lv.use_risk = False
         for perm in itertools.permutations([self.lv.miner] + list(self.lv.extras)):
             cur, total = start, 0
             for t in perm:
@@ -873,23 +1099,38 @@ class Pilot:
                 cur = t                          # hazard-free order always beats a short one
             if total is not None and (best is None or total < best[0]):
                 best = (total, perm)
+        self.lv.use_risk = True
         if best is None:
             raise GiveUp("no order of the miners has a route for every leg")
         targets = list(best[1])
+        if self.lv.key is not None:
+            # the key first: from the start to the key, then on to the miners (the route
+            # to the first miner is re-planned from wherever the key leaves the bot)
+            targets = [self.lv.key] + targets
         self.say("order", targets)
         for tgt in targets:
+            self.lv.doors_open = tgt != self.lv.key       # the key leg may not cross a door
             while True:
                 if c.r("DropTarget") == 0xFE:        # the tally started
                     break
                 here = (c.r("RoomNo"), band_of(c.r("RoomY")), cell_of(c.r("RoomX")))
                 if here == tgt:
                     break
+                self.lv.cell_cost = 25 if c.r("BarLevel") > 70 else 0
                 path = self.lv.route(here, tgt)
                 if path is None:
                     raise GiveUp(f"no route {here} -> {tgt}")
                 self.say("route", len(path), "cells", here, "->", tgt)
                 self.fly(path)
             px = None
+            if tgt == self.lv.key:
+                for e in self.lv.rooms[tgt[0]].get("enemies") or []:
+                    if e.get("type") == 6:
+                        px = int(e["x"] * 4) + 7
+                if not (c.r("LevelStartRoom") & 0x80):   # KeyHeld: the flight may have picked it up already
+                    self.touch(tgt, px)
+                self.lv.doors_open = True
+                continue
             if tgt in self.lv.extras:
                 # An EXTRA miner is a type-15 enemy record: MinerX is the main miner's
                 # column, so walk to the record's own X (4-px units, RoomX = right end).
@@ -908,6 +1149,8 @@ class Pilot:
         for _ in range(300):
             if c.r("DropTarget") == 0xFE:
                 return
+            if self.lv.key == tgt and (c.r("LevelStartRoom") & 0x80):
+                return                    # the key is ours (KeyHeld)
             if c.r("RoomNo") != room:
                 raise GiveUp(f"left the miner's room {room}")
             mx = px if px is not None else c.r("MinerX")
@@ -945,8 +1188,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("levels", nargs="*", type=int)
     ap.add_argument("--mortal", action="store_true")
-    ap.add_argument("--frames", type=int, default=7200)
+    ap.add_argument("--frames", type=int, default=9000)
     ap.add_argument("-v", action="store_true")
+    ap.add_argument("--bar", action="store_true", help="print every time-bar refill (power cell)")
     ap.add_argument("--log", help="append one JSON line per death / give-up (last 48 frames, "
                                   "enemies, crunch/phase state, what the bot was doing)")
     ap.add_argument("--safe", action="store_true",
@@ -964,6 +1208,9 @@ def main() -> int:
         t0 = con.frames
         ok, why, pilot = finish(con, lv, a.mortal, a.v, a.frames, a.safe, a.log, n)
         used = con.frames - t0
+        if a.bar:
+            print(f"           bar refills (frame, room, before->after): "
+                  f"{[(f, r + 1, b, c) for f, r, b, c in con.refills if f > t0 + 5]}")
         print(f"level {n:2d}: {'DONE' if ok else 'FAIL'}  {used:5d} frames  "
               f"deaths {pilot.deaths}  rooms {len(pilot.rooms_seen)}/{len(lv.rooms)}"
               f"  - {why}")

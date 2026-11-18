@@ -1,7 +1,7 @@
 ; Generated from Level 3 (level 3). Do not edit by hand.
 LEVEL3_START_ROOM = 0
 LEVEL3_WALL_COLOR = $c4
-LEVEL3_WALL_COLOR2 = $c6
+LEVEL3_WALL_COLOR2 = $58
 LEVEL3_MINER_ROOM = 130
 LEVEL3_MINER_X = 39
 LEVEL3_MINER_Y = 96
@@ -17,9 +17,9 @@ LEVEL3_MINER_Y = 96
 ; (the shape must be shared). C11 (2026-10-21): block = 3 row-pool
 ; indices — the hot count/stream is gone (hot derives from PF row 1).
 LEVEL3_RoomShapes:
-  .byte SHAPE_M3 ; room 0 (model 3)
-  .byte SHAPE_M25 ; room 1 (model 25)
-  .byte SHAPE_M0 ; room 2 (model 0)
+  .byte SHAPE_M37 ; room 0 (model 37)
+  .byte SHAPE_M106 ; room 1 (model 106)
+  .byte SHAPE_M100 ; room 2 (model 100)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
 ; (x<<4 | y) normalised to the level origin. Exits are DERIVED at
@@ -36,10 +36,11 @@ LEVEL3_RoomPositions:
 ; none; the enemy record index is derived at room load).
 LEVEL3_RoomCounts:
   .byte $00 ; room 0: 0 record(s)
-  .byte $40 ; room 1: 1 record(s)
+  .byte $80 ; room 1: 2 record(s)
   .byte $40 ; room 2: 1 record(s)
 
-; Enemy data: 2 enemy records across 3 rooms, 3 bytes each (type|dir, x, y).
+; Enemy data: 3 enemy records across 3 rooms, 3 bytes each (type|dir, x, y).
 LEVEL3_EnemyDataTable:
-  .byte $01, 47, 84
   .byte $01, 55, 48
+  .byte $04, 39, 120
+  .byte $01, 71, 48

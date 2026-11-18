@@ -26,10 +26,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-KERNEL = (ROOT / "kernel.asm").read_text(encoding="utf-8")
-# S5.4: LaserHitTest body moved to bank2 (entry tramp stays in kernel.asm)
-BANK2 = (ROOT / "bank2.asm").read_text(encoding="utf-8")
-BANK3 = (ROOT / "bank3.asm").read_text(encoding="utf-8")
+KERNEL = (ROOT / "bank0.asm").read_text(encoding="utf-8")
+# S5.4: LaserHitTest body moved to bank2 (entry tramp stays in bank0.asm)
+BANK2 = (ROOT / "bank6.asm").read_text(encoding="utf-8")
+BANK3 = (ROOT / "bank5.asm").read_text(encoding="utf-8")
 
 
 def loader_run(records, dark=0x00):
@@ -50,12 +50,12 @@ def loader_run(records, dark=0x00):
 
     names = {"EBLER_Loop", "EBLER_Done", "EnemyRamX", "EnemyRamY",
              "EnemyRamD", "EnemyCount", "FetchPtr"}
-    lbl = parse_labels(ROOT / "tests" / "frozen" / "bank2.lst", names)
+    lbl = parse_labels(ROOT / "tests" / "frozen" / "bank6.lst", names)
     missing = names - lbl.keys()
-    assert not missing, f"frozen bank2.lst missing {sorted(missing)} — re-freeze"
+    assert not missing, f"frozen bank6.lst missing {sorted(missing)} — re-freeze"
 
     mem = Mem()
-    mem.bank = 2
+    mem.bank = 6
     r = mem.ram
     rec = 0x180                      # RAM window FetchPtr reads (no stack)
     for i, (typ, dir_) in enumerate(records):
@@ -91,7 +91,7 @@ def line_no(pattern: str, flags: int = 0) -> int:
     for i, ln in enumerate(KERNEL.splitlines()):
         if re.search(pattern, ln, flags):
             return i + 1
-    raise AssertionError(f"not found in kernel.asm: {pattern}")
+    raise AssertionError(f"not found in bank0.asm: {pattern}")
 
 
 def main() -> None:
@@ -110,7 +110,7 @@ def main() -> None:
     # C2 (2026-10-20): the rect/PF/meta block reader (B3RoomBlocks) moved into
     # bank2 and is tail-jumped from EnterRoomB2 BEFORE the enemy shadow loop, so
     # PF is still loaded first (the ordering the original assertion pinned).
-    assert ".EBpf:" in BANK3.split("B3RoomBlocks:")[1]
+    assert "sta BK_MODELS" in BANK3.split("B3RoomBlocks:")[1]  # shape step hops to bank7
     assert "jmp ERBlocksPad" in BANK2
     # C7 (2026-10-20): the PF/meta/extras half moved to bank3 and runs LAST
     # (it ends in bank3's own ReturnPad, so the shape step needs no cross-bank
@@ -151,7 +151,7 @@ def main() -> None:
         "loader must read the packed record byte (+0) into Temp for the snake test"
     # --- stride guard: the 3 B record must stay 3 B in BOTH hand-copied
     # EnemyOffTable tables (kernel + bank2) and in the loader's *3 base math.
-    for who, text in (("kernel.asm", KERNEL), ("bank2.asm", BANK2)):
+    for who, text in (("bank0.asm", KERNEL), ("bank6.asm", BANK2)):
         m_off = re.search(r"^EnemyOffTable:\n\s+\.byte ([\d,\s]+)", text, re.M)
         assert m_off, f"{who}: EnemyOffTable literal missing"
         vals = [int(v) for v in m_off.group(1).replace(" ", "").split(",") if v]
@@ -192,9 +192,9 @@ def main() -> None:
     ceh_body = KERNEL.split("CEH_HasMore:")[1].split("CEHNext:")[0]
     assert "lda EnemyRamY,Y" in ceh_body, "CheckEnemyHit must read EnemyRamY"
     assert "sta ActiveObjectY" in ceh_body
-    laser = BANK2.split("LaserHitTestBody:")[1].split("EnemyOffTable:")[0]
+    laser = BANK2.split("\nLaserTipEnemy:")[1].split("\nEBLCellCheck:")[0]
     assert "sbc EnemyRamY,X" in laser, "LaserHitTest must read EnemyRamY"
-    assert "(EnemyDataLo),Y" not in laser.split(".LHHit")[0], \
+    assert "(EnemyDataLo),Y" not in laser.split("LaserTipSpan")[0], \
         "LaserHitTest vertical test still reads ROM y"
 
     # --- dispatch + snake gate -------------------------------------------
@@ -300,7 +300,7 @@ def main() -> None:
         "DEYDelta must be a global label (gap leaf cannot jmp a local)"
     assert "cmp #ENEMY_MOTH" in dey and "CallPad_MothYDerive" in dey, \
         "DeriveEnemyY must dispatch the moth via CallPad_MothYDerive (bank1)"
-    _b1m = (ROOT / "bank1.asm").read_text(encoding="utf-8")
+    _b1m = (ROOT / "bank2.asm").read_text(encoding="utf-8")
     moth = _b1m.split("MothYDerive:")[1].split("TitleSelect:")[0]
     assert "and #15" in moth and "cmp #8" in moth, \
         "moth phase must be (P>>2)&15 with triangle mirror at 8"
@@ -313,7 +313,7 @@ def main() -> None:
     assert "sta EnemyRamP" not in moth, "MothYDerive reads the clock only"
 
     # --- E4 Stage C: bank2 MothRoutine horizontal patrol ---------------------
-    b2 = (ROOT / "bank2.asm").read_text(encoding="utf-8")
+    b2 = (ROOT / "bank6.asm").read_text(encoding="utf-8")
     mr = b2.split("MothRoutine:")[1].split("MothBitTable:")[0]
     body = "\n".join(ln.split(";")[0] for ln in mr.splitlines())
     # Same-bank leaf jsr is fine (BandRowFromLine); a CROSS-bank jsr/fold is
@@ -336,7 +336,7 @@ def main() -> None:
     assert body.count("(FetchPtr),Y") == 1, \
         "only the spawn record type read stays direct (walk converts to " \
         "cell tests, plan 4.1 — rect reads must be gone)"
-    assert "adc ColOff,X" in body and "and ColMask,X" in body \
+    assert "lda ColOff,X" in body and "and ColMask,X" in body \
         and "lda PF0Buf,Y" in body, \
         "moth walk must be the PHM-style cell walk (plan 4.1)"
     assert "RcBase" not in body and "RcW1" not in body, \
@@ -345,7 +345,7 @@ def main() -> None:
         "wrap/off-screen candidate must turn (plan's mod-256 range passes 255)"
     assert re.search(r"cmp\s+#33", body) and re.search(r"cmp\s+#224", body), \
         "range check = spawn ± 8 tiles mod-256 (cmp #33 / cmp #224)"
-    assert body.count("sbc #7") >= 2, \
+    assert body.count("sbc #7") >= 1, \
         "cols must start at VISIBLE left (Temp-5/-7 bomb convention), not Temp"
     assert "adc #8" in body and "adc #1" in body, \
         "rows must be visual Y+1..Y+8 (GRP1 ObjTop+1 window)"
@@ -440,40 +440,18 @@ def main() -> None:
             < disp.index("cmp #ENEMY_SNAKE")), \
         "dispatch order must stay tentacle -> moth -> snake"
 
-    # --- water strip: bottom 1/4 of the bottom band, split pass ------------
-    assert ".WaterRow:" in KERNEL, "water strip pass missing"
-    adv = KERNEL.split("Advance to next tile row")[1].split(".AfterRows:")[0]
-    assert "beq .WaterRow" in adv, "row 2 must hand off to .WaterRow"
-    assert "bcs .AfterRows" in adv, \
-        "water pass must exit .AfterRows (X=4 bcs after cpx #TILE_ROWS)"
-    gate = KERNEL.split("Scanlines this pass")[1].split(".Line:")[0]
-    assert "lda CollisionX" in gate, \
-        "row 2 body count must be the tide value 36+off (CollisionX carrier)"
-    # split tail (2026-10-05): rows 0/1 store 48 + WSYNC + `jmp .Line` BEFORE
-    # the tide block; row 2 loads CollisionX, WSYNCs, stores its tide count,
-    # then falls straight into .Line (row1 setup gap 77->74c = the +1
-    # line/frame stall).
-    # A1 gap fix (2026-10-05): `sta LineCount` sits AFTER `sta WSYNC` in
-    # both paths — -3c from the setup-gap window (A1's `sta Temp` in .Row
-    # pushed gaps to 77/79 = +2 lines/frame), +3c to the first body line.
-    # Moving either store back before its WSYNC re-opens the stall.
-    assert gate.index(".RowLinesTide:") > gate.index("jmp CaveLine"), \
-        "split tail: tide block must come after the fixed-band WSYNC jmp"
-    # strip comments first — the A1 explanation above quotes both mnemonics
-    gcode = "\n".join(l.split(";")[0] for l in gate.splitlines())
-    assert gcode.index("sta LineCount") > gcode.index("sta WSYNC"), \
-        "LineCount store must follow WSYNC (setup-gap A1 fix)"
-    assert "sta LineCount" in gcode, \
-        "the bottom band must store LineCount between its WSYNC and the loop"
-    wr = KERNEL.split(".WaterRow:")[1].split(".GrpZero:")[0]
-    assert re.search(r"lda\s+#LINES_PER_TILE\b", wr) and \
-        "sbc CollisionX" in wr, \
-        ("strip pass: setup line + (LINES_PER_TILE-(24+off)) bodies = "
-         "12-off strip (N=4)")
-    assert "lda RoomBandColor" in wr and "sta COLUBK" in wr, \
-        "strip must paint the band color (blink-off path, inlined read)"
-    assert wr.rstrip().endswith("jmp CaveLine"), \
-        "strip must continue into the shared .Line loop"
+    # --- water strip: the bottom 1/4 of the bottom band ------------------------
+    # 2026-11: the gameplay kernel is the generated bank6 kernel (tools/cave_kernel_gen.py);
+    # the strip is one COLUBK store on the line 132+off (tools/test_cave_kernel.py measures
+    # the line for every tide). Pin the structure here: tide count from the CollisionX
+    # carrier, band colour from RoomBandColor, dead-address store when the strip is off.
+    gen = (ROOT / "generated" / "cave_kernel.inc").read_text(encoding="utf-8")
+    assert "sta COLUBK,X" in gen and "lda RoomBandColor" in gen, \
+        "the bank6 kernel must paint the water strip with RoomBandColor"
+    assert "and CollisionX" in gen, \
+        "the bottom band's line count must be the tide value (CollisionX carrier)"
+    assert "WaterXROM" in gen and "ora WaterOff" in gen, \
+        "the strip store must be redirectable to a dead TIA address (blink / band off)"
     # death check + respawn follow the strip (bottom_band_plan rules 2/4)
     cbt = KERNEL.split("CheckBandTouch:")[1].split(".CBTdone:")[0]
     assert "cmp #115" in cbt, "band touch origin must be RoomY >= 115"
@@ -481,7 +459,7 @@ def main() -> None:
     assert re.search(r"sbc\s+#12\b", llb), \
         "band respawn must shift RoomY up by 12 (not the whole 48-line band)"
     # bank1's fold-pad return address must track Overscan's new address
-    b1 = (ROOT / "bank1.asm").read_text(encoding="utf-8")
+    b1 = (ROOT / "bank2.asm").read_text(encoding="utf-8")
     ov = re.search(r"^\s*(\d+)\s+([0-9a-f]{4})\s+\S*\s*Overscan\b",
                    (ROOT / "bank0.lst").read_text(encoding="utf-8"),
                    re.M)

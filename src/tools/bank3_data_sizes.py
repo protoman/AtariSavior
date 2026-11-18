@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 GEN = ROOT / "generated"
 
 EXTRAS_SLOT = 0xF450 - 0xF010
-SHAPES_SLOT = 0xF8B7 - 0xF5CC
+SHAPES_SLOT = 0xFBF8 - 0xF4C0   # bank4 (2026-11-14)
 
 
 def main() -> int:
@@ -46,7 +46,7 @@ def main() -> int:
     print(f"bank3 extras slot: {EXTRAS_SLOT} B ($F010-$F44F)")
     print(f"  extras + base tbl : {extras_bytes} B "
           f"({EXTRAS_SLOT - extras_bytes} B slack)")
-    print(f"bank3 shapes slot: {SHAPES_SLOT} B ($F5CC-$F8B6)")
+    print(f"bank4 shapes slot: {SHAPES_SLOT} B ($F4C0-$FBF7)")
     print(f"  shapes + row pool : {shape_bytes} B for {shapes} shapes "
           f"({SHAPES_SLOT - shape_bytes} B slack)")
     if shapes:

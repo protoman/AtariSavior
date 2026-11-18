@@ -37,9 +37,10 @@ def lst_labels(path):
 
 
 L0 = lst_labels(FROZEN / "bank0.lst")
-L1 = lst_labels(FROZEN / "bank1.lst")
-L2 = lst_labels(FROZEN / "bank2.lst")
-L3 = lst_labels(FROZEN / "bank3.lst")   # C7: shape blocks + extras (bank3)
+L1 = lst_labels(FROZEN / "bank3.lst")   # BombMarkWalls: gameplay bank
+L2 = lst_labels(FROZEN / "bank6.lst")
+L3 = lst_labels(FROZEN / "bank5.lst")   # C7: extras (bank3)
+L7 = lst_labels(FROZEN / "bank4.lst")   # 2026-11-10: shape blocks live in bank4
 
 import test_fixtures as FX  # noqa: E402
 
@@ -148,10 +149,10 @@ def load_room(room):
     (StageBandTab Meta, hot stream walk) stays fixture-true. C4: no rect
     cache (cell collision)."""
     model = MODEL[room]
-    a_rr = L3[f"M{model}Shape"]
+    a_rr = L3["RoomNoStream"]   # (shapes moved to bank4: the empty stream is bank3's sentinel)
     # C5: MetaA/MetaB are staged from the room's extras record.
-    mem.ram[I_PF0LO] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
-    mem.ram[I_PF0HI] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
+    mem.ram[I_PF0LO] = BANKS[5][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
+    mem.ram[I_PF0HI] = BANKS[5][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     for i in range(3):
@@ -191,7 +192,7 @@ def run_case(tag, bombx, roomx, y=70):
     while bmw_seen is None and frame < limit:
         pin(y)
         step()
-        if mem.bank == 1 and mpu.pc == PC_BMW:
+        if mem.bank == 3 and mpu.pc == PC_BMW:
             bmw_seen = frame
     if bmw_seen is None:
         watch = False

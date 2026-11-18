@@ -36,7 +36,7 @@ IDX_LEVEL = 0x23          # $A3 Level
 # DropTarget ZP index (decl walk, same as sim_frame_budget)
 DROP_IDX = None
 _addr = None
-for _line in (SRC / "kernel.asm").read_text(errors="replace").splitlines():
+for _line in (SRC / "bank0.asm").read_text(errors="replace").splitlines():
     if re.match(r"\s*org\s+\$80\b", _line):
         _addr = 0x80
         continue

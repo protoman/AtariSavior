@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Phase 5 key pickup guard (docs/feature_tiles_plan.md).
 
-Contract under test (kernel.asm):
+Contract under test (bank0.asm):
   * CheckEnemyHit routes type 6 (KEY) to CEH_Key BEFORE the kill path — the
     key is collected, never fatal.
   * CEH_Key latches KeyHeld (LevelStartRoom $A7 b7) and marks the key slot
@@ -26,7 +26,7 @@ from test_cell_map import (  # noqa: E402
     Mem, RTS_SENTINEL, parse_labels, BANK0, FROZEN,
 )
 
-K = (SRC / "kernel.asm").read_text()
+K = (SRC / "bank0.asm").read_text()
 
 # --- 1. asm structure -------------------------------------------------------
 ceh = K[K.index("\nCheckEnemyHit:"):K.index("\nBombTick")]
@@ -49,7 +49,7 @@ assert "sta EnemyDeadMask" in body, "CEH_Key must mark the key slot dead"
 assert "ora #$18" not in body, "CEH_Key must NOT auto-open doors"
 assert "LoseLife" not in body, "CEH_Key must not kill the player"
 
-B2 = (SRC / "bank2.asm").read_text()
+B2 = (SRC / "bank6.asm").read_text()
 # bank2 keeps the LevelStartRoom hand copy for LoadLevelB2 (it writes the
 # start-room constant there; A1 2026-10-20 moved the renderer, not this).
 # verify_build's check_equ_sync is the authority on the value.
@@ -58,12 +58,13 @@ assert "LevelStartRoom = $A7" in B2, \
 # Touch-to-open: the M1 (left door) strip opens only when the player's box
 # overlaps it AND KeyHeld (not by merely holding the key). The overlay
 # cluster lives in bank0 since repack chunk 4 (2026-10-20).
-ov = K[K.index(".OvM1block:"):K.index(".OvM1no:")]
+O4 = (SRC / "bank4.asm").read_text()      # layout v3: the overlay cluster lives in bank 4
+ov = O4[O4.index(".OvM1block:"):O4.index(".OvM1no:")]
 assert "lda LevelStartRoom" in ov and "ora #$10" in ov, \
     "OvM1Block must key-unlock the left door (b4) on touch"
 # Right door = ball strip; a MetaB b7 strip unlocks (b3) on touch while
 # KeyHeld (tile 11/vcrunch is gone, so every b7 strip is a door now).
-sh = K[K.index("OvShutBand:"):K.index(".OSBm1:")]
+sh = O4[O4.index("OvShutBand:"):O4.index(".OSBm1:")]
 assert "lda LevelStartRoom" in sh and "ora #$08" in sh, \
     "OvShutBand must key-unlock a right door (b3) on touch"
 assert "cmp #$ff" not in sh, "the retired VcrBand gate still in OvShutBand"

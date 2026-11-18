@@ -30,14 +30,14 @@ SRC = ROOT
 FROZEN = SRC / "tests" / "frozen"
 
 for _i in range(8):
-    setattr(_CM, f"BANK{_i}", (FROZEN / f"bank{_i}.bin").read_bytes())
+    setattr(_CM, f"BANK{_i}", (FROZEN / f"bank{ {0:0,1:2,2:6,3:5,4:4,5:7,6:1,7:3}[_i] }.bin").read_bytes())
 Mem = _CM.Mem
 
 L0 = parse_labels(FROZEN / "bank0.lst", {"TitleBcd", "ScoreTe"})
 if {"TitleBcd", "ScoreTe"} - set(L0):
     sys.exit(f"bank0.lst missing labels: {sorted({'TitleBcd', 'ScoreTe'} - set(L0))}")
 
-KERNEL = (SRC / "kernel.asm").read_text(encoding="utf-8")
+KERNEL = (SRC / "bank0.asm").read_text(encoding="utf-8")
 
 
 def run_bcd(level: int) -> int:

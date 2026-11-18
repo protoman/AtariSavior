@@ -65,7 +65,8 @@ I_LIVES = 0x2C                          # $AC PlayerLives
 I_HOVER = 0x1C                          # $9C Hover (LoseLife arms it to $FF)
 
 HUD_JMP = None
-for _l in (FROZEN / "bank0.lst").read_text(errors="replace").splitlines():
+# 2026-11: the cave kernel is bank6 and ends in its own `jmp $FC68` (KernelExit)
+for _l in (FROZEN / "bank1.lst").read_text(errors="replace").splitlines():
     _code = _l.split(";")[0]
     if "jmp" in _code and "$FC68" in _code:
         _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})", _l)
@@ -73,7 +74,7 @@ for _l in (FROZEN / "bank0.lst").read_text(errors="replace").splitlines():
             HUD_JMP = int(_m.group(1), 16)
             break
 if HUD_JMP is None:
-    sys.exit("bank0.lst: `jmp $FC68` not found")
+    sys.exit("bank1.lst: `jmp $FC68` not found")
 
 # N=4 stride 4: band-1 rows are PF0 $C4, PF1 $C8, PF2 $CC
 PF0_B1, PF1_B1, PF2_B1 = 0xC4 & 0x7F, 0xC8 & 0x7F, 0xCC & 0x7F
@@ -149,7 +150,7 @@ def run_frames(n):
         poke()
         while True:
             W.step()
-            if W.mem.bank == 0 and W.mpu.pc == HUD_JMP:
+            if W.mem.bank == 1 and W.mpu.pc == HUD_JMP:
                 r = W.mem.ram
                 samples.append((r[PF0_B1], r[PF1_B1], r[PF2_B1],
                                 r[I_DEAD], r[I_LIVES]))
@@ -313,7 +314,7 @@ def main() -> None:
         W.mem.swcha = 0x7F
         while True:
             W.step()
-            if W.mem.bank == 0 and W.mpu.pc == HUD_JMP:
+            if W.mem.bank == 1 and W.mpu.pc == HUD_JMP:
                 if tuple(r[a] for a in (PF0_B1, PF1_B1, PF2_B1)) != P_TRIPLE[1]:
                     fails.append(f"spent: frame {fr}: band1 prefix grew again")
                     break
@@ -408,7 +409,7 @@ def main() -> None:
     print("  nopush: grow edge leaves RoomX untouched (left + right)")
 
     # --- 13. static: no record reads, no push, stride kept --------------
-    b3 = (SRC / "bank3.asm").read_text()  # C7: the crunch walkers are bank3
+    b3 = (SRC / "bank5.asm").read_text()  # C7: the crunch walkers are bank3
     ph = b3[b3.index("PhHcrEntry:"):]
     ph = ph[:ph.index("; Prefix tables")]
     if ph.count("(FetchPtr),Y") != 1:

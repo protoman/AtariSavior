@@ -31,7 +31,7 @@ FROZEN = ROOT / "tests" / "frozen"
 NEED = {"HotOverlapBody", "CollisionCellX", "CollisionCellY", "CollisionEndX",
         "CollisionEndY", "RoomRectsLo", "RoomRectsHi", "RoomMetaB",
         "RoomM1Hot", "EnemyDeadMask", "BombPacked", "LineCount"}
-L = parse_labels(FROZEN / "bank3.lst", NEED)
+L = parse_labels(FROZEN / "bank5.lst", NEED)
 missing = NEED - L.keys()
 if missing:
     sys.exit(f"frozen labels missing: {sorted(missing)}")
@@ -53,7 +53,7 @@ def run(meta_b: int) -> int:
                       ("EnemyDeadMask", 0), ("BombPacked", 0),
                       ("LineCount", PACK)):
         r[L[name] - 0x80] = val
-    mem.bank = 3
+    mem.bank = 5
     mpu = MPU(memory=mem)
     mpu.pc = L["HotOverlapBody"]
     mpu.a = mpu.x = mpu.y = 0

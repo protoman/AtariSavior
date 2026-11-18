@@ -24,7 +24,7 @@ exact bits and the latching contract are load-bearing:
 3. P1 must stay immediate: with VDELP1=1 its latch would be GRP0's c35 store
    (a WORSE split than its own c58) while its colour stays at c65.
 
-Reads the FROZEN bank images + kernel.asm (source-level contract).
+Reads the FROZEN bank images + bank0.asm (source-level contract).
 Run: /home/iuri/python3/bin/python3 tools/test_vdel_cave.py
 """
 import sys
@@ -51,7 +51,7 @@ if len(hits) != 1:
          f"frozen/bank0.bin, expected exactly 1 — the cave must enable P0 "
          "VDEL and keep P1 immediate (see the .Line comment)")
 
-K = (SRC / "kernel.asm").read_text(errors="replace")
+K = (SRC / "bank0.asm").read_text(errors="replace")
 
 # --- every .Line path must store GRP1 (P0's latch driver) --------------------
 body = K.split(".Grp1:")[1].split(".AfterObj:")[0]
@@ -73,7 +73,7 @@ if i_col > i_grp:
          "wrong scanline for every sprite (measured c19 vs c35)")
 
 # --- the HUD's own VDEL usage stays untouched -----------------------------
-b1 = (SRC / "bank1.asm").read_text(errors="replace")
+b1 = (SRC / "bank2.asm").read_text(errors="replace")
 if "VDELP1" not in b1 or b1.count("sta VDELP1") < 2:
     fail("bank1's HUD VDELP1 usage disappeared — the 48px score pipeline "
          "needs it and it is independent of the cave's P0 bit")
@@ -83,7 +83,7 @@ if "VDELP1" not in b1 or b1.count("sta VDELP1") < 2:
 # written on the scanline before it, so `.GrpSkip` must fetch row 0 on the
 # A0=$ff line instead of blanking. Blanking it ate the art's top row (user
 # report 2026-10-22: the helmet's narrow first row never appeared).
-kern = (SRC / "kernel.asm").read_text(errors="replace")
+kern = (SRC / "bank0.asm").read_text(errors="replace")
 skip = kern.split(".GrpSkip:")[1].split(".GrpZero:")[0]
 if "lda (Grp0Ptr),Y" not in skip:
     fail(".GrpSkip does not write art row 0 on the A0=$ff line — the player's "

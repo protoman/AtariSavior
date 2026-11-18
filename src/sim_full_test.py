@@ -30,7 +30,7 @@
 # 1000 = -8 (moves 8 color clocks to the RIGHT)
 
 # Wait! Does HMOVE move the sprite by HMP clocks EVERY scanline if HMOVE is called every scanline?
-# In kernel.asm, HMOVE is called ONCE per frame, in VBLANK:
+# In bank0.asm, HMOVE is called ONCE per frame, in VBLANK:
 # sta WSYNC
 # sta HMOVE
 # Wait! Does HMOVE need HMCLR?

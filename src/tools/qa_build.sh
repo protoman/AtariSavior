@@ -45,7 +45,7 @@ echo "qa_build: building the QA stage (sims skipped — they probe live content)
 ( cd "$DIR" && SIM_PY=/bin/false ./build.sh "$OUT" )
 cp "$DIR/generated/models_data.asm" "${OUT%.bin}.models.asm"
 cp "$DIR/bank0.lst" "${OUT%.bin}.bank0.lst"
-cp "$DIR/bank2.lst" "${OUT%.bin}.bank2.lst"
+cp "$DIR/bank6.lst" "${OUT%.bin}.bank6.lst"
 
 restore
 echo "qa_build: rebuilding the live ROM ..."

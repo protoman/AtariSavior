@@ -75,7 +75,7 @@ mem.banks_ = BANKS
 from py65.devices.mpu6502 import MPU  # noqa: E402
 mpu = MPU(memory=mem)
 
-ADDSCORE = label(SRC / "bank1.lst", "AddScore")
+ADDSCORE = label(SRC / "bank2.lst", "AddScore")
 mem.ram[0:3] = bytes([0x20, ADDSCORE & 0xFF, ADDSCORE >> 8])   # jsr AddScore
 
 
@@ -90,7 +90,7 @@ def add(score, amt_dec, lives):
     mem.ram[SC_TE] = pack(score % 100)
     mem.ram[LIVES] = lives
     mpu.a = pack(amt_dec)                  # AddScore takes the amount in A
-    mpu.pc, mpu.sp, mem.bank = PC_ENTRY, 0xFF, 1
+    mpu.pc, mpu.sp, mem.bank = PC_ENTRY, 0xFF, 2
     for _ in range(500):
         if mpu.pc == PC_RETURN:
             return ((mem.ram[SC_TH], mem.ram[SC_HU], mem.ram[SC_TE]),

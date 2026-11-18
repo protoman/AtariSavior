@@ -53,8 +53,9 @@ import convert_level as C            # noqa: E402  (rows_from_json / load_stage)
 import test_editor_roundtrip as ER   # noqa: E402  (editor build + PY constant)
 import stage_reach as SR           # noqa: E402  (route_segments: power-cell guard)
 
-LEVELS = 20
-ROOMS = 2 + sum(range(2, LEVELS + 1))   # 211 (level 1 has 2 rooms too)
+LEVELS = 32
+ROOM_CAP = 23                            # rooms per level stop growing at 23 (the two room banks hold ~4.0 KB; exact packing, banks plan 2026-11-15)
+ROOMS = 2 + sum(min(n, ROOM_CAP) for n in range(2, LEVELS + 1))   # 484 (level 1 has 2 rooms too)
 GRID_SPAN = 15                          # C1: nibble 15 is the no-room sentinel
 MAX_SHAPES = 128  # format cap: 7-bit shape index (LAYOUT 8, 2026-10-24)
 SHAPE_BUDGET = 128     # the format cap; the REAL limit is the bank3 shapes
@@ -96,6 +97,16 @@ def edge_cells(rows, direction: str) -> set[int]:
 
 def edge_open(rows, direction: str) -> bool:
     return bool(edge_cells(rows, direction))
+
+
+def open_side_bands(rows) -> set[int]:
+    """The walkable bands whose col-0 cell is open: where a player can leave the
+    room sideways. The exit fires at the screen edge in ANY of these bands, so
+    the neighbour must be open in exactly the same ones (user report 2026-11-17:
+    level 32, a 2-band channel room next to 1-band corridors dropped the player
+    inside the wall)."""
+    horiz = (1, 2) if len(rows) >= 4 else (1,)
+    return {b for b in horiz if b < len(rows) and rows[b][0] == "."}
 
 
 # Structural walls: hot, phase, door and hcrunch are GATED (they open at run
@@ -150,6 +161,94 @@ def entries_connected(rows) -> bool:
     return True
 
 
+def key_before_door_problem(level: dict, shapes: dict) -> str:
+    """The key must sit in a cell the player reaches with EVERY door closed (a door is a
+    wall until the key is held), and the miner must still be reachable with the doors open
+    (stage_reach counts a door as passable)."""
+    import copy
+    closed = copy.deepcopy(level)
+    for r in closed["rooms"]:
+        for p in r.get("asym_patches") or []:
+            if len(p) >= 3 and p[2] == 9:
+                p[2] = 1
+    at = {(r["room_x"], r["room_y"]): i for i, r in enumerate(closed["rooms"])}
+    grids, _dead = SR.level_grids(closed, shapes, at)
+    free = SR._free_reach(closed, grids, at)
+    for i, r in enumerate(level["rooms"]):
+        for e in r.get("enemies") or []:
+            if e.get("type") != 6:
+                continue
+            m = shapes[r["model_id"]]
+            bands = len(m["tiles"]) // m["width"]
+            band = min(bands - 1, int(round(e["y"] * 12)) // 36)
+            cell = min(19, (int(round(e["x"])) * 4 + 3) // 8)
+            if (i, band, cell) not in free:
+                return (f"the key (room {i + 1}, band {band}, cell {cell}) is behind a locked "
+                        "door: unreachable before the key is held")
+    return ""
+
+
+# ---- the stage AUDIT (mirror of DataSerializer.cpp AuditStage): NOTHING may be unused ----
+AUDIT_RULES = [   # (name, first level it may START, exactly?)
+    ("moth", 1, True), ("bat", 2, False), ("snake", 4, True), ("lamp", 4, False),
+    ("water", 4, False), ("spider", 5, False), ("hot", 5, False), ("phase", 6, False),
+    ("tentacle", 7, False), ("extra miner", 7, False), ("pillar", 7, False),
+    ("power cell", 9, False), ("raft", 11, False), ("hcrunch", 14, False),
+    ("door", 15, True), ("key", 15, True),
+]
+ENEMY_NAMES = {0: "spider", 1: "bat", 2: "snake", 3: "tentacle", 4: "moth"}
+
+
+def audit_stage(levels: list, shapes: dict) -> list:
+    """-> problems. Every element is used, starts at its level (the dated ones EXACTLY), and
+    each level has >= 2 enemy types from level 4, >= 3 from 8, >= 4 from 12."""
+    first: dict[str, int] = {}
+    problems = []
+    for n, level in enumerate(levels, start=1):
+        kinds = set()
+        for room in level["rooms"]:
+            for e in room.get("enemies") or []:
+                t = e.get("type")
+                if t in ENEMY_NAMES:
+                    kinds.add(ENEMY_NAMES[t])
+                    first.setdefault(ENEMY_NAMES[t], n)
+                elif t == 7:
+                    first.setdefault("raft", n)
+                elif t == 14:
+                    first.setdefault("power cell", n)
+                elif t == 15:
+                    first.setdefault("extra miner", n)
+                elif t == 6:
+                    first.setdefault("key", n)
+            if room.get("lamps"):
+                first.setdefault("lamp", n)
+            if room.get("bottom_band"):
+                first.setdefault("water", n)
+            if shapes[room["model_id"]].get("mid_band_type"):
+                first.setdefault("hot", n)
+            for c in room.get("feature_cells") or []:
+                if c[2] == 10:
+                    first.setdefault("phase", n)
+                if c[2] == 12:
+                    first.setdefault("hcrunch", n)
+            for p in room.get("asym_patches") or []:
+                if len(p) >= 3 and p[2] == 1:
+                    first.setdefault("pillar", n)
+                if len(p) >= 3 and p[2] == 9:
+                    first.setdefault("door", n)
+        need = 4 if n >= 12 else 3 if n >= 8 else 2 if n >= 4 else 0
+        if len(kinds) < need:
+            problems.append(f"level {n} has {len(kinds)} enemy types, needs {need}")
+    for name, lvl, exact in AUDIT_RULES:
+        if name not in first:
+            problems.append(f"{name} is UNUSED")
+        elif first[name] > lvl:
+            problems.append(f"{name} starts at level {first[name]}, must be from {lvl}")
+        elif exact and first[name] < lvl:
+            problems.append(f"{name} starts at level {first[name]}, must START at {lvl}")
+    return problems
+
+
 def main() -> int:
     binary = ER.ensure_editor()
 
@@ -177,7 +276,7 @@ def main() -> int:
             print(f"FAIL: {len(levels)} levels, want {LEVELS}")
             return 1
         counts = [len(level["rooms"]) for level in levels]
-        want_counts = [2] + list(range(2, LEVELS + 1))   # 2-room floor
+        want_counts = [2] + [min(n, ROOM_CAP) for n in range(2, LEVELS + 1)]   # 2-room floor, capped at ROOM_CAP
         if counts != want_counts:
             print(f"FAIL: rooms per level {counts} != {want_counts}")
             return 1
@@ -193,6 +292,60 @@ def main() -> int:
             print("FAIL: unfinishable levels:\n  " + "\n  ".join(bad))
             return 1
 
+        # --- miners face / stand by the REAL entrance (user 2026-11-11; the
+        # facing was asked for twice - never again a regression) -----------
+        mshapes = {m["id"]: m for m in models}
+        for li, lv in enumerate(levels, 1):
+            rs = lv["rooms"]
+            pos = {(r["room_x"], r["room_y"]) for r in rs}
+            g = rs[lv["miner_room"]]
+            nl = (g["room_x"] - 1, g["room_y"]) in pos
+            nr = (g["room_x"] + 1, g["room_y"]) in pos
+            if nl != nr:
+                want_far = nl
+                if (lv["miner_x"] > 8) != want_far:
+                    print(f"FAIL: level {li}: the goal miner must stand on the side "
+                          f"opposite the entrance (neighbour {'left' if nl else 'right'})")
+                    return 1
+            want_dir = -1 if lv["miner_x"] > 8 else 1
+            if lv["miner_dir"] != want_dir:
+                print(f"FAIL: level {li}: the goal miner must face the room "
+                      f"(miner_x {lv['miner_x']}, miner_dir {lv['miner_dir']})")
+                return 1
+            for r in rs:
+                for e in r["enemies"]:
+                    if e["type"] != 15:
+                        continue
+                    l2 = (r["room_x"] - 1, r["room_y"]) in pos
+                    r2 = (r["room_x"] + 1, r["room_y"]) in pos
+                    wd = (-1 if l2 else 1) if l2 != r2 else (1 if e["x"] < 18 else -1)
+                    if e["dir"] != wd:
+                        print(f"FAIL: level {li} room {r['room_id'] + 1}: the extra "
+                              f"miner must face the entrance (dir {e['dir']}, want {wd})")
+                        return 1
+                # a bat needs room to fly: its air run (mirrored 20 columns) >= 4
+                if r["model_id"] in mshapes:
+                    m = mshapes[r["model_id"]]
+                    w, h = m["width"], len(m["tiles"]) // m["width"]
+                    for e in r["enemies"]:
+                        if e["type"] != 1:
+                            continue
+                        band = min(h - 1, int(e["y"]) // (12 // h))
+                        row = m["tiles"][band * w:(band + 1) * w]
+                        full = row + row[::-1]
+                        c = int(round(e["x"])) // 2
+                        if c >= w or full[c] != 0:
+                            continue
+                        lo = hi = c
+                        while lo > 0 and full[lo - 1] == 0:
+                            lo -= 1
+                        while hi < 2 * w - 1 and full[hi + 1] == 0:
+                            hi += 1
+                        if hi - lo + 1 < 4:
+                            print(f"FAIL: level {li} room {r['room_id'] + 1}: a bat in "
+                                  f"a pocket ({hi - lo + 1} air cells) can never be met")
+                            return 1
+
         # --- hcrunch needs a >= 4-tile gap above AND under (user 2026-10-25) -
         # The crush is survived only by leaving band 1; a short hole cannot
         # be lined up in time. Rule: every room with an hcrunch feature cell
@@ -204,6 +357,27 @@ def main() -> int:
                 run = run + 1 if v == 0 else 0
                 best = max(best, run)
             return best
+
+        # --- the two band colours must contrast (user 2026-11-11) ------------
+        # wall2 used to be wall lifted by 40: nearly the same hue. Now every level
+        # pairs two DIFFERENT TIA hues (orange+blue, cyan+red, green+pink...).
+        for level_n, level in enumerate(levels, start=1):
+            a = C.nearest_byte(level["wall_r"], level["wall_g"], level["wall_b"])
+            b = C.nearest_byte(level["wall2_r"], level["wall2_g"], level["wall2_b"])
+            if (a >> 4) == (b >> 4) or abs(((a >> 1) & 7) - ((b >> 1) & 7)) > 3:
+                print(f"FAIL: level {level_n} band colours ${a:02x}/${b:02x} do not contrast "
+                      f"(same hue, or luma too far apart)")
+                return 1
+
+        # --- no wall / band colour looks like the locked door (user 2026-11-17) ---
+        # The door stripe is TIA $1C yellow; a yellow band hid it.
+        for level_n, level in enumerate(levels, start=1):
+            for what, k in (("wall", "wall_"), ("band", "wall2_")):
+                x = C.nearest_byte(level[k + "r"], level[k + "g"], level[k + "b"])
+                if C.door_like_color(x):
+                    print(f"FAIL: level {level_n} {what} colour ${x:02x} is too close to the "
+                          f"locked-door yellow (${C.DOOR_COLOR_BYTE:02x})")
+                    return 1
 
         # --- spiders sit on a whole cell (release 0.8 shot 003) -------------
         # An 8 px sprite on an ODD display column straddles two cells and is
@@ -307,6 +481,21 @@ def main() -> int:
                   "window fit")
             return 1
         shapes = {m["id"]: m for m in models}
+        # The generator audits itself (AuditStage); this is the independent guard, plus a
+        # negative test: a stage without its moths / doors must FAIL the audit.
+        audit = audit_stage(levels, shapes)
+        if audit:
+            print("FAIL: stage audit: " + "; ".join(audit))
+            return 1
+        import copy
+        for victim, expect in ((4, "moth"), (6, "key"), (2, "snake")):
+            broken = copy.deepcopy(levels)
+            for lv in broken:
+                for room in lv["rooms"]:
+                    room["enemies"] = [e for e in room.get("enemies") or [] if e.get("type") != victim]
+            if not any(expect in pr for pr in audit_stage(broken, shapes)):
+                print(f"FAIL: the audit did not notice a stage without any {expect}")
+                return 1
         referenced = set()
 
         # --- per level: positions, adjacency carve, objects -----------------
@@ -450,6 +639,13 @@ def main() -> int:
                         print(f"FAIL: level {level_n} rooms {rid} and {other} "
                               f"disagree on the {name} carve (mirrored cell 0)")
                         return 1
+                    if open_side_bands(here) != open_side_bands(rows[other]):
+                        print(f"FAIL: level {level_n} rooms {rid + 1} and "
+                              f"{other + 1} open the {name} link in DIFFERENT "
+                              f"bands ({sorted(open_side_bands(here))} vs "
+                              f"{sorted(open_side_bands(rows[other]))}) — the player "
+                              "leaving by the extra band lands inside a wall")
+                        return 1
                     if name == "east" and edge_open(here, "west"):
                         passages += 1
             # Reachability through the passable openings (each vertical pair is
@@ -546,17 +742,18 @@ def main() -> int:
                       "entry cell connected to the miner")
                 return 1
             # A SIDE entry must put the miner on the OPPOSITE side (user rule
-            # 2026-10-21): walked rooms are in order, so the room before the
-            # goal is where the player comes from.
+            # 2026-10-21). The entrance is the goal's REAL neighbour on the grid,
+            # not the room listed before it (user 2026-11-11, level 7).
             if len(rooms) > 1:
-                prev, goal = rooms[-2], rooms[-1]
-                if int(prev["room_y"]) == int(goal["room_y"]) and \
-                        int(prev["room_x"]) != int(goal["room_x"]):
-                    from_west = int(prev["room_x"]) < int(goal["room_x"])
-                    want_right = from_west
+                goal = rooms[-1]
+                gp = {(int(r["room_x"]), int(r["room_y"])) for r in rooms}
+                wl = (int(goal["room_x"]) - 1, int(goal["room_y"])) in gp
+                wr = (int(goal["room_x"]) + 1, int(goal["room_y"])) in gp
+                if wl != wr:
+                    want_right = wl
                     if (miner_cell >= 10) != want_right:
                         print(f"FAIL: level {level_n} miner entered from "
-                              f"{'west' if from_west else 'east'} but sits "
+                              f"{'west' if wl else 'east'} but sits "
                               f"at cell {miner_cell} (same side)")
                         return 1
 
@@ -604,8 +801,8 @@ def main() -> int:
                 side_bands = {b for b in range(1, len(r2) - 1)
                               if r2[b][0] not in STRUCTURAL_WALLS}
                 for obj in (room.get("enemies") or []):
-                    if obj.get("type") == 14:
-                        continue          # a power cell is a pickup, not a hazard
+                    if obj.get("type") in (6, 14):
+                        continue          # a key / power cell is a pickup, not a hazard
                     band = int(float(obj.get("y", 0))) // rows_per_band
                     col = int(round(float(obj.get("x", 0))))
                     # band 0 is the vertical arrival; from band 1 on he lands
@@ -631,31 +828,32 @@ def main() -> int:
                           "does not connect its carved entries — a band-1 "
                           f"wall is off the corridor {rrows}")
                     return 1
-                # A locked DOOR gates the VERTICAL passage, so it must sit on
-                # a column the player enters or leaves the room by. (Phase
-                # walls are the opposite since 2026-10-27: horizontal
-                # obstacles only, pinned by the phase check further up.) In the maze
-                # layout a room can be a corner (north link only, or south
-                # only), so "the corridor" is any column open in band 0 OR the
-                # last band — not only a through-column (2026-10-24).
-                corridor = {x for x in range(10)
-                            if rrows[0][x] == "." or rrows[-1][x] == "."}
-                door_cols = [int(patch[1])
-                             for patch in room.get("asym_patches") or []
-                             if len(patch) >= 3 and patch[2] == 9]
-                if door_cols:
-                    if not corridor:
-                        print(f"FAIL: level {level_n} room "
-                              f"{room['room_id']} has a gate but no vertical "
-                              "corridor")
+                # A locked DOOR is a sideways DOORWAY (2026-11-13; the old vertical-corridor
+                # gate could not be built with an M1 strip): band 1 is air at its column,
+                # every other band is wall there, and the room has a side neighbour.
+                for patch in room.get("asym_patches") or []:
+                    if len(patch) < 3 or patch[2] != 9:
+                        continue
+                    col = int(patch[1])
+                    if level_n < 15:
+                        print(f"FAIL: level {level_n} room {room['room_id']} has a locked "
+                              "door before level 15")
                         return 1
-                    for col in door_cols:
-                        if col not in corridor:
-                            print(f"FAIL: level {level_n} room "
-                                  f"{room['room_id']} door at cell {col} "
-                                  f"is OFF the corridor {sorted(corridor)} — "
-                                  "unreachable")
-                            return 1
+                    if int(patch[3] if len(patch) > 3 else 0) != 1:
+                        print(f"FAIL: level {level_n} room {room['room_id']} door is not "
+                              "an M1 (left) strip")
+                        return 1
+                    if rrows[1][col] != "." or any(rrows[b][col] == "."
+                                                   for b in range(len(rrows)) if b != 1):
+                        print(f"FAIL: level {level_n} room {room['room_id']} door at cell "
+                              f"{col} is not a doorway (band 1 open, other bands wall): {rrows}")
+                        return 1
+                    west = (int(room["room_x"]) - 1, int(room["room_y"])) in pos
+                    east = (int(room["room_x"]) + 1, int(room["room_y"])) in pos
+                    if not (west or east):
+                        print(f"FAIL: level {level_n} room {room['room_id']} door has no "
+                              "side neighbour: it gates nothing")
+                        return 1
 
             # Objects: the editor caps (2 per room, 1 per tile row).
             for room in rooms:
@@ -814,6 +1012,165 @@ def main() -> int:
                               f"lamp at cell {cell}/band {band} floats in a "
                               "gap with no wall beside it")
                         return 1
+                # User rules 2026-11-10 (level 3 room 2: a bat inside the miner's
+                # niche, a hot band that was a plain red tunnel):
+                #  (a) an enemy / lamp stands on air the player can REACH from the
+                #      room's openings (no object in a sealed hole);
+                #  (b) a vertical through room (ceiling AND floor opening, no side
+                #      exit, no feature cells) never has all four bands the same
+                #      width and never the same ceiling / floor width;
+                #  (c) its hot band (when hot) is a BARRIER: the open cells of the
+                #      hot band differ from the ceiling's and from the floor's.
+                nb = len(band_rows)
+                seen = set()
+                stack = [(0, c) for c in range(10) if band_rows[0][c] == "."]
+                stack += [(nb - 1, c) for c in range(10) if band_rows[nb - 1][c] == "."]
+                stack += [(b, 0) for b in range(nb) if band_rows[b][0] == "."]
+                seen.update(stack)
+                while stack:
+                    by, bx = stack.pop()
+                    for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                        ny, nx = by + dy, bx + dx
+                        if 0 <= ny < nb and 0 <= nx < 10 and (ny, nx) not in seen \
+                                and band_rows[ny][nx] == ".":
+                            seen.add((ny, nx))
+                            stack.append((ny, nx))
+                for enemy in enemies:
+                    if int(enemy["type"]) in (2, 7, 6, 15):
+                        continue
+                    ecell = int(float(enemy["x"])) // 2
+                    ecell = ecell if ecell < 10 else 19 - ecell
+                    eband = int(float(enemy["y"])) // units
+                    if band_rows[eband][ecell] == "." and (eband, ecell) not in seen:
+                        print(f"FAIL: level {level_n} room {room['room_id']}: enemy "
+                              f"type {enemy['type']} at cell {ecell}/band {eband} "
+                              "sits in sealed air the player never reaches")
+                        return 1
+                for lamp in lamps:
+                    lcell = int(float(lamp["x"])) // 2
+                    lcell = lcell if lcell < 10 else 19 - lcell
+                    lband = int(float(lamp["y"])) // units
+                    if band_rows[lband][lcell] == "." and (lband, lcell) not in seen:
+                        print(f"FAIL: level {level_n} room {room['room_id']}: lamp "
+                              f"at cell {lcell}/band {lband} is in sealed air")
+                        return 1
+                # (d) PASSABLE (user report 2026-11-10, level 14 room 9: a channel room
+                #     whose side entry was sealed - the old connectivity guard counted
+                #     the entry cell as its own exit). On the 20-column mirrored map,
+                #     every live side of a room with >= 2 live sides must reach another
+                #     live side. Gated cells (phase / crunch) count as open.
+                # (e0) HOT = NO SIDE EXIT (user 2026-11-16). The side aisle and the corridor span
+                #      are cut through band 1, which erased the hot walls of 120 of the 130 hot
+                #      rooms (a HotSplit kept 1.0 of its 7 hot cells, 23 rooms none). A hot room
+                #      (not the channel, whose hot ceiling is its own design) has no neighbour to
+                #      its left or right and keeps its barrier: >= 5 hot cells in band 1.
+                _model = shapes[room["model_id"]]
+                if int(_model.get("mid_band_type", 0)) == 1 and "Channel" not in _model.get("name", ""):
+                    _gx, _gy = int(room["room_x"]), int(room["room_y"])
+                    if (_gx - 1, _gy) in pos or (_gx + 1, _gy) in pos:
+                        print(f"FAIL: level {level_n} room {room['room_id'] + 1} is a hot room "
+                              "with a side exit (a hot room has none)")
+                        return 1
+                    _hot = sum(1 for _c in range(10) if band_rows[1][_c] != ".")
+                    if _hot < 5:
+                        print(f"FAIL: level {level_n} room {room['room_id'] + 1} is a hot room "
+                              f"with only {_hot} hot cells in band 1 (its barrier was cut away)")
+                        return 1
+                # (e) HOT RUN-OUT (user 2026-11-10, level 14 room 9): a hot band entered
+                #     from a side needs 2 open cells before its first wall, or the
+                #     inertia carries the player into it.
+                if int(shapes[room["model_id"]].get("mid_band_type", 0)) == 1 and nb >= 2:
+                    gx0, gy0 = int(room["room_x"]), int(room["room_y"])
+                    hot_row = band_rows[1]
+                    for dx_, cols in ((-1, (0, 1)), (1, (0, 1))):
+                        if (gx0 + dx_, gy0) in pos and hot_row[cols[0]] == ".":
+                            if hot_row[cols[1]] != ".":
+                                print(f"FAIL: level {level_n} room {room['room_id']}: "
+                                      "hot wall right at the side entry (needs 2 open "
+                                      "cells to stop)")
+                                return 1
+                # (f) RAFT RUN-OUT (user 2026-11-10): leaving the raft at the water's edge
+                #     the player flies up from the first water column; the hot row above
+                #     needs TWO open columns there (cells w0 and w0+1), or he hits it.
+                if (room.get("bottom_band") and nb >= 3
+                        and int(shapes[room["model_id"]].get("mid_band_type", 0)) == 1):
+                    last_row = band_rows[-1]
+                    w0 = next((c for c in range(10) if last_row[c] == "."), None)
+                    hot_row = band_rows[1]
+                    if w0 is not None and hot_row[0] == "." \
+                            and any(r.get("type") == 7 for r in room.get("enemies") or []):
+                        need = w0 + 2
+                        if any(hot_row[c] != "." for c in range(need)):
+                            print(f"FAIL: level {level_n} room {room['room_id']}: the raft's "
+                                  f"edge column {w0} has less than 2 free columns under "
+                                  "the hot wall")
+                            return 1
+                def passable(ch):
+                    return ch not in STRUCTURAL_WALLS
+                gx, gy = int(room["room_x"]), int(room["room_y"])
+                sides = {}
+                if (gx - 1, gy) in pos:
+                    sides["W"] = {(b, 0) for b in (1, 2) if b < nb}
+                if (gx + 1, gy) in pos:
+                    sides["E"] = {(b, 19) for b in (1, 2) if b < nb}
+                if (gx, gy - 1) in pos:
+                    sides["N"] = {(0, c) for c in range(20)}
+                if (gx, gy + 1) in pos:
+                    sides["S"] = {(nb - 1, c) for c in range(20)}
+                def cell_ok(b, f):
+                    return passable(band_rows[b][f if f < 10 else 19 - f])
+                if len(sides) >= 2:
+                    for sname, cells in sides.items():
+                        starts = [c for c in cells if cell_ok(*c)]
+                        if not starts:
+                            continue
+                        seen2 = set(starts)
+                        st2 = list(starts)
+                        while st2:
+                            by, bx = st2.pop()
+                            for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                                ny, nx = by + dy, bx + dx
+                                if 0 <= ny < nb and 0 <= nx < 20 \
+                                        and (ny, nx) not in seen2 and cell_ok(ny, nx):
+                                    seen2.add((ny, nx))
+                                    st2.append((ny, nx))
+                        others = set()
+                        for o, ocells in sides.items():
+                            if o != sname:
+                                others |= {c for c in ocells if cell_ok(*c)}
+                        if others and not (seen2 & others):
+                            print(f"FAIL: level {level_n} room {room['room_id']}: "
+                                  f"the {sname} entry reaches no other exit "
+                                  f"{sorted(sides)} - the room cannot be crossed")
+                            return 1
+                top_air = {c for c in range(1, 10) if band_rows[0][c] == "."}
+                bot_air = {c for c in range(1, 10) if band_rows[-1][c] == "."}
+                if (nb == 4 and top_air and bot_air and band_rows[1][0] != "."
+                        and band_rows[2][0] != "."
+                        and not room.get("feature_cells")
+                        and not room.get("bottom_band")
+                        and not any(p[0] == 1 and len(p) > 2 and p[2] == 5
+                                    for p in (room.get("asym_patches") or []))
+                        and room["room_id"] != 0):
+                    widths = [sum(1 for c in range(1, 10) if band_rows[b][c] == ".")
+                              for b in range(4)]
+                    if len(set(widths)) == 1:
+                        print(f"FAIL: level {level_n} room {room['room_id']}: "
+                              f"vertical room with four equal band widths {widths}")
+                        return 1
+                    if len(top_air) == len(bot_air):
+                        print(f"FAIL: level {level_n} room {room['room_id']}: "
+                              f"ceiling gap {sorted(top_air)} and floor gap "
+                              f"{sorted(bot_air)} have the same width")
+                        return 1
+                    if shapes[room["model_id"]].get("mid_band_type"):
+                        hot_air = {c for c in range(1, 10)
+                                   if band_rows[1][c] == "."}
+                        if hot_air == top_air or hot_air == bot_air:
+                            print(f"FAIL: level {level_n} room {room['room_id']}: "
+                                  f"hot band gap {sorted(hot_air)} is just the "
+                                  "ceiling/floor tunnel painted red")
+                            return 1
                 # Async is one of three generated specials, all row 1:
                 # LOCKED_DOOR (gate), PHASE (blinking gate), HCRUNCH (10-cell
                 # prefix). A hcrunch room must be object-free (convert rule).
@@ -865,7 +1222,7 @@ def main() -> int:
             return 1
 
         # --- feature progression (2026-10-20: HERO-style variety) ----------
-        # Every level must add/keep challenges: hot bands from 3, a water goal
+        # Every level must add/keep challenges: hot bands from 5, a water goal
         # from 4 (raft, then tentacle from 7), a keyed gate from 6, two-object
         # rooms from 9. A gate room is limited to ONE non-key enemy (convert).
         short_levels: list[int] = []
@@ -988,8 +1345,12 @@ def main() -> int:
             if level_n <= 6 and cell_rooms:
                 print(f"FAIL: level {level_n}: short level carries a power cell")
                 return 1
-            if level_n >= 3 and hot == 0:
+            if level_n >= 5 and hot == 0:
                 print(f"FAIL: level {level_n} has no hot room")
+                return 1
+            # user rule 2026-11-10: hot walls only from level 5
+            if level_n < 5 and hot:
+                print(f"FAIL: level {level_n} has {hot} hot room(s) below level 5")
                 return 1
             if level_n >= 4 and (water < 1
                                  or not rooms[-1].get("bottom_band")):
@@ -1011,14 +1372,31 @@ def main() -> int:
                 print(f"FAIL: level {level_n} water goal has several guards "
                       f"({goal_hazards})")
                 return 1
-            # Locked doors are disabled (M1 stripe cannot gate a vertical
-            # corridor — see DataSerializer PlanFor); the gate role is the
-            # blinking PHASE corridor from level 6.
-            if doors or keys:
-                print(f"FAIL: level {level_n} has locked doors/keys "
-                      f"(doors={doors}, keys={keys}) — disabled until the "
-                      "per-pair exit redesign")
+            # Locked doors + the key start at level 15 (user 2026-11-13), at least one
+            # door and exactly one key per level from there; before it neither exists.
+            if level_n < 15 and any(
+                    (len(p) >= 3 and p[2] == 9) for rm in rooms
+                    for p in rm.get("asym_patches") or []) or (level_n < 15 and keys):
+                print(f"FAIL: level {level_n} has locked doors/keys before level 15")
                 return 1
+            if level_n >= 15:
+                door_total = sum(1 for rm in rooms for p in rm.get("asym_patches") or []
+                                 if len(p) >= 3 and p[2] == 9)
+                key_total = sum(1 for rm in rooms for e in rm.get("enemies") or []
+                                if e.get("type") == 6)
+                if not door_total or key_total != 1:
+                    print(f"FAIL: level {level_n} needs >= 1 locked door and exactly one "
+                          f"key (doors={door_total}, keys={key_total})")
+                    return 1
+                cells_total = sum(1 for rm in rooms for e in rm.get("enemies") or [] if e.get("type") == 14)
+                if level_n >= 21 and (door_total < 2 or cells_total < 2):
+                    print(f"FAIL: level {level_n}: the extra levels need >= 2 doors and >= 2 power cells "
+                          f"(doors={door_total}, cells={cells_total}; user 2026-11-13)")
+                    return 1
+                bad = key_before_door_problem(level, shapes)
+                if bad:
+                    print(f"FAIL: level {level_n}: {bad}")
+                    return 1
             if level_n >= 7 and tents == 0:
                 print(f"FAIL: level {level_n} has no tentacle")
                 return 1
@@ -1052,7 +1430,9 @@ def main() -> int:
             # The crunch sweeps band 1 from pair 1 (pair 0 stays open so a
             # crunch room can carry a side link), so ANY room with a vertical
             # passage can host it.
-            if level_n >= 14 and hcrunches == 0:
+            # (levels 21+ use the 7x7 maze: a room first entered from the side never hosts a crunch (user
+            # 2026-10-28), a rule this host test does not model; the per-level demand is for levels 14-20)
+            if 14 <= level_n <= 20 and hcrunches == 0:
                 host = False
                 for (hx, hy), hrid in pos.items():
                     if hrid == 0 or hrid == level.get("miner_room"):
@@ -1167,7 +1547,7 @@ def main() -> int:
             print(f"FAIL: {len(txts)} room .txt mirrors, want {ROOMS}")
             return 1
 
-        print(f"test_generator: OK (20 levels, {ROOMS} rooms, "
+        print(f"test_generator: OK ({LEVELS} levels, {ROOMS} rooms, "
               f"{len(models)} shapes, byte-identical reruns, "
               f"bank2 slack {tables_slack}B, bank3 extras {extras_slack}B / "
               f"shapes {shapes_slack}B)")

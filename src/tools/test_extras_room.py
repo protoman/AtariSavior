@@ -44,15 +44,18 @@ from test_cell_map import parse_labels  # noqa: E402
 
 NAMES = {"B3RoomBlocks", "PF0Buf", "RoomRectsLo", "RoomRectsHi",
          "RoomPF0Lo", "RoomPF0Hi", "RoomMetaA", "RoomMetaB", "Level",
-         "LevelConnSpare", "RoomNo", "LEVEL_ShapeTable",
-         "LevExtrasLo", "LevExtrasHi", "RoomM1Hot", "RoomNoStream",
-         "RowPoolPF0", "RowPoolPF1", "RowPoolPF2"}
-LAB = parse_labels(FROZEN / "bank3.lst", NAMES)
+         "LevelConnSpare", "RoomNo",
+         "LevExtrasLo", "LevExtrasHi", "RoomM1Hot", "RoomNoStream"}
+NAMES7 = {"LEVEL_ShapeTable", "RowPoolPF0", "RowPoolPF1", "RowPoolPF2"}
+LAB = parse_labels(FROZEN / "bank5.lst", NAMES)
+LAB.update(parse_labels(FROZEN / "bank4.lst", NAMES7))
+NAMES = NAMES | NAMES7
 missing = NAMES - LAB.keys()
 if missing:
-    sys.exit(f"bank3.lst labels missing: {sorted(missing)}")
+    sys.exit(f"bank5.lst labels missing: {sorted(missing)}")
 
-BANK3 = bytearray((FROZEN / "bank3.bin").read_bytes())
+BANK3 = bytearray((FROZEN / "bank5.bin").read_bytes())
+BANK7 = bytearray((FROZEN / "bank4.bin").read_bytes())   # shapes (2026-11-10)
 
 # --- test-owned staging area inside bank3's $F010 data window tail ----------
 SHAPE_A = 0xF400          # non-async shape (cold: no hot cells)
@@ -69,6 +72,11 @@ PF_B = bytes.fromhex("f0 f0 f0 f0 ff ff 3f 3f 3f 00 ff ff")
 def put(addr: int, data: bytes) -> None:
     off = addr - 0xF000
     BANK3[off:off + len(data)] = data
+
+
+def put7(addr: int, data: bytes) -> None:
+    off = addr - 0xF000
+    BANK7[off:off + len(data)] = data
 
 
 def install_rows(pf12: bytes) -> list[int]:
@@ -89,7 +97,7 @@ def install_rows(pf12: bytes) -> list[int]:
                         ("RowPoolPF2", 2)):
         base = LAB[column] - 0xF000
         for i, r in enumerate(_POOL):
-            BANK3[base + i] = r[reg]
+            BANK7[base + i] = r[reg]
     return idx
 
 
@@ -103,17 +111,17 @@ def shape_block(pf12: bytes, hot: bool = False) -> bytes:
 
 _POOL: list[tuple[int, int, int]] = []
 
-put(SHAPE_A, shape_block(PF_A))
-put(SHAPE_AH, shape_block(PF_A, hot=True))
-put(SHAPE_B, shape_block(PF_B))
+put7(SHAPE_A, shape_block(PF_A))       # bank4 free area $F400-$F44F
+put7(SHAPE_AH, shape_block(PF_A, hot=True))
+put7(SHAPE_B, shape_block(PF_B))
 
 # The loader resolves the shape address through LEVEL_ShapeTable and the
 # extras base through LevExtrasLo/Hi[Level]; point rows 0..2 / level 0 at the
 # fixtures above (the private copy is the only one touched).
 for slot, shape in enumerate((SHAPE_A, SHAPE_A, SHAPE_B, SHAPE_AH)):
     off = LAB["LEVEL_ShapeTable"] - 0xF000 + 2 * slot
-    BANK3[off] = shape & 0xFF
-    BANK3[off + 1] = shape >> 8
+    BANK7[off] = shape & 0xFF
+    BANK7[off + 1] = shape >> 8
 BANK3[LAB["LevExtrasLo"] - 0xF000] = EXTRAS & 0xFF
 BANK3[LAB["LevExtrasHi"] - 0xF000] = EXTRAS >> 8
 
@@ -143,8 +151,9 @@ def run_room(room: int, ordinal: int = 0) -> bytearray:
     """Drive B3RoomBlocks; stop when the ReturnPad rts reaches the sentinel
     and return the ZP image."""
     _CM.BANK3 = bytearray(BANK3)          # fresh private copy per case
+    _CM.BANK4 = bytearray(BANK7)
     mem = _CM.Mem()
-    mem.bank = 3                          # B3RoomBlocks lives in bank3
+    mem.bank = 5                          # B3RoomBlocks lives in bank3
     r = mem.ram
     r[LAB["RoomPF0Lo"] - 0x80] = SHAPE_IDX[room] | (0x80 if ordinal else 0)
     r[LAB["LevelConnSpare"] - 0x80] = ordinal
@@ -212,8 +221,8 @@ def main() -> int:
     want[1] |= 0xF0 | 0xC0                 # PF0 row1 (cols 0-1)
     want[5] |= 0xFF                        # PF1 row1 (cols 2-5)
     want[9] |= 0xFF                        # PF2 row1 (cols 6-9)
-    print("DBG idx", list(BANK3[SHAPE_B - 0xF000:SHAPE_B - 0xF000 + 4]),
-          "pool", list(BANK3[LAB["RowPoolPF0"] - 0xF000:
+    print("DBG idx", list(BANK7[SHAPE_B - 0xF000:SHAPE_B - 0xF000 + 4]),
+          "pool", list(BANK7[LAB["RowPoolPF0"] - 0xF000:
                            LAB["RowPoolPF0"] - 0xF000 + 6]))
     print("DBG got", got.hex(), "want", bytes(want).hex())
     assert got == want, f"feature PF {got.hex()} != {bytes(want).hex()}"

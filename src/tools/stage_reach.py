@@ -223,6 +223,7 @@ ROUTE_ROOM = 240
 CELL_BUDGET = 90 * 60            # no stretch between refills may pass 90 s
 BAR_FRAMES = 120 * 60
 POWER_CELL = 14
+CELLS_FORCED = True
 EXTRA_MINER = 15
 
 
@@ -299,20 +300,27 @@ def route_segments(level, models):
                 cells[(i, b, f)] = True
     extras = {n: k for k, n in enumerate(extra_miner_nodes(level, models))}
     full = (1 << len(extras)) - 1
+    cell_ix = {c: k for k, c in enumerate(sorted(cells))}
     s = min(max(level["start_room"], 0), len(rooms) - 1)
     goal = min(max(level["miner_room"], 0), len(rooms) - 1)
     sf = next((f for f in (4, 3, 5, 2, 6, 7, 8, 9) if grids[s][0][0][f]), 4)
-    # label-correcting search on (node, miners taken) -> (stretch, total): a
-    # refill makes the stretch 0, so costs are not monotone along a path;
-    # minimise the stretch first (it is what the timer cares about), then the
-    # total.
-    start = (s, 0, sf, 0)
-    best = {start: (0, 0)}
-    stack = [start]
+    # label-correcting search on (node, miners taken, cells used) -> (worst
+    # stretch so far, current stretch, total). A power cell refills ONCE per
+    # level (the kernel latches it), and taking one is optional (a player may
+    # keep it for later), so stepping on an unused cell branches into "take"
+    # and "leave". Minimise the worst stretch first (it is what the timer
+    # cares about), then the current stretch, then the total.
+    start = (s, 0, sf, 0, 0)
+    # Pareto sets per node: a label (worst, stretch, total) is only dropped when
+    # another one is <= in all three (a lower worst with a longer current
+    # stretch can still lose later, e.g. a cell kept for the return pass).
+    best = {start: {(0, 0, 0)}}
+    stack = [(0, 0, 0, start)]
     while stack:
-        node = stack.pop()
-        stretch, total = best[node]
-        ri, b, f, got = node
+        worst, total, stretch, node = heapq.heappop(stack)
+        if (worst, stretch, total) not in best[node]:
+            continue                    # stale entry
+        ri, b, f, got, used = node
         air = grids[ri][0]
         r = rooms[ri]
         outs = [(ri, b + 1, f, ROUTE_V), (ri, b - 1, f, ROUTE_V),
@@ -334,18 +342,31 @@ def route_segments(level, models):
             if (nb, nf) in gd:
                 continue
             w += 600 if (nb, nf) in gb else 0
-            ns, nt = stretch + w, total + w
-            if (nr, nb, nf) in cells:
-                ns = 0
+            nw, ns, nt = max(worst, stretch + w), stretch + w, total + w
             ng = got | (1 << extras[(nr, nb, nf)] if (nr, nb, nf) in extras else 0)
-            nn = (nr, nb, nf, ng)
-            if nn not in best or (ns, nt) < best[nn]:
-                best[nn] = (ns, nt)
-                stack.append(nn)
-    reached = [v for k, v in best.items() if k[0] == goal and k[3] == full]
+            opts = [(nw, ns, nt, used)]
+            ci = cell_ix.get((nr, nb, nf))
+            if ci is not None and not used >> ci & 1:
+                forced = (nw, 0, nt, used | 1 << ci)
+                # CELLS_FORCED: touching a cell takes it (the player cannot
+                # decline a pickup on the cell he walks through)
+                opts = [forced] if CELLS_FORCED else opts + [forced]
+            for ow, os_, ot, ou in opts:
+                nn = (nr, nb, nf, ng, ou)
+                lab = (ow, os_, ot)
+                have = best.setdefault(nn, set())
+                if any(h[0] <= ow and h[1] <= os_ and h[2] <= ot for h in have):
+                    continue
+                have.difference_update(
+                    [h for h in have if ow <= h[0] and os_ <= h[1] and ot <= h[2]])
+                have.add(lab)
+                heapq.heappush(stack, (ow, ot, os_, nn))
+    reached = [v for k, vs in best.items() if k[0] == goal and k[3] == full
+               for v in vs]
     if not reached:
         return None
-    return min(reached)[1], min(reached)[0]
+    w, _cur, t = min(reached)
+    return t, w
 
 
 def problems(stage):

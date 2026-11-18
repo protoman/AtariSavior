@@ -34,11 +34,11 @@ NEED = {"EnemyBitTable", "EnemyOffTable", "EnemyDataLo", "EnemyDataHi",
         "EnemyRamX", "EnemyCount", "EnemyDeadMask", "EnemyIndex", "BombX",
         "CollisionCellX"}
 L0 = parse_labels(FROZEN / "bank0.lst", NEED)
-L2 = parse_labels(FROZEN / "bank2.lst",
+L2 = parse_labels(FROZEN / "bank6.lst",
                   NEED | {"BombEnemyBlastBody"})
 # C7: the shape blocks live in bank3, so the scratch address is a bank3 label
 # (same address space; the private bank2 copy is only the staging buffer).
-L3 = parse_labels(FROZEN / "bank3.lst", {"M5Shape"})
+L3 = parse_labels(FROZEN / "bank4.lst", {"M5Shape"})   # shapes live in bank4 now
 missing = (NEED | {"BombEnemyBlastBody"}) - set(L0) - set(L2)
 if missing:
     sys.exit(f"labels missing: {sorted(missing)}")
@@ -68,7 +68,7 @@ def run(records, ram_x, dead_mask=0, bomb_x=BOMB_X):
         CM.BANK2[off + 3 * i:off + 3 * i + 3] = bytes((t, x, 0))
     try:
         mem = Mem()                   # frozen banks; bank=2 for the body
-        mem.bank = 2
+        mem.bank = 6
         r = mem.ram
         r[Z["EnemyDataLo"]] = SCRATCH & 0xFF
         r[Z["EnemyDataHi"]] = SCRATCH >> 8

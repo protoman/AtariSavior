@@ -1,5 +1,6 @@
     processor 6502
     include "colors.inc"            ; NC_xx colour bytes for this TV (tools/gen_colors.py)
+    include "banks.inc"             ; BK_* bank selectors by role (docs/agents/banks.md)
 
 ; ==============================================================================
 ; savior kernel — HERO-style fixed-time rendering kernel
@@ -343,7 +344,7 @@ EnemyClk        = $D7           ; 2026-10-26 ENEMY clock: every enemy gate / bob
                                 ;   EnemySpd / 2 (x1 .. x3 by level: tools/test_enemy_speed.py)
 EnemySpd        = $D8           ; half-units per frame: 2 + Level / 5 (x1, x1.5, x2 ...)
 EnemyFrac       = $D9           ; 0/1 carry of the half-unit accumulator
-UE_MIN_INTIM    = 12            ; TIM64T units (64c) of overscan an EXTRA enemy pass needs left
+UE_MIN_INTIM    = 16            ; TIM64T units (64c) of overscan an EXTRA enemy pass needs left
 EnemyPass       = $DA           ; passes left this frame
 ; Attract mode (2026-11, bank5 DemoHook). StickA / DemoOn are EOR-ed onto the real
 ; SWCHA / INPT4 reads in the three gameplay readers (main joystick read, walk
@@ -513,7 +514,7 @@ COLOR_HOT_R     = COLOR_BLINK_R
     ; After bank3's stub selects us, CPU arrives here.
     ; We jump over the pad into the real init code.
     lda #0
-    sta $1FF4                       ; ensure bank0 selected (idempotent)
+    sta BK_GENERAL                       ; ensure bank0 selected (idempotent)
     jmp GameStart                   ; jump over pad to init code
                                     ; (NOT deletable: $F008 = GameStart is a
                                     ;  hardcoded cross-bank entry — bank1
@@ -528,6 +529,20 @@ GameStart:
     ldx #$FF
     txs                         ; stack pointer = $FF
 
+    ; --- A game over (bank4 SkRelease) leaves the magic $5A/$A5 in $8B/$8E: the
+    ;     title then keeps the level just played (user 2026-11-11). Y = Level or 0.
+    ldy #0
+    lda $8B
+    cmp #$5A
+    bne .NoKeepLv
+    lda $8E
+    cmp #$A5
+    bne .NoKeepLv
+    ldy Level
+    tya
+    ora #$80                    ; bit 7 = "game-over restart": the title ignores keys for ~1 s
+    tay                         ;   (TitleSelect grace; stripped again below)
+.NoKeepLv:
     ; --- Clear zero-page RAM ---
     lda #0
     ldx #$80
@@ -535,7 +550,19 @@ GameStart:
     sta $00,X
     inx
     bne .ClearZP
+    sty Level
 
+    ; --- Title key grace (user 2026-11-11: dying while tapping UP stepped the title's
+    ;     level, 8 -> 9). After a game-over restart (Level bit 7, set above) BombY - dead
+    ;     on title frames, written only when a bomb drops - counts $C4 -> 0 (60 frames)
+    ;     in TitleSelect, which ignores every key meanwhile. A cold boot has no grace.
+    lda Level
+    bpl .NoGrace
+    and #$7F
+    sta Level
+    lda #$C4
+    sta BombY
+.NoGrace:
     ; --- Initialize game state --- (ClearZP left A = 0 and Level = 0)
     lda #3
     sta PlayerLives
@@ -805,6 +832,17 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; the contract `tools/test_vdel_cave.py` guards. HERO clears both bits at
     ; cave entry and uses VDEL only for its HUD text, so this is the one place
     ; we deliberately differ (measured, not guessed).
+    ; --- Gameplay runs the bank6 cave kernel (tools/cave_kernel_gen.py: one band
+    ; code run 4x, branch-free sprite fetch, no dead lines at the band changes).
+    ; The title keeps THIS bank's kernel for its band 0 (+ bank1's TitleBand).
+    ; `sta $1FFA` selects bank6; the next fetch (the byte after the sta) comes from
+    ; bank6 = `jmp Kernel6Entry`; the title branch lands on that same byte in bank0.
+    lda DropTarget
+    cmp #$FF
+    beq .TitleKernel
+GoKernel6:
+    sta BK_CAVE
+.TitleKernel:
     lda #1
     sta VDELP0
     lda #0
@@ -950,17 +988,10 @@ Slot1Keep:
     ; first body line (66max+3LC[+3jmp]+3WSYNC = 75 rows0/1, 72 row2).
     ; LineCount is not read until the line's `dec` tail — the early store
     ; was never required; keep the store strictly between WSYNC and .Line.
-    cpx #TILE_ROWS-1
-    beq .RowLinesTide        ; bottom band: tide count (24+off) from CollisionX
-    ; other bands: fixed LINES_PER_TILE bodies (36 since N=4).
+    ; The title only ever runs band 0 through here (gameplay: the bank6 kernel), so the
+    ; bottom-band tide count that used to follow is gone.
     lda #LINES_PER_TILE
-    ; --- Sync to next scanline (rows 0/1) ---
-    sta WSYNC
-    sta LineCount
-    jmp CaveLine
-.RowLinesTide:
-    lda CollisionX           ; 24..27 — VBL tide calc (see VBL comment)
-    ; --- Sync to next scanline (row 2; falls straight into .Line) ---
+    ; --- Sync to next scanline ---
     sta WSYNC
     sta LineCount
 
@@ -1107,28 +1138,10 @@ CaveLine:
     lda (Grp0Ptr),Y             ; 5c — art row 0
     sta GRP0
     jmp .Grp1
+; .WaterRow (the water strip pass) lived here: gameplay now runs the bank6 kernel, and the
+; title never gets past band 0. The advance block below still branches to it (cycle
+; neutral for the title); the target is a trap.
 .WaterRow:
-    ; PF0/1/2 + COLUPF persist from row 2's setup; COLUBK = the VBL .BgStore
-    ; value (Phase 3: .Row no longer re-stores it per band) — the strip
-    ; overlays the same cells, so only the band color + 11 lines are needed.
-    ; Band color: blink (BombPacked state=2) keeps COLUBK; 0 = band off.
-    lda BombPacked
-    and #%00000011
-    cmp #2
-    beq .WRSkip
-    lda RoomBandColor           ; inlined band-color read (was a jsr helper)
-    beq .WRRestore              ; band off (0): keep Temp, no store
-    sta COLUBK
-.WRRestore:
-.WRSkip:
-    lda #LINES_PER_TILE         ; strip bodies = LINES_PER_TILE - CollisionX
-    sec                         ;   N=4: 36 - (24+off) = 12-off, so the band
-    sbc CollisionX              ;   is exactly LINES_PER_TILE bodies tall and the
-                                ;   cave body count is exactly CAVE_LINES (144,
-                                ;   first water body still at 132+off).
-    sta LineCount
-    sta WSYNC
-    jmp CaveLine
 .GrpZero:                       ; entered from .GrpSkip on every skipped
                                 ;   line EXCEPT the one above the sprite
     lda #0                      ; (nothing falls through `jmp .Row`)
@@ -1158,30 +1171,7 @@ CaveLine:
     beq .AfterObj              ; Z=1 from lda #0 — always taken (3c = jmp,
                                ; saves 1B vs jmp: net +1B total = $FC67 fit)
 .AfterRows:
-    ; Phase 3: cave may leave the ball on (band2 BandTab=$ff) — clear ENABL
-    ; at the very start of the HUD line, before bank1's first WSYNC and
-    ; before the ball's x pixel on this line (bank1 has no pre-pin room for
-    ; the clear: +2B tripped .ds $F9C0).
-    lda #0
-    sta ENABL
-    sta ENAM1                    ; D6: end M1 whole-cave latch (HERO writes
-                                 ; the ball latch twice per frame — same
-                                 ; discipline; bank1 HUD has no room for it)
-    ; Bomb save/restore deleted (S3.0b): BuildColupF writes rows 0-2 only
-    ; (TILE_ROWS=3) — nothing touched $F0-$F2 between the old save and
-    ; restore (window audited: zero writers), so the round trip was a no-op.
-
-; ==============================================================================
-; HUD band: 48 scanlines (144-191)
-; Uses 13+2 sprite technique via bank1 (fold-pad trampoline)
-; ==============================================================================
-
-    ; --- Call bank1 for 13+2 HUD rendering via fold-pad at $FC68 ---
-    ; The fold-pad at $FC68 has identical bytes in bank0 and bank1:
-    ;   $FC68: lda #1 / sta $1FF5 / jmp $F540
-    ; After sta $1FF5, CPU reads next instruction from bank1 at $FC6D.
-    ; Bank1's $FC6D has the same jmp $F540 → seamless bank switch.
-    jmp $FC68                   ; jump to fold-pad (switches to bank1, runs MenuMain)
+    brk                         ; trap: the HUD hand-off moved to the end of the bank6 kernel
     ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF4 / jmp Overscan
 
 ; ==============================================================================
@@ -1573,7 +1563,12 @@ OverscanAudio:                  ; rejoin for the spawn drop-in (DropStep tail):
     ; --- Wait for overscan timer ---
 .WaitOverscan:
     lda INTIM
+    bmi .WaitDone               ; 2026-11-14: the timer already EXPIRED (work ran late): INTIM now counts
+                                ;   $FF,$FE.. one per cycle, and this loop polls every 7 cycles, so it
+                                ;   could skip the zero and spin whole 256-cycle laps (a 304-line frame
+                                ;   from a work overrun of a few cycles). Late = leave at once.
     bne .WaitOverscan
+.WaitDone:
 
     jmp TailHook                ; = jmp StartFrame, unless a room change is pending
                                 ;   (bank5 runs a blank frame first) or the demo plays
@@ -2790,7 +2785,7 @@ ObjSpriteOffTable:
 
     .ds $F8C0 - *, 0
 CallPad_RaftBody:
-    sta $1FF5                    ; select bank1 (last byte fetched from bank0)
+    sta BK_HUD                    ; select bank1 (last byte fetched from bank0)
     jmp $FDE3                    ; bank1 RaftBody — returns via bank1's ReturnPad
 
 ; PlayerSpriteA/B, PlayerWalkA/B + PlayerColTable MOVED to the $FE00
@@ -2822,7 +2817,7 @@ ENEMY_RAFT     = 7             ; type-7 enemy record = the moving, rideable raft
                                ; water of model row 2, carries the player and
                                ; returns; body lives in bank1 (RaftBody)
 ENEMY_DATA_STRIDE = 6
-LEVEL_COUNT    = 20              ; hand copy of generated LEVEL_COUNT (cmp in
+LEVEL_COUNT    = 32              ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync).
                                 ; 2026-10-21: live stage cut 20 -> 4 levels to
                                 ; fund the HERO kernel plan (bank0 eviction);
@@ -3284,25 +3279,25 @@ PHMOverlay:
                                 ; left D3=0 = phantom right-press = drift bug).
     lda CollisionX
     cmp RectCount               ; vl vs BallX
-    bcc .OvT2
     beq .OvT2
     bcs .OvClear                ; vl > BallX → player fully right of patch
-.OvT2:
+.OvT2:                          ; (vl < BallX falls through)
     lda RectCount
     sec
     sbc #13                     ; BallX-13 (lit span is 7px, not 8: [vl,vl+6])
     cmp CollisionX              ; vs vl: overlap iff BallX-13 <= vl
-    bcc .OvBand
     beq .OvBand
+    bcs .OvClear                ; BallX-13 > vl: no overlap (2026-11-14: order swapped so the miss falls
+                                ;   straight into OvM1Block - the `jmp` is gone, -3 B in a full bank)
+.OvBand:
+    jmp OvShutBand              ; band overlap → shutter kill / strip solid
 .OvClear:
-    jmp OvM1Block               ; right-strip miss → M1 (left) strip test;
+                                ; right-strip miss → M1 (left) strip test (OvM1Block follows);
                                 ; IT returns with C set/clear.
                                 ; Shutter rooms: miss here = player left of
                                 ; the VISIBLE right-half block → passable
                                 ; (kill follows the drawn block only, async
                                 ; ruling 2026-10-14 — no left mirror)
-.OvBand:
-    jmp OvShutBand              ; band overlap → shutter kill / strip solid
 
 OvM1Block:
     ; Phase 4 M1 (left strip) collision overlay. Entered by JMP from
@@ -3395,8 +3390,6 @@ OvM1Block:
                                 ; (RowIdx re-inits at kernel entry)
 .OvM1Row:
     lda RectCount
-    tay
-    tya
     clc
     adc ColOff,X                ; PF0/PF1/PF2 group offset (0/3/6)
     tay
@@ -3445,6 +3438,8 @@ OvShutBand:
     and OvTail,X                ; bits <= row
     and LineCount               ; active-band mask (b0-2)
     beq .OSBm1                  ; not in a painted band → M1 strip test
+    and #$02                    ; b1 = the box overlaps the strip's band 2 (the hot band)
+    tax                         ;   X = 2 / 0 (PHM callers preserve X themselves)
     lda RoomPF0Hi               ; staged MetaB ($9A)
     bpl .OSBsolid               ; b7=0: plain D6 strip → solid
     lda LevelStartRoom          ; KeyHeld?
@@ -3454,17 +3449,21 @@ OvShutBand:
     sta EnemyDeadMask
     jmp .OSBm1                  ; passable (strip blanked next B3StageBand)
 .OSBsolid:
+    ; User 2026-11-11 (level 9 room 1): "all elements (PF or simulating PF) in a hot band
+    ; should kill on touch" - the ball strip is drawn in the hot colours there, so touching
+    ; it on the hot band is HotBump (Temp b7), like the M1 block and a hot PF wall.
+    txa
+    beq .OSBsolidRet            ; not on the hot band
+    bit RoomPF0Hi               ; MetaB: V = b6 hot room
+    bvc .OSBsolidRet
+    asl Temp
+    sec
+    ror Temp                    ; Temp b7 = HotBump: UpdateP0Vertical turns it into LoseLife
+.OSBsolidRet:
     sec
     rts
 .OSBm1:
     jmp OvM1Block
-
-OvHead:
-    .byte 15,14,12,8            ; rows 0..3 -> mask bits >= row (4 bands)
-OvTail:
-    .byte 1,3,7,15              ; rows 0..3 -> mask bits <= row
-M1OffTab:                       ; MetaA b0 -> M1 x-offset.
-    .byte $ff, $4f              ; B3StageBand has the twin.
 
 ; ------------------------------------------------------------------------------
 ; TitleBcd (2026-10-20) — A = 1-based level number → packed BCD in ScoreTe.
@@ -3575,8 +3574,12 @@ CEH_KeyDisp:
 ; → sta $1FF4 / rts. Saves ~1660c per room change (folds → direct reads).
 ; A preserved through sta $1FF6; body returns X = EnemyCount.
 EnterRoom:
-    sta $1FF6
+    sta BK_ROOMS
     jmp $F010                    ; EnterRoomB2 — fetched from bank2 twin
+    .ds $FBD6 - *, 0
+UEEdone:
+    rts                         ; UEEpilogue's exit lives in the 3-byte hole after EnterRoom's slot (2026-11-14:
+                                ;   the `bmi` guard needed one byte more than the corridor had left)
 
 ; ------------------------------------------------------------------------------
 ; C3 (2026-10-20): room-exit entry pads. Four `sta $1FF6` halves packed 3 B
@@ -3590,16 +3593,16 @@ EnterRoom:
     .ds $FBD9 - *, 0
 CallPad_ExitDown:
 ExitRoomDown:
-    sta $1FF6                   ; C3: body = bank2 $FC4F cluster
+    sta BK_ROOMS                   ; C3: body = bank2 $FC4F cluster
 CallPad_ExitUp:
 ExitRoomUp:
-    sta $1FF6
+    sta BK_ROOMS
 CallPad_ExitLeft:
 ExitRoomLeft:
-    sta $1FF6
+    sta BK_ROOMS
 CallPad_ExitRight:
 ExitRoomRight:
-    sta $1FF6
+    sta BK_ROOMS
 
 ; ------------------------------------------------------------------------------
 ; StageSlot1 pad (2026-10-22): the Phase 5 slot-1 stager was evicted from the
@@ -3612,7 +3615,7 @@ ExitRoomRight:
 ; ------------------------------------------------------------------------------
 CallPad_StageSlot1:
 StageSlot1:
-    sta $1FF6
+    sta BK_ROOMS
 
 ; UEEpilogue - end of one enemy pass: another pass (clock + 1) or done.
 ; 2026-10-28 (flicker): extra passes are GOVERNED by the overscan timer. A pass starts
@@ -3621,21 +3624,22 @@ StageSlot1:
 ; calls does not overrun into 273+ lines. The first pass always runs. EnemySpd is
 ; never 0 here (LoadLevel sets it; sim_frame_budget asserts it), so the old `bmi`
 ; guard went to make room. An expired timer reads as a wrapped INTIM (>= $80 for
-; 127c): also "enough", but by then the frame is already late either way.
+; 127c): that is NOT "enough" - 2026-11-14: it used to count as enough, so a frame that had
+; already overrun started another pass and ran 304 lines (the A/B room-bank stubs cost ~100c
+; per frame; two heavy laser-kill rooms crossed the edge). `bmi` drops the pass instead.
 UEEpilogue:
     dec EnemyPass
-    beq .UEEdone
+    beq UEEdone
     lda INTIM
+    bmi UEEdone
     cmp #UE_MIN_INTIM
-    bcc .UEEdone
+    bcc UEEdone
     jmp UEPass
-.UEEdone:
-    rts
     .ds $FBF8 - *, 0            ; TitleSequenceFold / FooterFold /
                                  ;   TitlePlayerFold retired with the intro
                                  ;   movie (merged title, 2026-10-19)
 ReturnPad:
-    sta $1FF4
+    sta BK_GENERAL
     rts
 
 ; 2026-10-20 (chunk 4): the corridor pads are SPLIT across the banks, exactly
@@ -3662,31 +3666,31 @@ ReturnPad:
 ; Guard: verify_build.check_callpads pins each A and asserts the ROM bytes of
 ; BOTH halves (bank0 sta / target-bank jmp operand == its .lst label).
 CallPad_UpdateBombSound:
-    sta $1FF5
+    sta BK_HUD
 CallPad_UpdateJetSound:
-    sta $1FF5
+    sta BK_HUD
 CallPad_BombSndDrop:
-    sta $1FF5
+    sta BK_HUD
 CallPad_BombSndExplode:
-    sta $1FF5
+    sta BK_HUD
 CallPad_SaveKey:
-    sta $1FF8                   ; $FC08: SaveKey service (bank4 `jmp SkService` at
+    sta BK_SAVE                   ; $FC08: SaveKey service (bank4 `jmp SkService` at
                                 ;   $FC0B). In: A = op 0 BOOT / 1 RESUME /
                                 ;   2 CHECKPOINT / 3 GAMEOVER; out: C=0 done.
                                 ;   Nests 4 stack bytes below the caller's jsr.
 CallPad_AddScore:
-    sta $1FF5
+    sta BK_HUD
 CallPad_IsRoomDark:
-    sta $1FF5
+    sta BK_HUD
 CallPad_SetRoomDark:
-    sta $1FF5
+    sta BK_HUD
 CallPad_UpdateLaserSound:
-    sta $1FF5
+    sta BK_HUD
 CallPad_BuildColupF:
-    sta $1FF7                   ; C7: body lives in bank3 now ($F9D9 cluster —
+    sta BK_EXTRAS                   ; C7: body lives in bank3 now ($F9D9 cluster —
                                 ;   it walks the shape/extras stream there)
 CallPad_BombMarkWalls:
-    sta $1FF5                   ; S5.2: body lives in bank1 ($FB10)
+    sta BK_HUD                   ; S5.2: body lives in bank1 ($FB10)
     .byte 0,0,0                 ; $FC1D-$FC1F: CallPad_SelectObject retired by
                                 ;   A1 (SelectActiveObject is back in bank0, so
                                 ;   the VBL jsrs it directly). The 3 dead bytes
@@ -3707,7 +3711,7 @@ CallPad_BombMarkWalls:
 ; ------------------------------------------------------------------------------
 CallPad_LoadLevel:
 LoadLevel:
-    sta $1FF6                   ; C2: body = bank2 $F640 LoadLevelB2
+    sta BK_ROOMS                   ; C2: body = bank2 $F640 LoadLevelB2
     .byte 0,0,0                 ; $FC23-$FC25 — bank2's `jmp LoadLevelB2`
 
     .byte 0,0,0                 ; $FC26-$FC28 — bank2 runs `sta $1FF4` there
@@ -3739,7 +3743,7 @@ PickupSnd:
     rts
     .ds $FC49 - *, 0             ; pin (main growth past $FC49 = build error)
 MothExitPad:
-    sta $1FF4                   ; select bank0 (executed from bank2's copy)
+    sta BK_GENERAL                   ; select bank0 (executed from bank2's copy)
     jmp UE_Next                 ; resume dispatch loop (bank0 half)
 
     .ds $FC4F - *, 0            ; bank0↔bank1 CallPad slot (refactor_v4)
@@ -3754,11 +3758,11 @@ MothExitPad:
 ; Guard: verify_build.check_callpads runs this A / A+3 contract byte-for-byte
 ; (the $FBF8-$FC48 corridor above stays fully byte-identical).
 CallPad_TitleSelect:
-    sta $1FF5
+    sta BK_HUD
 CallPad_TitleBand:
-    sta $1FF5
+    sta BK_HUD
 CallPad_MusicTick:
-    sta $1FF5
+    sta BK_HUD
 ; Room-change frame (2026-11, bank5 TransBody). Every gameplay frame ends with
 ; `jmp CallPad_Transition`: bank5 checks LevelConnSpare b7 (a pending room
 ; change set by the bank2 exit handlers); not pending -> its `sta $1FF4` at
@@ -3767,12 +3771,12 @@ CallPad_MusicTick:
 ; itself, padded), then the same exit. CallPad_TransRet is where EnterRoom's
 ; rts lands (bank5 pushes $FC5D) and goes back to bank5 to pad the frame.
 CallPad_Transition:
-    sta $1FF9                   ; $FC58 -> bank5 `jmp TransBody` at $FC5B
+    sta BK_TRANS                   ; $FC58 -> bank5 `jmp TransBody` at $FC5B
     jmp StartFrame              ; $FC5B: reached after bank5's `sta $1FF4`
 CallPad_TransRet:
-    sta $1FF9                   ; $FC5E -> bank5 `jmp TransFinish` at $FC61
+    sta BK_TRANS                   ; $FC5E -> bank5 `jmp TransFinish` at $FC61
 CallPad_TransSaved:
-    sta $1FF9                   ; $FC61 -> bank5 `jmp TransAfterSave` at $FC64
+    sta BK_TRANS                   ; $FC61 -> bank5 `jmp TransAfterSave` at $FC64
 
 ; ==============================================================================
 ; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.
@@ -3782,13 +3786,13 @@ MenuMain = $F540                   ; bank1's HUD entry (not code in bank0)
     org $FC68
 ToMenuStub:
     lda #1
-    sta $1FF5                     ; select bank1 (HUD)
+    sta BK_HUD                     ; select bank1 (HUD)
     jmp MenuMain                 ; next fetch from bank1: jmp $F540
 
     org $FC70
 ToGameStub:
     lda #0
-    sta $1FF4                     ; select bank0 (game)
+    sta BK_GENERAL                     ; select bank0 (game)
     jmp Overscan                 ; return to bank0 after HUD band
 
 ; Flip dir bit for enemy X (right↔left).
@@ -4126,6 +4130,10 @@ RefreshEnemyY:
     sta BombX                   ;   lives in BombX/BombTimer while the title
     sta BombTimer               ;   runs (both dead there), so returning from a
                                 ;   game must clear them for a clean melody
+    lda #120                    ; the power bar and its clock start over too
+    sta BarLevel                ;   (user 2026-11-11: SELECT during a game kept
+    lda #TICKS_PER_SEC          ;   the half-empty bar)
+    sta TickCounter
     jsr LoadLevel               ; reload the level-start room for the preview
     pla                         ; drop OUR return address (LoadLevel already
     pla                         ;   popped its own) — tail into TitleWork
@@ -4199,7 +4207,7 @@ TailHook:
     jmp StartFrame
     .ds $FDD8 - *, 0            ; pin: bank2's blast-tramp mirror is at $FDD8
 BombEnemyBlast:
-    sta $1FF6
+    sta BK_ROOMS
     jmp $FD87                   ; BombEnemyBlastBody (bank2.lst — after
                                 ;   .HOVfeature; NOT in the TitleJetColors
                                 ;   span)
@@ -4474,7 +4482,7 @@ UEPass:
     .ds $FE96 - *, 0            ; S5.4 LHT entry tramp (byte-identical w/ bank2,
                                 ; guard: check_moth_tramp — shifted +$10)
 LaserHitTest:
-    sta $1FF6                   ; select bank2
+    sta BK_ROOMS                   ; select bank2
     jmp $FF00                   ; bank2 LaserHitTestBody (dead in bank0; guard
                                 ;   pins operands == bank2.lst label)
 
@@ -4539,21 +4547,31 @@ CellTail:
     lda #6                      ; pitch 6: the highest of the three blips
     jmp PickupSnd
 
+; OvHead/OvTail/M1OffTab moved here from the overlay cluster (2026-11-11: the ball-strip
+; hot kill needed their 10 bytes; they are data, position-free, but keep OvHead/OvTail adjacent -
+; test_async_band3 reads them as one 8-byte signature).
+OvHead:
+    .byte 15,14,12,8            ; rows 0..3 -> mask bits >= row (4 bands)
+OvTail:
+    .byte 1,3,7,15              ; rows 0..3 -> mask bits <= row
+M1OffTab:                       ; MetaA b0 -> M1 x-offset.
+    .byte $ff, $4f              ; B3StageBand has the twin.
+
     .ds $FEE7 - *, 0            ; bank0↔bank1 CallPad (leaf_move_plan Step 0)
 CallPad_MothYDerive:
-    sta $1FF5
+    sta BK_HUD
     jmp $F038
 
     .ds $FEF0 - *, 0            ; fill tramp..moth gap (drift-proof)
 UE_MothTramp:
-    sta $1FF6                   ; select bank2
+    sta BK_ROOMS                   ; select bank2
     jmp $F110                   ; bank2 MothRoutine (dead in bank0; guard pins
                                 ;   bank0/bank2 operands == bank2.lst label)
     .ds $FEF6 - *, 0            ; pin address (main size drift must not move it)
 FoldIndirect:
-    sta $1FF6
+    sta BK_ROOMS
     lda (FetchPtr),Y
-    sta $1FF4
+    sta BK_GENERAL
     rts
 
 ; Pad to fineAdjustTable
@@ -4798,7 +4816,7 @@ MinerMore:
 ; ------------------------------------------------------------------------------
 TallyEntry = $F44F              ; bank1 TallyEntry — operand must match label
 TallyTramp:
-    sta $1FF5
+    sta BK_HUD
     jmp TallyEntry
 
 ; ------------------------------------------------------------------------------
@@ -4809,7 +4827,7 @@ TallyTramp:
 ; ------------------------------------------------------------------------------
     .ds $FFEC - *, 0
 HotOverlapFlag:
-    sta $1FF7                   ; select bank3 (record stream lives there)
+    sta BK_EXTRAS                   ; select bank3 (record stream lives there)
     jmp $F8F8                   ; bank3 HotOverlapBody (synced by verify_build)
     .ds $FFF2 - *, 0            ; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
 

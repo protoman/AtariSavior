@@ -46,27 +46,27 @@ from test_cell_map import Mem, parse_labels  # noqa: E402
 # ROM-byte reads come from the FROZEN bank images + label set (AGENTS rule:
 # never live src/bank*.bin / src/*.lst from a test).
 for _i in range(8):
-    setattr(_CM, f"BANK{_i}", (FROZEN / f"bank{_i}.bin").read_bytes())
+    setattr(_CM, f"BANK{_i}", (FROZEN / f"bank{ {0:0,1:2,2:6,3:5,4:4,5:7,6:1,7:3}[_i] }.bin").read_bytes())
 Mem = _CM.Mem
 
 # kernel EQUs (read from the frozen bank2 listing via its hand copies)
-Z = parse_labels(FROZEN / "bank2.lst", {
+Z = parse_labels(FROZEN / "bank6.lst", {
     "LevelPFDataLo", "LevelPFDataHi", "LevelRoomN", "RoomNo", "LevelConnSpare",
     "RoomX", "RoomY"})
-L2 = parse_labels(FROZEN / "bank2.lst", {
+L2 = parse_labels(FROZEN / "bank6.lst", {
     "ExitUpB2", "ExitDownB2", "ExitLeftB2", "ExitRightB2", "ExitScanB2",
     "EnterRoomB2", "ReturnPad"})
 for need, got, where in (
         ({"ExitUpB2", "ExitDownB2", "ExitLeftB2", "ExitRightB2",
-          "EnterRoomB2", "ReturnPad"}, L2, "bank2.lst"),
+          "EnterRoomB2", "ReturnPad"}, L2, "bank6.lst"),
         ({"LevelPFDataLo", "LevelPFDataHi", "LevelRoomN", "RoomNo",
-          "RoomX", "RoomY"}, Z, "bank2.lst")):
+          "RoomX", "RoomY"}, Z, "bank6.lst")):
     lack = need - set(got)
     if lack:
         sys.exit(f"{where}: missing labels {sorted(lack)}")
 if not {"ExitUpB2", "ExitDownB2", "ExitLeftB2", "ExitRightB2",
         "EnterRoomB2", "ReturnPad"} <= set(L2):
-    sys.exit(f"frozen bank2.lst is missing exit labels: {sorted(set(L2))}")
+    sys.exit(f"frozen bank6.lst is missing exit labels: {sorted(set(L2))}")
 
 PLAYER_MIN_X, PLAYER_MAX_X = 4, 159
 PLAYER_MIN_Y, PLAYER_MAX_Y = 0, 122
@@ -177,9 +177,10 @@ def run_exit(mem: Mem, handler: str, room: int, positions: list[int],
     _zp(mem, "LevelPFDataHi", BASE >> 8)
     _zp(mem, "LevelRoomN", len(positions))
     _zp(mem, "RoomNo", room)
+    _zp(mem, "LevelConnSpare", 0)      # no room change pending
     _zp(mem, "RoomY", room_y)
     _zp(mem, "RoomX", room_x)
-    mem.bank = 2
+    mem.bank = 6
     mpu = MPU(memory=mem)
     mpu.pc = L2[handler]
     mpu.a = mpu.x = mpu.y = 0
@@ -193,6 +194,14 @@ def run_exit(mem: Mem, handler: str, room: int, positions: list[int],
                         room_y=mem.ram[Z["RoomY"] - 0x80],
                         room_x=mem.ram[Z["RoomX"] - 0x80])
         if mpu.pc == L2["ReturnPad"]:
+            # DEFERRED room change (2026-11): the exit only records the target room as
+            # LevelConnSpare = room | $80 and moves the player to the opposite edge; the
+            # next (blank) frame runs EnterRoom.
+            pending = mem.ram[Z["LevelConnSpare"] - 0x80]
+            if pending & 0x80:
+                return dict(moved=True, room=pending & 0x7F,
+                            room_y=mem.ram[Z["RoomY"] - 0x80],
+                            room_x=mem.ram[Z["RoomX"] - 0x80])
             return dict(moved=False, room=None,
                         room_y=mem.ram[Z["RoomY"] - 0x80],
                         room_x=mem.ram[Z["RoomX"] - 0x80])

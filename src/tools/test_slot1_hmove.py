@@ -17,10 +17,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-K = (ROOT / "kernel.asm").read_text(encoding="utf-8")
+K = (ROOT / "bank0.asm").read_text(encoding="utf-8")
 
 if "Slot1Hook:" not in K or ".SHout:" not in K:
-    sys.exit("Slot1Hook / .SHout labels missing from kernel.asm")
+    sys.exit("Slot1Hook / .SHout labels missing from bank0.asm")
 hook = K.split("Slot1Hook:")[1].split(".SHout:")[0]
 # Strip comment-only lines before scanning: this guard looks for INSTRUCTION
 # text, and prose that happens to name a store (e.g. "after `sta HMOVE`")

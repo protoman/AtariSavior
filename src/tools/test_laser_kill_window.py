@@ -40,7 +40,7 @@ need0 = {"EnemyCount", "EnemyDeadMask", "EnemyRamX", "EnemyRamY", "RoomY",
          "RoomPF0Lo"}
 L0 = parse_labels(SRC / "bank0.lst", need0)
 need2 = {"LaserHitTestBody", "LEVEL1_EnemyDataTable"}
-L2 = parse_labels(SRC / "bank2.lst", need2)
+L2 = parse_labels(SRC / "bank6.lst", need2)
 missing = (need0 - L0.keys()) | (need2 - L2.keys())
 if missing:
     sys.exit(f"labels missing: {sorted(missing)}")
@@ -72,7 +72,7 @@ def fire(mem: Mem, e_x: int, e_y: int) -> tuple[bool, int]:
     r[L0["CollisionEndX"] - 0x80] = A >> 2      # path cols (no walls anyway)
     r[L0["CollisionCellX"] - 0x80] = A >> 2
     r[L0["PlayerDir"] - 0x80] = 0
-    mem.bank = 2
+    mem.bank = 6
     mpu = MPU(memory=mem)
     mpu.pc = L2["LaserHitTestBody"]
     mpu.a = mpu.x = mpu.y = 0
@@ -136,7 +136,7 @@ def main() -> int:
         # pointer any more; m1_col+1 lives in the high nibble.
         r[L0["RoomPF0Lo"] - 0x80] = ((m1x + 7) >> 3) << 4 if m1x else 0
         r[L0["RoomPF0Lo"] + 1 - 0x80] = 0
-        mem.bank = 2
+        mem.bank = 6
         mpu = MPU(memory=mem)
         mpu.pc = L2["LaserHitTestBody"]
         mpu.a = mpu.x = mpu.y = 0

@@ -29,7 +29,7 @@ from py65.devices.mpu6502 import MPU  # noqa: E402
 
 FROZEN = ROOT / "tests" / "frozen"
 NEED = {"ExtrasLoad", "LevelConnSpare", "Level", "EnemyRamP", "PF0Buf"}
-L = parse_labels(FROZEN / "bank3.lst", NEED)
+L = parse_labels(FROZEN / "bank5.lst", NEED)
 missing = NEED - L.keys()
 if missing:
     sys.exit(f"frozen labels missing: {sorted(missing)}")
@@ -47,7 +47,7 @@ def load(ordinal: int):
     r[L["Level"] - 0x80] = LEVEL_IDX
     r[L["LevelConnSpare"] - 0x80] = ordinal
     r[L["EnemyRamP"] - 0x80] = SENTINEL_P
-    mem.bank = 3
+    mem.bank = 5
     mpu = MPU(memory=mem)
     mpu.pc = L["ExtrasLoad"]
     mpu.a = mpu.x = mpu.y = 0

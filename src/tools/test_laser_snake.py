@@ -38,11 +38,11 @@ FROZEN = SRC / "tests" / "frozen"
 # Frozen ROM image + labels (AGENTS test-data rule). Mutate the image copy so
 # the staged enemy record can be authored in place.
 for _i in range(8):
-    setattr(_CM, f"BANK{_i}", bytearray((FROZEN / f"bank{_i}.bin").read_bytes()))
+    setattr(_CM, f"BANK{_i}", bytearray((FROZEN / f"bank{ {0:0,1:2,2:6,3:5,4:4,5:7,6:1,7:3}[_i] }.bin").read_bytes()))
 Mem = _CM.Mem
 BANKS = {i: getattr(_CM, f"BANK{i}") for i in range(4)}
 
-L2 = parse_labels(FROZEN / "bank2.lst", {
+L2 = parse_labels(FROZEN / "bank6.lst", {
     "LaserHitTestBody", "LevelPFDataLo", "LevelPFDataHi", "LevelRoomN",
     "EnemyDataLo", "EnemyDataHi", "EnemyRamX", "EnemyRamY", "EnemyDeadMask",
     "EnemyCount", "RoomY", "PlayerDir", "CollisionX", "RoomMetaA", "RoomMetaB",
@@ -54,7 +54,7 @@ for need, got, where in (({"LaserHitTestBody", "LevelPFDataLo", "LevelPFDataHi",
                            "EnemyRamY", "EnemyDeadMask", "EnemyCount",
                            "RoomY", "PlayerDir", "CollisionX", "RoomMetaA",
                            "RoomMetaB", "LEVEL1_EnemyDataTable"}, L2,
-                          "bank2.lst"),
+                          "bank6.lst"),
                          ({"PF0Buf"}, L0, "bank0.lst")):
     lack = need - set(got)
     if lack:
@@ -99,7 +99,7 @@ def run_case(enemy_x: int, enemy_y: int, room_y: int, tip_arg: int,
     mem.ram[PF0_BUF - 0x80:PF0_BUF - 0x80 + 9] = (
         b"\xff" * 9 if stub_solid else b"\x00" * 9)
 
-    mem.bank = 2
+    mem.bank = 6
     mpu = MPU(memory=mem)
     mpu.pc = L2["LaserHitTestBody"]
     mpu.a = mpu.x = mpu.y = 0

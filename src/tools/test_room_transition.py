@@ -21,6 +21,8 @@ Run: /home/iuri/python3/bin/python3 src/tools/test_room_transition.py
 import re
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import banksym  # noqa: E402
 
 SRC = Path(__file__).resolve().parents[1]   # src/
 BANKS = [open(SRC / f'bank{i}.bin', 'rb').read() for i in range(8)]
@@ -43,7 +45,7 @@ PC_SAMPLE = LABELS['Overscan']
 
 def zp(name):
     addr = None
-    for line in (SRC / 'kernel.asm').read_text(errors='replace').splitlines():
+    for line in (SRC / 'bank0.asm').read_text(errors='replace').splitlines():
         if re.match(r'\s*org\s+\$80\b', line):
             addr = 0x80
             continue
@@ -94,7 +96,7 @@ class Mem:
             return min(0xFF, max(1, (dl - self.wall + 63) // 64))
         if a == 0x000C:
             return self.inpt4
-        if 0x1FF4 <= a <= 0x1FF7 or a == 0x1FF9:
+        if 0x1FF4 <= a <= 0x1FFB:
             return 0
         if a <= 0x003F or 0x0100 <= a <= 0x017F:
             return self.tia[a & 0x3F]
@@ -103,7 +105,7 @@ class Mem:
     def __setitem__(self, a, v):
         a &= 0xFFFF
         v &= 0xFF
-        if 0x1FF4 <= a <= 0x1FF7 or a == 0x1FF9:
+        if 0x1FF4 <= a <= 0x1FFB:
             self.bank = a - 0x1FF4
             return
         if a >= 0xF000:
@@ -165,12 +167,12 @@ while not poked:
 
 # bank5 TransBody entry (the blank frame) from the listing
 PC_TBGO = None
-for _l in (SRC / 'bank5.lst').read_text(errors='replace').splitlines():
+for _l in (SRC / 'bank4.lst').read_text(errors='replace').splitlines():
     _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+\.?TBgo\s*$', _l)
     if _m:
         PC_TBGO = int(_m.group(1), 16)
 if PC_TBGO is None:
-    sys.exit('.TBgo not found in bank5.lst')
+    sys.exit('.TBgo not found in bank4.lst')
 Z_LCS = zp('LevelConnSpare')
 PC_PAD = LABELS['CallPad_Transition']
 
@@ -183,7 +185,7 @@ cur_blank = None
 SF = LABELS['StartFrame']
 while frame < FRAMES:
     step()
-    if mem.bank == 5 and mpu.pc == PC_TBGO:
+    if mem.bank == banksym.bank_index("TRANS") and mpu.pc == PC_TBGO:
         cur_blank = mem.wall
         blank_enter.append(frame)
     if mem.bank == 0 and mpu.pc == SF and cur_blank is not None:

@@ -33,7 +33,7 @@ from test_cell_map import Mem, parse_labels  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT
 FROZEN = SRC / "tests" / "frozen"
-K = (SRC / "kernel.asm").read_text()
+K = (SRC / "bank0.asm").read_text()
 OBJ_MINER = int(re.search(r"^OBJ_MINER\s*=\s*(\d+)", K, re.M).group(1))
 OBJ_MOTH = int(re.search(r"^OBJ_MOTH\s*=\s*(\d+)", K, re.M).group(1))
 REFP1 = 0x0C

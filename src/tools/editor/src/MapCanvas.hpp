@@ -19,6 +19,7 @@
 #pragma once
 
 #include <QWidget>
+#include <QTimer>
 #include <QPointF>
 #include <QKeyEvent>
 #include "LevelData.hpp"
@@ -172,6 +173,8 @@ private:
     bool m_modelMode = true;
     BrushTool m_currentBrush = BrushTool::SOLID_WALL;
     int m_tileSize = 24;
+    int m_crunchClock = 0;      // hcrunch animation clock (game: EnemyRamP, period 256)
+    QTimer* m_crunchTimer = nullptr;
     int m_initialFacing = 1;
 
     // GRP1 flicker budget: miner + enemies + lamps share one sprite slot.

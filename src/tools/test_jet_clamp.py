@@ -26,7 +26,7 @@ from py65.devices.mpu6502 import MPU  # noqa: E402
 
 FROZEN = ROOT / "tests" / "frozen"
 SRC = ROOT
-K = (SRC / "kernel.asm").read_text(encoding="utf-8")
+K = (SRC / "bank0.asm").read_text(encoding="utf-8")
 
 GRAVITY = int(re.search(r"^GRAVITY\s*=\s*\$([0-9A-Fa-f]+)", K, re.M).group(1), 16)
 JET_MAX = int(re.search(r"^JET_MAX\s*=\s*\$([0-9A-Fa-f]+)", K, re.M).group(1), 16)

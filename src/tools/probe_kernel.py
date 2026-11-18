@@ -47,7 +47,7 @@ for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
         LABELS.setdefault(_m.group(2), int(_m.group(1), 16))
 
 EQU = {}
-for _line in (SRC / "kernel.asm").read_text(errors="replace").splitlines():
+for _line in (SRC / "bank0.asm").read_text(errors="replace").splitlines():
     _m = re.match(r"^([A-Za-z_][A-Za-z_0-9]*)\s*=\s*\$([0-9a-fA-F]+)", _line)
     if _m and int(_m.group(2), 16) <= 0xFF:
         EQU[_m.group(1)] = int(_m.group(2), 16)
@@ -58,7 +58,7 @@ def zp(name):
     if name in EQU:
         return EQU[name]
     addr = None
-    for line in (SRC / "kernel.asm").read_text(errors="replace").splitlines():
+    for line in (SRC / "bank0.asm").read_text(errors="replace").splitlines():
         if re.match(r"\s*org\s+\$80\b", line):
             addr = 0x80
             continue
@@ -109,7 +109,7 @@ class Mem:
             return min(0xFF, max(1, (dl - self.wall + 63) // 64))
         if a == 0x000C:
             return self.inpt4
-        if 0x1FF4 <= a <= 0x1FF7 or a == 0x1FF9:           # F4 hotspots: reads must not switch
+        if 0x1FF4 <= a <= 0x1FFB:           # F4 hotspots: reads must not switch
             return 0
         if a <= 0x003F or 0x0100 <= a <= 0x017F:
             return self.tia[a & 0x3F]
@@ -118,7 +118,7 @@ class Mem:
     def __setitem__(self, a, v):
         a &= 0xFFFF
         v &= 0xFF
-        if 0x1FF4 <= a <= 0x1FF7 or a == 0x1FF9:
+        if 0x1FF4 <= a <= 0x1FFB:
             self.bank = a - 0x1FF4
             return
         if a >= 0xF000:

@@ -40,7 +40,7 @@ from test_cell_map import Mem, RTS_SENTINEL, parse_labels  # noqa: E402
 from py65.devices.mpu6502 import MPU  # noqa: E402
 
 FROZEN = Path(os.environ.get("TEST_FROZEN") or ROOT / "tests" / "frozen")
-L1 = parse_labels(FROZEN / "bank1.lst", {"MenuMain", "SetObjectXPos_b1"})
+L1 = parse_labels(FROZEN / "bank2.lst", {"MenuMain", "SetObjectXPos_b1"})
 L0 = parse_labels(FROZEN / "bank0.lst",
                   {"PlayerLives", "PlayerBombs", "LevelStartRoom", "LineCount",
                    "BombX", "Level", "TickCounter", "BarLevel"})
@@ -120,7 +120,7 @@ def fit_offsets():
         ds, cs = set(), set()
         for x in xs:
             mem = TimedMem()
-            mem.bank = 1
+            mem.bank = 2
             run(L1["SetObjectXPos_b1"], (x, sel, 0),
                 lambda m: m.pc == RTS_SENTINEL, mem)
             res = next((e for e in mem.log if e[2] == RESP0 + sel), None)
@@ -153,7 +153,7 @@ def run_band(lives, key):
     r[Z["BombX"]] = 0
     r[Z["Level"]] = 0
     r[Z["TickCounter"]] = 30
-    mem.bank = 1
+    mem.bank = 2
     run(L1["MenuMain"], (0, 0, 0), lambda m: m.pc == 0xFC70, mem)
     return mem.log
 

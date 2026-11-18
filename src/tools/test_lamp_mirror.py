@@ -27,8 +27,8 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 SRC = ROOT
 FROZEN = SRC / "tests" / "frozen"
-K = (SRC / "kernel.asm").read_text(encoding="utf-8")
-B2 = (SRC / "bank2.asm").read_text(encoding="utf-8")
+K = (SRC / "bank0.asm").read_text(encoding="utf-8")
+B2 = (SRC / "bank6.asm").read_text(encoding="utf-8")
 
 WIDTH_ = 10
 HEIGHT_ = 3
@@ -39,7 +39,7 @@ LAMP_MIRROR = 13
 
 def obj_equ(name: str) -> int:
     m = re.search(r"^" + name + r"\s*=\s*(\d+)", K, re.M)
-    assert m, f"{name} EQU missing from kernel.asm"
+    assert m, f"{name} EQU missing from bank0.asm"
     return int(m.group(1))
 
 
@@ -136,7 +136,9 @@ assert re.search(r"and #%00000111[^\n]*\n(?:[^\n]*\n){0,4}\s*cmp #LAMP", K), (
     "CEH_Lamp must mask b3 so type 13 hits `cmp #LAMP`")
 b2_lines = B2.splitlines()
 cmp_sites = [i for i, l in enumerate(b2_lines) if l.strip() == "cmp #LAMP"]
-assert len(cmp_sites) == 3, f"bank2 has {len(cmp_sites)} lamp compares, want 3"
+# 2026-11-17: the laser hit test scans the enemy list once (tip + body share the filter), so
+# the laser has ONE lamp compare (LaserTipSpan) plus the bomb-blast one (BombEnemyBlastBody).
+assert len(cmp_sites) == 2, f"bank6 has {len(cmp_sites)} lamp compares, want 2"
 for i in cmp_sites:
     assert any("and #%00000111" in l for l in b2_lines[max(0, i - 6):i]), (
         f"bank2 line {i + 1}: the lamp compare does not mask b3")

@@ -39,7 +39,7 @@ def main() -> int:
     c, nc = gen("ntsc")
     assert nc == {i: i for i in range(256)}, "NTSC colors must be the identity"
     assert (c["TV_PAL"], c["TV_50HZ"], c["VBL_UNITS"], c["OVER_UNITS"], c["TICKS_PER_SEC"],
-            c["TV_CAVE_LINES"]) == (0, 0, 31, 44, 60, 272), c
+            c["TV_CAVE_LINES"]) == (0, 0, 45, 48, 60, 280), c
     for tv in ("pal60", "pal"):
         c, nc = gen(tv)
         assert len(nc) == 256 and all((nc[i] & 0x0F) == (i & 0x0F) for i in nc), (
@@ -55,15 +55,15 @@ def main() -> int:
         assert c["TV_PAL"] == 1
     c60, _ = gen("pal60")
     assert (c60["TV_50HZ"], c60["VBL_UNITS"], c60["OVER_UNITS"], c60["TICKS_PER_SEC"],
-            c60["TV_CAVE_LINES"]) == (0, 31, 44, 60, 272), "PAL60 keeps the NTSC frame"
+            c60["TV_CAVE_LINES"]) == (0, 45, 48, 60, 280), "PAL60 keeps the NTSC frame"
     c50, _ = gen("pal")
     assert (c50["TV_50HZ"], c50["TICKS_PER_SEC"], c50["TV_CAVE_LINES"]) == (1, 50, 312)
-    assert c50["VBL_UNITS"] > 31 and c50["OVER_UNITS"] > 44
+    assert c50["VBL_UNITS"] > 45 and c50["OVER_UNITS"] > 48
 
     # no raw colour literals
     store = re.compile(r"^\s*(sta|sty|stx)\s+(COLUP0|COLUP1|COLUPF|COLUBK)\b")
     bad = []
-    for name in ("kernel.asm", "bank1.asm", "bank2.asm", "bank3.asm"):
+    for name in ("bank0.asm", "bank2.asm", "bank6.asm", "bank5.asm"):
         lines = (ROOT / name).read_text().split("\n")
         code = [l.split(";", 1)[0] for l in lines]
         for i, l in enumerate(code):

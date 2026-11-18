@@ -116,7 +116,7 @@ PC_STARTFRAME = _LBL0["StartFrame"]
 
 # bank1 bar-region labels
 _LBL1 = {}
-for _l in open(SRC / "bank1.lst", errors="replace"):
+for _l in open(SRC / "bank2.lst", errors="replace"):
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+"
                   r"([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$",
                   _l)
@@ -307,7 +307,7 @@ def measure_bar2(barlevel, playerlives=3, playerbombs=5):
 # track wsync writes in a mutable cell so the inner loop can compare
 wsync_before = [0]
 
-# HUD band section labels (from bank1.lst)
+# HUD band section labels (from bank2.lst)
 HUDPAD = _LBL1[".HudPad"]
 TOPGAP = _LBL1[".TopGap"]
 LIVESLOOP = _LBL1[".LivesLoop"]
@@ -562,9 +562,9 @@ if __name__ == "__main__":
     # CollisionX = 36+off (tide). BombPacked b0-1 = bomb state (2 = exploding,
     # skips water-strip COLUBK). RoomBandColor = water-strip band color.
     COLLX = _LBL0.get("CollisionX", 0x8B) if "CollisionX" in _LBL0 else 0x8B
-    # find real ZP addresses from kernel.asm EQUs
+    # find real ZP addresses from bank0.asm EQUs
     import re as _re
-    _ks = (SRC / "kernel.asm").read_text()
+    _ks = (SRC / "bank0.asm").read_text()
     def _equ(name):
         m = _re.search(rf"^{name}\s*=\s*\$([0-9A-Fa-f]+)", _ks, _re.M)
         return int(m.group(1), 16) if m else None

@@ -32,14 +32,14 @@ if "SkService" not in L4:
     sys.exit("frozen bank4 has no SkService yet (red)")
 SERVICE = L4["SkService"]
 
-# game variables the ops touch (kernel.asm ZP; hand copies live in bank4.asm)
+# game variables the ops touch (bank0.asm ZP; hand copies live in bank4.asm)
 LEVEL, LIVES = 0xA3, 0xAC
 SC_TH, SC_HU, SC_TE = 0xF3, 0xF4, 0xF5
 BASE = 0x7FE0                       # record block in the chip
 OP_BOOT, OP_RESUME, OP_CHECKPOINT, OP_GAMEOVER, OP_TITLE = 0, 1, 2, 3, 4
 ENEMY_RAMP, SK_HI = 0xC2, 0x93        # frame clock; vyLo/vyHi/PlayerYSub = the high score
 FRAME_CYCLES = 19912                # 262 lines x 76 cycles
-LEVEL_COUNT = 20
+LEVEL_COUNT = 32
 RESTART_PC = 0xF005                 # bank0's `jmp GameStart` after the power-up pad
 
 
@@ -203,13 +203,15 @@ def main() -> int:
     assert c.restarted, "game over must restart the run at the title"
     rec = c.record()
     assert rec[2] == 0, "game over must clear the save state"
-    expect_record(rec, 0, 0, 3, 0, 3400)
+    expect_record(rec, 0, 7, 3, 0, 3400)   # the title comes back on the level just played (user 2026-11-11): Level 7 is kept
     c.power_cycle()
     c.set(level=0, lives=3, score=0)
-    assert c.op(OP_BOOT)[0] and c.op(OP_RESUME)[0], "nothing to load after game over"
+    assert not c.op(OP_BOOT)[0], "boot must select the level of the last run (user 2026-11-11)"
+    assert c.get()["level"] == 7, c.get()
+    assert c.op(OP_RESUME)[0], "state 0 = no run to resume after game over"
     c.set(level=9, lives=1, score=5000)
     c.op(OP_GAMEOVER)
-    expect_record(c.record(), 0, 0, 3, 0, 5000)
+    expect_record(c.record(), 0, 9, 3, 0, 5000)
 
     # 5b. the last stage cleared (the caller already did `inc Level`): same as a
     # game over, and with the CHECKPOINT op

@@ -53,13 +53,13 @@ PC_START = LABELS["StartFrame"]
 # sits at LEVEL1_AsyncExtras+1/+2 (header = flags, MetaA, MetaB).
 _pat = re.compile(r"^\s*\d+\s+([0-9a-f]{4})\s+LEVEL1_AsyncExtras\s*$")
 EXTRAS = None
-for _l in (FROZEN / "bank3.lst").read_text(errors="replace").splitlines():
+for _l in (FROZEN / "bank5.lst").read_text(errors="replace").splitlines():
     _m = _pat.match(_l)
     if _m:
         EXTRAS = int(_m.group(1), 16)
         break
 if EXTRAS is None:
-    sys.exit("LEVEL1_AsyncExtras label not found in bank3.lst")
+    sys.exit("LEVEL1_AsyncExtras label not found in bank5.lst")
 
 
 def run(rom: Path, band1: int = 0xFF) -> dict:
@@ -69,15 +69,15 @@ def run(rom: Path, band1: int = 0xFF) -> dict:
              for i in range(len(blob) // 4096)]
     # MetaA band mask: band1 parameterized for the partial-mask run
     mask = 0x07 if band1 else 0x05
-    banks[3][(EXTRAS + 1) & 0xFFF] = mask          # MetaA
-    banks[3][(EXTRAS + 2) & 0xFFF] = META_B_POKE   # MetaB (ball col)
+    banks[5][(EXTRAS + 1) & 0xFFF] = mask          # MetaA
+    banks[5][(EXTRAS + 2) & 0xFFF] = META_B_POKE   # MetaB (ball col)
     # C5: the loader ALSO derives the band gates from the SIDE-0 patch bytes
     # (row b7-6 | side b4 | col b3-0) and ORs them into MetaA, so the patch
     # rows must agree with the poked mask (row 0 + row 1 for the full run,
     # rows 0 + 2 for the band-1-partial run).
     prow = (0, 1) if band1 else (0, 2)
-    banks[3][(EXTRAS + 3) & 0xFFF] = prow[0] << 6
-    banks[3][(EXTRAS + 4) & 0xFFF] = prow[1] << 6
+    banks[5][(EXTRAS + 3) & 0xFFF] = prow[0] << 6
+    banks[5][(EXTRAS + 4) & 0xFFF] = prow[1] << 6
     respbl_temp = []
 
     class ProbeMem(Mem):
@@ -128,7 +128,7 @@ def run(rom: Path, band1: int = 0xFF) -> dict:
             mem.swchb = 0xFE if frame in (1, 2) else 0xFF
 
     enabl = [(f, v) for f, b, a, v in mem.log
-             if f >= 2 and b == 0 and a == ENABL]
+             if f >= 2 and b in (0, 1) and a == ENABL]   # 2026-11: the band gates run in the bank6 kernel
     respbl = {f for f, b, a, v in mem.log
               if f >= 2 and b == 0 and a == RESBL}
     hmbll = {f for f, b, a, v in mem.log if f >= 2 and b == 0 and a == HMBL}
@@ -182,8 +182,9 @@ def main() -> int:
             f"{[f'${t:02X}' for t in bad_temp]}, want ${want_temp:02X}")
 
     lens = sorted({r["per_frame"].get(f) for f in range(3, r["frames"])})
-    if len(lens) != 1 or lens[0] not in (272,):
-        fails.append(f"frame line counts (f>=3) = {lens}, want [272] "
+    _want = int(re.search(r"TV_CAVE_LINES\s*=\s*(\d+)", (SRC / "colors.inc").read_text()).group(1))
+    if len(lens) != 1 or lens[0] != _want:
+        fails.append(f"frame line counts (f>=3) = {lens}, want [{_want}] "
                      "(N=4 cave: 4x36 bands)")
 
     if r["min_sp"] < 0xF7:

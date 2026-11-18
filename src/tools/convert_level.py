@@ -155,6 +155,23 @@ def _tv_palette():
     return kPalette
 
 
+DOOR_COLOR_BYTE = 0x1C   # the locked-door stripe (bank0 COLUP1 staging): bright yellow
+
+
+def door_like_color(byte: int) -> bool:
+    """True when a wall / band colour byte could be mistaken for the door stripe.
+
+    User 2026-11-17: a yellow band made it impossible to tell the locked door from the
+    wall. Rule: the whole TIA yellow hue (1), and any colour within 90 (RGB distance, the
+    converter's own palette) of the door's yellow - that also catches the gold/orange and
+    olive neighbours at high luma.
+    """
+    pal = _tv_palette()
+    dr, dg, db = pal[DOOR_COLOR_BYTE >> 4][(DOOR_COLOR_BYTE & 15) >> 1]
+    r, g, b = pal[byte >> 4][(byte & 15) >> 1]
+    return (byte >> 4) == 1 or ((r - dr) ** 2 + (g - dg) ** 2 + (b - db) ** 2) < 90 ** 2
+
+
 def nearest_byte(r: int, g: int, b: int) -> int:
     """Emulator-aware TIA color byte closest to an RGB triple.
 
@@ -1662,21 +1679,19 @@ def check_stage_connections(models_by_id: dict, levels: list[tuple[int, dict]]) 
                 b = {b for b, row in enumerate(rows_of(east)) if row[0] == "."}
                 a &= {1, 2}
                 b &= {1, 2}
-                if a and b and not (a & b):
+                # EXACT match (user report 2026-11-17, level 32: a room open in
+                # bands 1+2 beside rooms open in band 1 only): the exit fires at
+                # the screen edge in ANY open band and never tests the
+                # neighbour, so a band open on one side only lands the player
+                # inside the wall of the room he enters.
+                if a != b:
                     raise ValueError(
                         f"level {level_n}: rooms {room.get('room_id')} and "
                         f"{east.get('room_id')} are side by side but their "
-                        f"openings are in different bands ({sorted(a)} vs "
-                        f"{sorted(b)}) — the player would arrive inside a "
-                        "wall; open the link in a shared band (1, 2 or both)")
-                if bool(a) != bool(b):
-                    lone = room.get("room_id") if a else east.get("room_id")
-                    raise ValueError(
-                        f"level {level_n}: rooms {room.get('room_id')} and "
-                        f"{east.get('room_id')} are side by side but only "
-                        f"room {lone} has a side opening "
-                        f"({sorted(a) if a else sorted(b)}) — carve the same "
-                        "band on both sides")
+                        f"side openings differ (bands {sorted(a)} vs "
+                        f"{sorted(b)}) — the player leaving by the extra band "
+                        "would arrive inside a wall; carve the SAME bands on "
+                        "both sides")
             # NO OPENING WITHOUT A NEIGHBOUR (user rule 2026-10-24, screenshot
             # layout_invalid_exists.png). The playfield is reflected, so a side
             # link always opens BOTH edges; the end room of a horizontal run
@@ -1724,13 +1739,16 @@ def check_stage_connections(models_by_id: dict, levels: list[tuple[int, dict]]) 
                 dn = {c for c, v in enumerate(rows_of(south)[0]) if v == "."}
                 if room.get("bottom_band"):
                     up = set()
-                missing = sorted(up - dn)
+                # ...and the other way round (a rising player keeps his X too):
+                # a ceiling column open below must have the floor open above.
+                missing = sorted(up ^ dn) if not room.get("bottom_band") \
+                    else sorted(up - dn)
                 if missing:
                     raise ValueError(
                         f"level {level_n}: rooms {room.get('room_id')} (above) "
                         f"and {south.get('room_id')} (below) are stacked, but "
-                        f"the upper room's floor is open at columns {missing} "
-                        f"while the lower room's ceiling is walled there "
+                        f"the upper room's floor and the lower room's ceiling "
+                        f"differ at columns {missing} "
                         f"(floor {sorted(up)}, ceiling {sorted(dn)}) — the "
                         "player keeps his X through the link, so he would land "
                         "inside a wall and stop falling; give both rooms the "
@@ -1881,30 +1899,26 @@ def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
     # --- C7 (2026-10-20): bank3 data include list -------------------------
     # models_data.asm (shape blocks + row pool + LEVEL_ShapeTable, appended
     # below once the shape order is known) and levels_extras.asm (the per-level
-    # async extras streams + their base table). bank3.asm includes this file in
+    # async extras streams + their base table). bank5.asm includes this file in
     # its $F010-$F44F data window; the fit is checked in emit_spills().
     extras_lines = [
         "; Generated by convert_level.py --levels. Do not edit by hand.",
-        "; C7 (2026-10-20): bank3's async EXTRAS streams, one file per level,",
-        "; plus the per-level BASE table ExtrasLoad indexes by `Level` ($A3).",
-        "; Bank2 stages only the room's 1-based ordinal (LevelConnSpare): the",
-        "; counts column lives in bank2, the records live here.",
+        "; The per-level BASE table ExtrasLoad indexes by `Level` ($A3). The streams themselves (one file per",
+        "; level) are placed first-fit into bank3's extras windows (spill_bank3*.asm, banks plan 2026-11-14).",
+        "; Bank2 stages only the room's 1-based ordinal (LevelConnSpare): the counts column lives in bank2,",
+        "; the records live in bank3.",
     ]
-    for level_n, _level in sorted(levels, key=lambda item: item[0]):
-        extras_lines.append(
-            f'    include "generated/level_{level_n:03d}_extras.asm"')
+    ordered = sorted(levels, key=lambda item: item[0])
     extras_lines.append(f"LEVEL_EXTRAS_COUNT = {len(levels)}")
-    extras_lines.append("LevExtrasLo:")
-    extras_lines.append("  .byte " + ", ".join(
-        f"<LEVEL{n}_AsyncExtras" for n, _l in sorted(levels,
-                                                    key=lambda i: i[0])))
-    extras_lines.append("LevExtrasHi:")
-    extras_lines.append("  .byte " + ", ".join(
-        f">LEVEL{n}_AsyncExtras" for n, _l in sorted(levels,
-                                                    key=lambda i: i[0])))
+    # (DASM 2.20 segfaults on one .byte line with ~32 forward-referenced labels: 8 per line)
+    for table, op in (("LevExtrasLo", "<"), ("LevExtrasHi", ">")):
+        extras_lines.append(f"{table}:")
+        for i in range(0, len(ordered), 8):
+            extras_lines.append("  .byte " + ", ".join(
+                f"{op}LEVEL{n}_AsyncExtras" for n, _l in ordered[i:i + 8]))
     extras_lines.append("")
-    (generated / "levels_extras.asm").write_text(
-        "\n".join(extras_lines) + "\n")
+    (generated / "levels_extras.asm").write_text("\n".join(extras_lines) + "\n")
+    _place_extras(generated, [n for n, _l in ordered])
 
     # C12 (2026-10-21): the bank3 data window is SPLIT in two, because the
     # biggest shape library that fits one window is smaller than the shape
@@ -1913,16 +1927,9 @@ def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
     # ITS half, so the split costs nothing at run time:
     #   extras  -> $F010-$F44F (1 088 B): per-level async streams + base table
     #   shapes  -> $F5CC-$F8B6 (  747 B): shape blocks + row pool + shape table
-    extras_list = [
-        "; Generated by convert_level.py --levels (C12 2026-10-21).",
-        "; Include list for BANK3's $F010 EXTRAS window — see bank3.asm.",
-        '    include "generated/levels_extras.asm"',
-        "",
-    ]
-    (generated / "spill_bank3.asm").write_text("\n".join(extras_list) + "\n")
     shapes_list = [
         "; Generated by convert_level.py --levels (C12 2026-10-21).",
-        "; Include list for BANK3's $F5CC SHAPE window — see bank3.asm.",
+        "; Include list for BANK3's $F5CC SHAPE window — see bank5.asm.",
         '    include "generated/models_data.asm"',
         "",
     ]
@@ -1931,7 +1938,7 @@ def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
 
     # (a) 2026-10-20: one bottom-band COLOR for the whole game. The per-room
     # flag stays in the RoomShapes byte (b6, C2); the color is a constant
-    # (bank2.asm carries the EQU, test_level_bank asserts it matches this).
+    # (bank6.asm carries the EQU, test_level_bank asserts it matches this).
     band_colors = {
         _room_bottom_color(room)
         for _n, level in levels for room in (level.get("rooms") or [])
@@ -1981,11 +1988,13 @@ def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
             fh.write(f"  .word {name}Shape\n")
         fh.write("\n")
 
+    split = None            # set below (SAVIOR_ROOMS_SPLIT or the largest K whose levels fit room bank A)
     tail_lines = [
         "",
         f"LEVEL_FORMAT = ${LEVEL_FORMAT:02x}",
         "LEVEL_DATA_STRIDE = 7",
         f"LEVEL_COUNT = {len(levels)}",
+        "LEVEL_SPLIT = @SPLIT@   ; levels 1..LEVEL_SPLIT live in room bank A (bank2), the rest in B (bank5)",
         "",
         "; Per-level entry (stride 7, (d) 2026-10-20): miner room/x, both wall",
         "; colors, then the level's room-table base and its ROOM COUNT.",
@@ -2018,29 +2027,80 @@ def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
         ";   it in-bank, so record walkers and records share a bank. This bank",
         ";   keeps the counts byte's b5-0 ORDINAL and the 3 B/room columns.",
         f"; BAND_COLOR = ${band_color:02x} — the single bottom-band color (every",
-        "; bottom_band room must resolve to it; bank2.asm carries the EQU and",
+        "; bottom_band room must resolve to it; bank6.asm carries the EQU and",
         "; test_level_bank asserts the pair).",
         "LevelDataTable:",
     ]
-    for level_n, level in levels:
-        prefix = f"LEVEL{level_n}"
-        tail_lines += [
-            f"  .byte {prefix}_MINER_ROOM, {prefix}_MINER_X, "
-            f"{prefix}_WALL_COLOR, {prefix}_WALL_COLOR2",
-            f"  .word {prefix}_RoomShapes",
-            f"  .byte {len(level['rooms'])} ; {prefix} rooms",
-        ]
-    tail_lines += [""]
-    table_lines += tail_lines
-    output.write_text("\n".join(table_lines) + "\n")
-    # levels_index.asm = the tail alone: bank2 includes it separately from
-    # the per-level table files (level-data spill layout, bugs.md 27).
-    index_lines = [
-        "; Generated by convert_level.py --levels. Do not edit by hand.",
-        "; Tail only (EQUs + LevelDataTable) — see bugs.md 27 spill layout.",
-    ] + tail_lines
-    (generated / "levels_index.asm").write_text("\n".join(index_lines) + "\n")
-    emit_spills(generated, [n for n, _l in levels])
+    head_lines = list(tail_lines)           # everything before the table entries (shared by A and B)
+
+    def table_entries(group):
+        out = []
+        for level_n, level in group:
+            prefix = f"LEVEL{level_n}"
+            out += [
+                f"  .byte {prefix}_MINER_ROOM, {prefix}_MINER_X, "
+                f"{prefix}_WALL_COLOR, {prefix}_WALL_COLOR2",
+                f"  .word {prefix}_RoomShapes",
+                f"  .byte {len(level['rooms'])} ; {prefix} rooms",
+            ]
+        return out + [""]
+
+    def write_for(k: int) -> None:
+        sub = lambda lines: [ln.replace("@SPLIT@", str(k)) for ln in lines]
+        levels_a, levels_b = levels[:k], levels[k:]
+        ta = sub(head_lines) + table_entries(levels_a)
+        tb = sub(head_lines) + table_entries(levels_b)
+        output.write_text("\n".join(sub(table_lines) + sub(head_lines) + table_entries(levels)) + "\n")
+        (generated / "levels_index.asm").write_text("\n".join([
+            "; Generated by convert_level.py --levels. Do not edit by hand.",
+            "; Tail only (EQUs + LevelDataTable of room bank A) — see bugs.md 27 spill layout."] + ta) + "\n")
+        (generated / "levels_index_B.asm").write_text("\n".join([
+            "; Generated by convert_level.py --levels. Do not edit by hand.",
+            "; Room bank B: EQUs + the LevelDataTable of levels LEVEL_SPLIT+1..LEVEL_COUNT."] + tb) + "\n")
+        emit_spills(generated, [n for n, _l in levels_a])
+        emit_spills(generated, [n for n, _l in levels_b], index_name="levels_index_B.asm", prefix="spill_B_")
+
+    forced = os.environ.get("SAVIOR_ROOMS_SPLIT")
+    if forced is not None:
+        k = int(forced)
+        if not 0 <= k <= len(levels):
+            raise ValueError(f"SAVIOR_ROOMS_SPLIT={k} outside 0..{len(levels)}")
+        write_for(k)
+    else:
+        # banks plan v3: the largest K whose levels still fit room bank A; B takes the rest (and must fit too)
+        last_err = None
+        for k in range(len(levels), -1, -1):
+            try:
+                write_for(k)
+                break
+            except ValueError as error:
+                last_err = error
+        else:
+            raise ValueError(f"the stage fits neither room bank A nor B: {last_err}")
+        print(f"room banks: levels 1-{k} in A (bank2), "
+              + (f"levels {k + 1}-{len(levels)} in B (bank5)" if k < len(levels) else "B (bank5) empty"))
+
+
+def _place_extras(generated: Path, level_numbers: list[int]) -> None:
+    """First-fit the per-level extras files (biggest first) into bank3's extras windows. Window 1 also holds
+    levels_extras.asm (the base table). Writes generated/spill_bank3*.asm include lists; overflow = ValueError."""
+    sizes = {n: _gen_data_size(generated / f"level_{n:03d}_extras.asm") for n in level_numbers}
+    caps = {name: hi - lo for name, lo, hi in _BANK3_EXTRAS_WINDOWS}
+    first = _BANK3_EXTRAS_WINDOWS[0][0]
+    caps[first] -= _gen_data_size(generated / "levels_extras.asm")
+    got = _pack_exact([(f"{n:03d}", sizes[n]) for n in level_numbers], caps)
+    if got is None:
+        raise ValueError(f"extras overflow: the level streams do not pack into the bank3 windows "
+                         f"(slack {caps}) - total {sum(sizes.values())}B")
+    placed = {name: sorted(int(k) for k in got[name]) for name, _lo, _hi in _BANK3_EXTRAS_WINDOWS}
+    for name, _lo, _hi in _BANK3_EXTRAS_WINDOWS:
+        lines = ["; Generated by convert_level.py --levels (banks plan 2026-11-14).",
+                 f"; Include list for a bank3 EXTRAS window ({name}) - see _place_extras()."]
+        if name == first:
+            lines.append('    include "generated/levels_extras.asm"')
+        for n in sorted(placed[name]):
+            lines.append(f'    include "generated/level_{n:03d}_extras.asm"')
+        (generated / name).write_text("\n".join(lines) + "\n")
 
 
 def _gen_data_size(path: Path) -> int:
@@ -2057,7 +2117,7 @@ def _gen_data_size(path: Path) -> int:
 
 # bank2 data-slot gaps (bugs.md 27/27b): (name, slot end).
 # Starts come from _SPILL_ORG (the `.ds`/`org` pad that opens each window);
-# tools/verify_build.py --precheck re-measures the REAL starts from bank2.lst
+# tools/verify_build.py --precheck re-measures the REAL starts from bank6.lst
 # after every build and fails on overflow — keep here in sync.
 #
 # C7 (2026-10-20): the shape half moved to bank3, so the six windows it used
@@ -2078,11 +2138,20 @@ _SPILL_SLOTS = [
 # C7 (2026-10-20): BANK3 carried ONE data window for the level-data subsystem.
 # C12 (2026-10-21): it is SPLIT in two, because a single window caps the shape
 # library below what the generator can use. Both halves are checked here; the
-# `.ds` pads that open them live in bank3.asm.
+# `.ds` pads that open them live in bank5.asm.
 _BANK3_EXTRAS_SLOT = (0xF010, 0xF450)   # async extras + base table (sized)
-_BANK3_SHAPES_SLOT = (0xF5CC, 0xF8B7)   # shape blocks + row pool + address table
-_BANK3_SLOTS = (
-    ("spill_bank3.asm", "extras", _BANK3_EXTRAS_SLOT),
+# banks plan 2026-11-14: 32 levels need ~2.2 KB of extras, so bank3 gets more windows (its old shape window and the
+# free runs between the walkers); a level's stream may sit in any of them (ExtrasLoad reads LevExtrasLo/Hi).
+_BANK3_EXTRAS_WINDOWS = (
+    ("spill_bank3.asm", 0xF010, 0xF450),
+    ("spill_bank3_2.asm", 0xF5A0, 0xF8B7),
+    ("spill_bank3_3.asm", 0xFB76, 0xFBF8),
+    ("spill_bank3_4.asm", 0xFC1D, 0xFCB8),
+    ("spill_bank3_5.asm", 0xFD71, 0xFEC0),
+)
+_BANK3_SHAPES_SLOT = (0xF4C0, 0xFBD0)   # NOW IN BANK4 (the models' bank, 2026-11-14; bank7 until then): shape blocks + row pool + address table, below bank4's ReturnPad $FBF8
+_BANK3_SLOTS = tuple(
+    (name, "extras", (lo, hi)) for name, lo, hi in _BANK3_EXTRAS_WINDOWS) + (
     ("spill_bank3_shapes.asm", "shapes", _BANK3_SHAPES_SLOT),
 )
 
@@ -2100,14 +2169,60 @@ _SPILL_ORG = {  # exact slot start (the pad that opens the window)
     "spill_F9D9": 0xF9D9,
     "spill_FCB8": 0xFCB8,
     "spill_FF59": 0xFF59,
-    "spill_FE9C": 0xFE9C,
+    "spill_FE9C": 0xFEA9,   # the first 13 B hold the LaserHit router stub (A/B room banks)
 }
 
 
-def emit_spills(generated: Path, level_numbers: list[int] | None = None) -> None:
+def _pack_exact(items: list[tuple[str, int]], caps: dict, limit: int = 400000):
+    """Bin-pack `items` ((key, size) pairs) into the windows `caps` ({name: free bytes}); returns
+    {name: [keys]} or None. Big-first first-fit is tried first (it is what the layout used to do and is
+    stable), then a depth-first search over the same order with a node budget: at ~90% fill the window
+    fragmentation, not the total, is what limits the rooms per level (banks plan 2026-11-15)."""
+    names = list(caps)
+    order = sorted(items, key=lambda kv: (-kv[1], kv[0]))
+    free = dict(caps)
+    placed = {n: [] for n in names}
+    for key, sz in order:
+        for n in names:
+            if sz <= free[n]:
+                free[n] -= sz
+                placed[n].append(key)
+                break
+        else:
+            break
+    else:
+        return placed
+    free = dict(caps)
+    placed = {n: [] for n in names}
+    nodes = [0]
+
+    def rec(i: int) -> bool:
+        if i == len(order):
+            return True
+        nodes[0] += 1
+        if nodes[0] > limit:
+            return False
+        key, sz = order[i]
+        seen = set()
+        for n in names:
+            if sz <= free[n] and free[n] not in seen:
+                seen.add(free[n])
+                free[n] -= sz
+                placed[n].append(key)
+                if rec(i + 1):
+                    return True
+                placed[n].pop()
+                free[n] += sz
+        return False
+
+    return placed if rec(0) else None
+
+
+def emit_spills(generated: Path, level_numbers: list[int] | None = None,
+                index_name: str = "levels_index.asm", prefix: str = "spill_") -> None:
     """bugs.md 27b: place level files into bank2's data slots and write
     generated/spill_*.asm include-lists — adding a level never touches
-    bank2.asm. Greedy first-fit, big levels first; within a slot the
+    bank6.asm. Greedy first-fit, big levels first; within a slot the
     index stays first (defines LEVEL_FORMAT) and rooms sort ASC (stable
     addresses per slot). Overflow here = precheck also fails after build.
 
@@ -2116,7 +2231,7 @@ def emit_spills(generated: Path, level_numbers: list[int] | None = None) -> None
     one bank with its readers (EnterRoomB2 / exits / LoadLevelB2 / moth /
     LWC / LHT / blast), which is the invariant the split is built on.
     """
-    idx = "generated/levels_index.asm"
+    idx = f"generated/{index_name}"
     if level_numbers is None:
         rooms = sorted(p.name for p in generated.glob("level_*_rooms.asm"))
     else:
@@ -2134,27 +2249,24 @@ def emit_spills(generated: Path, level_numbers: list[int] | None = None) -> None
         start = _SPILL_ORG[name]
         caps[name] = end - start
     order = [Path(idx).name] + sorted(rooms, reverse=True)  # big first
-    placed: dict = {name: [] for name, _ in _SPILL_SLOTS}
-    for item in order:
-        sz = sizes[item]
-        if item == Path(idx).name:
-            if sz > caps[_INDEX_SLOT]:
-                raise ValueError(
-                    f"levels_index.asm ({sz}B) does not fit the index slot "
-                    f"${_SPILL_ORG[_INDEX_SLOT]:04X} "
-                    f"({caps[_INDEX_SLOT]}B) — too many levels")
-            caps[_INDEX_SLOT] -= sz
-            placed[_INDEX_SLOT].append(item)
-            continue
-        for name, _ in _SPILL_SLOTS:
-            if sz <= caps[name]:
-                caps[name] -= sz
-                placed[name].append(item)
-                break
-        else:
-            raise ValueError(
-                f"spill overflow: {item} ({sz}B) fits no bank2 slot "
-                f"(remaining caps: {caps}) — grow a gap or split the level")
+    idx_name = Path(idx).name
+    if sizes[idx_name] > caps[_INDEX_SLOT]:
+        raise ValueError(
+            f"levels_index.asm ({sizes[idx_name]}B) does not fit the index slot "
+            f"${_SPILL_ORG[_INDEX_SLOT]:04X} "
+            f"({caps[_INDEX_SLOT]}B) — too many levels")
+    caps[_INDEX_SLOT] -= sizes[idx_name]
+    got = _pack_exact([(r, sizes[r]) for r in rooms], caps)
+    if got is None:
+        raise ValueError(
+            f"spill overflow: the room tables ({sum(sizes[r] for r in rooms)}B in {len(rooms)} files) "
+            f"do not pack into the bank2 slots (remaining caps: {caps}) — grow a gap or split a level")
+    placed = got
+    placed[_INDEX_SLOT] = [idx_name] + placed[_INDEX_SLOT]
+    for name, files in placed.items():
+        for f in files:
+            if f != idx_name:
+                caps[name] -= sizes[f]
     for name, files in placed.items():
         room_files = sorted(f for f in files if f != Path(idx).name)
         head = [Path(idx).name] if Path(idx).name in files else []
@@ -2163,7 +2275,7 @@ def emit_spills(generated: Path, level_numbers: list[int] | None = None) -> None
                  "; Include list for this bank2 gap — see emit_spills()."]
         for inc in head + room_files:
             lines.append(f'    include "generated/{inc}"')
-        (generated / f"{name}.asm").write_text("\n".join(lines) + "\n")
+        (generated / f"{prefix}{name[len('spill_'):]}.asm").write_text("\n".join(lines) + "\n")
     total_used = sum(sizes.values())
     print(f"level tables (bank2): {total_used}B in {len(order)} files, "
           f"slot slack {sum(caps.values())}B")
@@ -2182,7 +2294,7 @@ def emit_spills(generated: Path, level_numbers: list[int] | None = None) -> None
         if slack < 0:
             raise ValueError(
                 f"bank3 {kind} overflow: {used}B > {end - start}B in "
-                f"${start:04X}-${end - 1:04X} — grow the window (bank3.asm) "
+                f"${start:04X}-${end - 1:04X} — grow the window (bank5.asm) "
                 f"or trim a {'shape' if kind == 'shapes' else 'room'}")
 
 

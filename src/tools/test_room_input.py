@@ -30,9 +30,9 @@ from test_cell_map import RTS_SENTINEL, parse_labels  # noqa: E402
 SRC = ROOT
 FROZEN = SRC / "tests" / "frozen"
 
-L2 = parse_labels(FROZEN / "bank2.lst", {"EBLER_Done", "Temp"})
+L2 = parse_labels(FROZEN / "bank6.lst", {"EBLER_Done", "Temp"})
 if {"EBLER_Done", "Temp"} - set(L2):
-    sys.exit(f"bank2.lst missing labels: {sorted({'EBLER_Done', 'Temp'} - set(L2))}")
+    sys.exit(f"bank6.lst missing labels: {sorted({'EBLER_Done', 'Temp'} - set(L2))}")
 
 TEMP = L2["Temp"]
 SWCHA = 0x0280
@@ -54,7 +54,7 @@ class MemJoystick(_CM.Mem):
 def enter_tail(swcha: int) -> tuple[int, int]:
     """Run bank2.EBLER_Done; return (Temp, bank)."""
     mem = MemJoystick(swcha)
-    mem.bank = 2
+    mem.bank = 6
     mpu = MPU(memory=mem)
     mpu.pc = L2["EBLER_Done"]
     mpu.a = mpu.x = mpu.y = 0

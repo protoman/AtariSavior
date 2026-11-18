@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Gameplay video of the real ROM: the playbot flies levels, tools/tia_render.py draws
-every frame, ffmpeg encodes an H.264 mp4 (silent: there is no audio model).
+every frame, ffmpeg encodes an H.264 mp4 (sound: tools/tia_audio.py synthesises the TIA channels).
 
   make_video.py [LEVEL ...] [--out FILE] [--fps 60] [--rom-dir DIR]     (default levels 2 6 12 18)
 
@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import playbot as P  # noqa: E402
+import tia_audio  # noqa: E402
 import tia_render as T  # noqa: E402
 
 W, H = 960, 600
@@ -46,6 +47,9 @@ class Sink:
              "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
              "-movflags", "+faststart", str(out)], stdin=subprocess.PIPE)
         self.n = 0
+        self.out = Path(out)
+        self.synth = tia_audio.Synth(fps)
+        self.regs = None                      # AUDC0/F0/V0/C1/F1/V1 for the next frames
 
     def image(self, img, repeat=1):
         canvas = Image.new("RGB", (W, H), (0, 0, 0))
@@ -53,11 +57,21 @@ class Sink:
         data = canvas.tobytes()
         for _ in range(repeat):
             self.p.stdin.write(data)
+            self.synth.frame(self.regs)
         self.n += repeat
 
     def close(self):
         self.p.stdin.close()
         self.p.wait()
+        wav = self.out.with_suffix(".wav")
+        self.synth.write(wav)
+        silent = self.out.with_suffix(".silent.mp4")
+        self.out.rename(silent)
+        subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-i", str(silent), "-i",
+                               str(wav), "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+                               "-shortest", "-movflags", "+faststart", str(self.out)])
+        silent.unlink()
+        wav.unlink()
 
 
 def card(lines, sizes):
@@ -78,8 +92,14 @@ class VideoMixin:
     sink = None
 
     def frame(self, swcha=P.NONE, fire=False):
-        rows = self.render(self.tia_frame(swcha, fire))
+        log = self.tia_frame(swcha, fire)
+        aud = self.__dict__.setdefault("aud", {r: 0 for r in (0x15, 0x16, 0x17, 0x18, 0x19, 0x1A)})
+        for _, reg, v in log:                 # TiaConsole logs TIA writes, it does not store them
+            if reg in aud:
+                aud[reg] = v
+        rows = self.render(log)
         if self.sink is not None and rows:
+            self.sink.regs = (aud[0x15], aud[0x17], aud[0x19], aud[0x16], aud[0x18], aud[0x1A])
             self.sink.image(T.rows_to_image(rows, SCALE))
 
 
@@ -118,9 +138,34 @@ def main() -> int:
     ap.add_argument("--out", default=str(ROOT / "releases" / "savior-1.0.0-gameplay.mp4"))
     ap.add_argument("--fps", type=int, default=60)
     ap.add_argument("--rom-dir")
+    ap.add_argument("--poster", help="plain mode: this image as a short intro, then gameplay "
+                    "only (no cards, no text)")
+    ap.add_argument("--random", type=int, help="pick this many random levels")
+    ap.add_argument("--seed", type=int)
     a = ap.parse_args()
     stage = json.loads((ROOT / "rooms" / "stage.json").read_text())["stage"]
+    if a.random:
+        import random
+        a.levels = sorted(random.Random(a.seed).sample(range(1, 21), a.random))
+        print("levels:", a.levels, flush=True)
     sink = Sink(a.out, a.fps)
+    if a.poster:
+        poster = Image.open(a.poster).convert("RGB")
+        k = min(W / poster.width, H / poster.height)
+        poster = poster.resize((round(poster.width * k), round(poster.height * k)),
+                               Image.LANCZOS)
+        black = Image.new("RGB", poster.size)
+        fade = a.fps // 2
+        for i in range(fade):                              # fade in
+            sink.image(Image.blend(black, poster, (i + 1) / fade))
+        sink.image(poster, a.fps * 4)
+        for i in range(fade):                              # fade out
+            sink.image(Image.blend(poster, black, (i + 1) / fade))
+        for n in a.levels:
+            print(f"level {n}: {play_level(n, stage, sink, a.rom_dir)} frames", flush=True)
+        sink.close()
+        print(f"-> {a.out}  ({sink.n} frames, {sink.n / a.fps:.0f} s)")
+        return 0
     gold, cream = (220, 180, 60), (235, 235, 235)
     sink.image(card([("S.A.V.I.O.R.", 96, (180, 140, 240)),
                      ("Atari 2600  -  version 1.0.0", 36, cream),

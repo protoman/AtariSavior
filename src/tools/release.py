@@ -8,16 +8,21 @@ source of truth: build.sh writes it into bank5 ("S.A.V.I.O.R. <version>" at $F00
 of the fifth 4K bank), the manual cover prints it, and the artifacts are named
 from it. Steps, each of which must pass:
 
-  1. the git tree has no uncommitted tracked changes (TODO.txt / credits.txt aside)
+  1. the git tree has no uncommitted tracked changes (TODO.txt / credits.txt / the
+     user-owned tools/make_video.py aside) and CHANGELOG.md has a "## <version>" section
   2. ./build.sh   (conversion + verify_build + the two headless sims)
   3. the whole battery: every tools/test_*.py
+  3b. FLICKER: tools/test_frame_stability.py --all (the 40 heaviest real rooms: VBL window
+     and frame length) and sim_frame_budget in the 8 heaviest rooms (fire held + thrust +
+     bomb). The every-room sweep is tools/sweep_frame_budget.sh, run by hand after changes
+     that touch frame timing.
   4. tools/stage_reach.py on the live stage
-  5. tools/playbot.py: all 20 levels must finish on the real ROM (~5 min)
+  5. tools/playbot.py: every level of the live stage must finish on the real ROM (~10 min)
   6. the ROM is 32 KiB and carries this version
   7. the manual PDF is rebuilt
   8. the PAL60 and PAL ROMs are built (tools/build_variant.sh: full build.sh + both
      sims in a scratch tree), carry "S.A.V.I.O.R. <version> PAL60|PAL" in bank5 and,
-     unless --skip-playbot, the playbot finishes all 20 levels on each
+     unless --skip-playbot, the playbot finishes every level on each
 
 Artifacts go to OUT (default src/releases/, git-ignored): savior-<version>.bin (NTSC),
 savior-<version>-pal60.bin, savior-<version>-pal.bin, their .sha256, the manual and
@@ -36,7 +41,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(-(rc|beta)\d+)?$")
-BANK5 = 5 * 4096 + 5     # the version header follows the 5-byte power-up stub
+BANK5 = 4 * 4096 + 0xC70   # the version header (bank4 since 2026-11-14, trans.inc; RomVersion label)
 
 
 def run(cmd, **kw):
@@ -69,6 +74,12 @@ def python_with(module):
     fail(f"no Python with {module} found")
 
 
+def stage_levels():
+    """Number of levels of the live stage (the playbot must finish every one)."""
+    import json
+    return len(json.loads((ROOT / "rooms" / "stage.json").read_text())["stage"]["levels"])
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--skip-playbot", action="store_true")
@@ -82,14 +93,16 @@ def main() -> int:
     step(f"version {version}")
 
     dirty = [l for l in run(["git", "status", "--porcelain", "--untracked-files=no"]).stdout.splitlines()
-             if Path(l[3:]).name not in ("TODO.txt", "credits.txt")]
+             if Path(l[3:]).name not in ("TODO.txt", "credits.txt", "make_video.py")]
     if dirty:
         fail("uncommitted tracked changes:\n  " + "\n  ".join(dirty))
+    if not re.search(rf"^## {re.escape(version)}\b", (ROOT / "CHANGELOG.md").read_text(), re.M):
+        fail(f'CHANGELOG.md has no "## {version}" section')
     commit = run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
 
     py = sim_python()
     step("build.sh")
-    r = run(["./build.sh"])
+    r = run(["env", "FULL_SIMS=1", "./build.sh"])
     if r.returncode:
         fail("build.sh failed:\n" + r.stdout[-1500:] + r.stderr[-500:])
 
@@ -102,19 +115,45 @@ def main() -> int:
     if bad:
         fail(f"{len(bad)} failing test(s): {', '.join(bad)}")
 
+    step("flicker: test_frame_stability --all (40 heaviest rooms)")
+    r = run([py, "tools/test_frame_stability.py", "--all"])
+    if r.returncode:
+        fail("test_frame_stability --all:\n" + r.stdout[-2500:])
+    step("flicker: sim_frame_budget in the 8 heaviest rooms (parallel, ~40 min)")
+    heavy = subprocess.run(
+        [py, "-c", "import sys; sys.path.insert(0, 'tools'); import test_frame_stability as F; "
+                   "print(' '.join(f'{l - 1},{r}' for l, r, n in F.heavy_rooms(8)))"],
+        cwd=ROOT, text=True, capture_output=True).stdout.split()
+    procs = []
+    for lr in heavy:
+        lv, rm = lr.split(",")
+        procs.append((lr, subprocess.Popen(
+            [py, "sim_frame_budget.py"], cwd=ROOT, text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, env=dict(os.environ, SIM_LEVEL=lv, SIM_ROOM=rm))))
+    bad_sim = []
+    for lr, pr in procs:
+        out_ = pr.communicate()[0]
+        if pr.returncode or "SIM OK" not in out_:
+            bad_sim.append(f"L{int(lr.split(',')[0]) + 1} room {int(lr.split(',')[1]) + 1}: "
+                           + out_[-300:].replace("\n", " | "))
+    if bad_sim or not heavy:
+        fail("frame-budget sim failed in:\n  " + "\n  ".join(bad_sim or ["no heavy rooms found"]))
+    sweep_rooms = len(heavy)
+
     step("stage_reach")
     r = run([sys.executable, "tools/stage_reach.py", "rooms/stage.json"])
     if r.returncode or "FAIL" in r.stdout:
         fail("stage_reach:\n" + r.stdout)
 
+    nlev = stage_levels()
     play = "skipped (--skip-playbot)"
     if not a.skip_playbot:
-        step("playbot (all 20 levels, ~5 min)")
+        step(f"playbot (all {nlev} levels, ~10 min)")
         r = run([py, "tools/playbot.py"])
         done = r.stdout.count(": DONE")
-        if r.returncode or done != 20:
-            fail(f"playbot finished {done} of 20 levels:\n" + r.stdout[-2000:])
-        play = "20 of 20 levels finish"
+        if r.returncode or done != nlev:
+            fail(f"playbot finished {done} of {nlev} levels:\n" + r.stdout[-2000:])
+        play = f"{nlev} of {nlev} levels finish"
 
     rom = (ROOT / "savior.bin").read_bytes()
     if len(rom) != 32768:
@@ -145,12 +184,20 @@ def main() -> int:
             vstamp = f"S.A.V.I.O.R. {version} {label}".encode() + b"\0"
             if len(vrom) != 32768 or vrom[BANK5:BANK5 + len(vstamp)] != vstamp:
                 fail(f"{label} ROM is not 32768 bytes with the {label} version stamp")
+            # The variant's frame length is its own calibration (colors.inc units): sim the
+            # heaviest room on the variant's ROM (2026-11: PAL ran 311 lines for a release).
+            step(f"{label} frame budget (heaviest room, scratch tree)")
+            lv, rm = heavy[0].split(",")
+            r = subprocess.run([py, "sim_frame_budget.py"], cwd=scratch, text=True,
+                               capture_output=True, env=dict(os.environ, SIM_LEVEL=lv, SIM_ROOM=rm))
+            if r.returncode or "SIM OK" not in r.stdout:
+                fail(f"{label} frame-budget sim failed:\n" + r.stdout[-2500:])
             if not a.skip_playbot:
-                step(f"{label} playbot (all 20 levels, ~5 min)")
+                step(f"{label} playbot (all {nlev} levels, ~10 min)")
                 r = run([py, "tools/playbot.py", "--rom-dir", scratch])
                 done = r.stdout.count(": DONE")
-                if r.returncode or done != 20:
-                    fail(f"{label} playbot finished {done} of 20 levels:\n" + r.stdout[-2000:])
+                if r.returncode or done != nlev:
+                    fail(f"{label} playbot finished {done} of {nlev} levels:\n" + r.stdout[-2000:])
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
         variants.append((label, f"savior-{version}-{tv}.bin",
@@ -168,6 +215,7 @@ def main() -> int:
         f"rom      {rom_out.name}  32768 bytes  sha256 {sha}\n"
         + "".join(f"rom      {n}  32768 bytes  sha256 {h}  ({lab})\n" for lab, n, h in variants)
         + f"battery  {len(tests)} tests, 0 failures\n"
+        f"flicker  test_frame_stability --all OK (40 heaviest rooms); sim_frame_budget OK in the {sweep_rooms} heaviest rooms (NTSC), the heaviest room (PAL60, PAL)\n"
         f"playbot  {play}\n")
     if a.tag:
         r = run(["git", "tag", "-a", f"v{version}", "-m", f"S.A.V.I.O.R. {version}"])

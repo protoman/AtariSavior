@@ -29,7 +29,7 @@ sys.path.insert(0, str(TOOLS))
 from py65.devices.mpu6502 import MPU  # noqa: E402
 from test_cell_map import Mem as Mem02, RTS_SENTINEL, parse_labels  # noqa: E402
 
-L2 = parse_labels(SRC / "bank3.lst", {   # C7: HotOverlapBody is bank3
+L2 = parse_labels(SRC / "bank5.lst", {   # C7: HotOverlapBody is bank3
     "HotOverlapBody", "CollisionCellX", "CollisionCellY",
     "CollisionEndX", "CollisionEndY", "RoomRectsLo", "RoomRectsHi",
     "RoomMetaB", "RoomM1Hot", "EnemyDeadMask", "BombPacked", "Temp",
@@ -83,7 +83,7 @@ def run(mask_hot: bool = True, box=(5, 1, 4, 1), dead_mask: int = 0,
     # PF row 1, display col 4 -> PF1Buf + 1, bit 7 (ColMask[4] = $80).
     # N=4: stride 4 -> PF1Buf = PF0Buf+4, row 1 = +5 (was +4 with stride 3).
     r[L2["PF0Buf"] + 4 + 1 - 0x80] = pf_row1
-    mem.bank = 3              # C7: the hot walkers live in bank3
+    mem.bank = 5              # C7: the hot walkers live in bank3
     mpu = MPU(memory=mem)
     mpu.pc = L2["HotOverlapBody"]
     mpu.a = mpu.x = mpu.y = 0

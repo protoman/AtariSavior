@@ -18,8 +18,10 @@
 
 #include "DataSerializer.hpp"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <filesystem>
 #include <map>
@@ -427,11 +429,11 @@ bool DataSerializer::LoadStageFromFile(std::vector<LevelData>& levels,
 }
 
 // Atari 2600-inspired cave palettes per level (RGB), shared by generators
-static const int kLevelPalettes[20][3] = {
+static const int kLevelPalettes[32][3] = {
     {180, 80, 0},    // L1: Red/Orange
     {0, 140, 180},   // L2: Cyan/Blue
     {40, 160, 40},   // L3: Green
-    {180, 140, 0},   // L4: Yellow/Gold
+    {192, 104, 72},  // L4: Rust (was gold: the door stripe is yellow)
     {160, 40, 160},  // L5: Purple
     {180, 60, 60},   // L6: Crimson
     {40, 180, 160},  // L7: Teal
@@ -442,12 +444,66 @@ static const int kLevelPalettes[20][3] = {
     {200, 120, 40},  // L12: Amber
     {80, 160, 200},  // L13: Sky Blue
     {160, 80, 160},  // L14: Violet
-    {180, 180, 60},  // L15: Olive
+    {104, 136, 204}, // L15: Cornflower (was olive)
     {200, 60, 100},  // L16: Magenta
     {60, 180, 80},   // L17: Emerald
     {140, 80, 200},  // L18: Purple Blue
     {200, 140, 80},  // L19: Copper
-    {220, 220, 220}  // L20: Silver Gray
+    {220, 220, 220}, // L20: Silver Gray
+    {90, 200, 200},   // L21
+    {208, 112, 112},  // L22: Salmon red (was yellow)
+    {200, 80, 200},   // L23
+    {80, 130, 220},   // L24
+    {220, 100, 100},   // L25
+    {130, 200, 70},   // L26
+    {220, 140, 60},   // L27
+    {170, 90, 220},   // L28
+    {60, 200, 140},   // L29
+    {140, 208, 140},   // L30: Light green (was pale gold)
+    {200, 100, 60},   // L31
+    {240, 240, 240}   // L32
+};
+
+// NO wall or band colour may be in the DOOR's yellow family (the locked-door stripe is TIA $1C,
+// bright yellow: a yellow band made doors impossible to tell from the wall; user 2026-11-17).
+// convert_level.door_like_color() defines "too close"; tools/test_generator.py rejects it.
+// Row-1 band colour per level (user 2026-11-11: "increase the contrast of the band colors;
+// orange+red, red+blue, pink+green... are all fine"). It used to be the level colour lifted
+// by 40 (nearly the same hue); now a different hue on purpose, at a similar brightness so the
+// sprites stay readable. Every pair lands on a distinct TIA hue (test_generator checks it).
+static const int kLevelPalettes2[32][3] = {
+    {40, 80, 220},   // L1:  orange + blue
+    {220, 70, 30},   // L2:  cyan + red-orange
+    {220, 80, 180},  // L3:  green + pink
+    {90, 70, 220},   // L4:  gold + blue-violet
+    {92, 156, 92},   // L5:  purple + green
+    {40, 170, 190},  // L6:  crimson + cyan
+    {210, 50, 60},   // L7:  teal + red
+    {70, 120, 220},  // L8:  ochre + blue
+    {220, 130, 40},  // L9:  deep blue + orange
+    {60, 180, 90},   // L10: rose + green
+    {150, 70, 200},  // L11: lime + violet
+    {50, 100, 220},  // L12: amber + blue
+    {210, 70, 70},   // L13: sky blue + red
+    {110, 190, 60},  // L14: violet + green
+    {140, 60, 200},  // L15: olive + purple
+    {50, 190, 110},  // L16: magenta + green
+    {210, 60, 80},   // L17: emerald + red
+    {220, 150, 50},  // L18: purple-blue + orange
+    {60, 110, 210},  // L19: copper + blue
+    {240, 90, 90},   // L20: silver + red
+    {220, 90, 60},   // L21
+    {70, 90, 220},   // L22
+    {80, 200, 90},   // L23
+    {208, 128, 92},   // L24: orange-salmon (was gold)
+    {60, 190, 170},   // L25
+    {190, 70, 200},   // L26
+    {60, 170, 220},   // L27
+    {132, 180, 104},   // L28: green (was yellow)
+    {220, 70, 120},   // L29
+    {90, 100, 200},   // L30
+    {70, 200, 200},   // L31
+    {196, 156, 236}   // L32: silver + pale violet
 };
 
 // ---------------------------------------------------------------------------
@@ -490,7 +546,7 @@ static const int kLevelPalettes[20][3] = {
 // ---------------------------------------------------------------------------
 namespace {
 
-constexpr int kStageLevels = 20;     // level n = 1..20
+constexpr int kStageLevels = 32;     // 21-32 are coded (lattice, palettes, ramp) but the ROM has no room for them yet
 constexpr int kGridW = 5;            // layout lattice (positions are 4-bit)
 constexpr int kGridH = 5;
 // Exit bits + hazard bits (2026-10-20: the generated stage got its HERO-style
@@ -520,8 +576,29 @@ enum ShapeBits {
     // widened floor widens its ceiling too (upper floor must stay inside the
     // lower ceiling).
     SHAPE_WN = 1 << 15,
-    SHAPE_WS = 1 << 16
+    SHAPE_WS = 1 << 16,
+    // User rules 2026-11-10 (vertical rooms): a through room (N and S, no side
+    // exit) gets an explicit PROFILE - the opening of band 1 and band 2 as two
+    // runs chosen by VerticalProfiles() against the ceiling / floor gaps - so
+    // the four bands never share one width and the ceiling and floor differ.
+    // VHOT turns the band-1 walls hot: a hot band is a BARRIER with gaps that
+    // differ from the passages above and below (HERO's hot walls), never a
+    // plain tunnel painted red. PROFILE_V (2 bits) picks the variant.
+    SHAPE_PROFILE = 1 << 17,
+    SHAPE_VHOT = 1 << 18,
+    kProfShift = 19,                 // bits 19-20: profile variant
+    // The goal room only: it carries the miner's rest niche (band 2, cells
+    // 4/5). Every other room used to carve it too - an unreachable hole the
+    // generator then filled with an enemy (level 3 room 2).
+    SHAPE_MINER = 1 << 21,
+    // WIDE links (HERO's wide caverns): the ceiling / the floor of this room is
+    // the open run of cells 2..9 instead of the 1-2 cell shaft. A link is wide
+    // on BOTH of its rooms (Build20LevelStage pairs the bits), on every other
+    // link of a stack so a room's top and bottom never have the same width.
+    SHAPE_WIDE_N = 1 << 22,
+    SHAPE_WIDE_S = 1 << 23
 };
+constexpr int kProfVariants = 2;
 constexpr int kGateCol = 4;          // the gate/door cell in row 1
 constexpr int kPhaseCell = 2;       // phase wall: solid above AND below
 constexpr int kGapA = 3;             // 2-gap columns (model cells)
@@ -544,9 +621,9 @@ constexpr int kArchMask = 15;   // 4 bits: hot archetypes use ids 8..14
 // (Build20LevelStage picks the widest set that fits) — and the REAL limit is
 // the bank3 shapes window (emit_spills hard-fails, test_generator gates a 64 B
 // slack floor), not the index.
-constexpr int kShapeBudget = 90;
+constexpr int kShapeBudget = 126;
 // Shape-window guard for the widened hcrunch rooms (bank3 shapes slack floor).
-constexpr int kCrunchShapeCap = 100;
+constexpr int kCrunchShapeCap = 126;
 const char* const kArch[8][3] = {
     {"..........", "..........", ".........."},          // 0 shaft
     {"..###.....", "..........", ".....###.."},          // 1 ledge ladder
@@ -664,6 +741,13 @@ std::string ShapeName(int mask) {
     if (mask & SHAPE_WS) add("wideBottom");
     const int arch = (mask >> kArchShift) & kArchMask;
     if (arch) add(kArchName[arch]);
+    if (mask & SHAPE_PROFILE) {
+        add((mask & SHAPE_VHOT) ? "HotBarrier" : "Profile");
+        name += std::to_string((mask >> kProfShift) & 3);
+    }
+    if (mask & SHAPE_WIDE_N) add("wideCeil");
+    if (mask & SHAPE_WIDE_S) add("wideFloor");
+    if (mask & SHAPE_MINER) add("Miner");
     return name;
 }
 
@@ -672,6 +756,111 @@ std::string ShapeName(int mask) {
 // every loaded/saved model are 4 bands (kRoomHeight); a generated 3-row model
 // is migrated to [r0, r1, AIR, r2] on load, exactly like any legacy file.
 constexpr int kGenRows = 3;
+
+// ---- VERTICAL PROFILES (user rules 2026-11-10) -----------------------------
+// A through room's ceiling gap `top` and floor gap `bottom` are fixed by its two
+// links (cells of the half model, the playfield mirrors them). Band 1 and band
+// 2 are each ONE run of open cells [lo, hi]; this lists every (band-1 run,
+// band-2 run) pair that
+//   * keeps the room one connected passage (every top and bottom cell reaches
+//     every other: flying up from the floor works as well as falling),
+//   * does not give all four bands the same width (no straight tunnel),
+//   * differs between the two bands (and, for a HOT band, from the passages
+//     above and below it: a hot band is a barrier with a gap of its own, as in
+//     HERO's hero_vtunnel_* / hero_score screens).
+// Pure function of its arguments: the mask stores only the variant index.
+using VProfile = std::array<int, 4>;           // m1lo, m1hi, m2lo, m2hi
+std::vector<VProfile> VerticalProfiles(const std::set<int>& top,
+                                       const std::set<int>& bottom, bool hot) {
+    std::vector<VProfile> out;
+    if (top.empty() || bottom.empty()) return out;
+    auto runSet = [](int lo, int hi) {
+        std::set<int> r;
+        for (int c = lo; c <= hi; ++c) r.insert(c);
+        return r;
+    };
+    for (int a = 1; a < kRoomWidth; ++a)
+    for (int b = a; b < kRoomWidth; ++b)
+    for (int c = 1; c < kRoomWidth; ++c)
+    for (int d = c; d < kRoomWidth; ++d) {
+        const int w1 = b - a + 1, w2 = d - c + 1;
+        if (w1 == w2 && w1 == (int)top.size() && w1 == (int)bottom.size())
+            continue;                                   // four equal widths
+        const std::set<int> m1 = runSet(a, b), m2 = runSet(c, d);
+        if (m1 == m2) continue;
+        if (hot) {
+            if (w1 > 3 || m1 == top || m1 == bottom) continue;
+        } else {
+            if (w1 < 2 || w2 < 2) continue;
+            // a normal room hosts a bat / lamp in band 1: keep one cell that is
+            // not on or beside an exit gap (a bat there is hit on the way in)
+            bool clear = false;
+            for (int x : m1) {
+                bool near = false;
+                for (int g : top) near = near || std::abs(g - x) <= 1;
+                for (int g : bottom) near = near || std::abs(g - x) <= 1;
+                clear = clear || !near;
+            }
+            if (!clear) continue;
+        }
+        // connectivity over the 4 band rows
+        bool air[4][kRoomWidth] = {};
+        for (int x : top) air[0][x] = true;
+        for (int x : bottom) air[3][x] = true;
+        for (int x : m1) air[1][x] = true;
+        for (int x : m2) air[2][x] = true;
+        bool seen[4][kRoomWidth] = {};
+        std::vector<std::pair<int, int>> st{{0, *top.begin()}};
+        seen[0][*top.begin()] = true;
+        while (!st.empty()) {
+            const auto [y, x] = st.back();
+            st.pop_back();
+            static const int dy[4] = {1, -1, 0, 0}, dx[4] = {0, 0, 1, -1};
+            for (int k = 0; k < 4; ++k) {
+                const int ny = y + dy[k], nx = x + dx[k];
+                if (ny < 0 || ny > 3 || nx < 0 || nx >= kRoomWidth) continue;
+                if (!air[ny][nx] || seen[ny][nx]) continue;
+                seen[ny][nx] = true;
+                st.push_back({ny, nx});
+            }
+        }
+        bool ok = true;
+        for (int x : top) ok = ok && seen[0][x];
+        for (int x : bottom) ok = ok && seen[3][x];
+        if (ok) out.push_back({a, b, c, d});
+    }
+    return out;
+}
+// The variant `v` (0..kProfVariants-1) takes one of the best-scoring profiles.
+// HOT: prefer a gap that leaves the centre cell 9 solid (the mirror then shows
+// TWO narrow gaps around a hot pillar, like hero_score.png) and is 1-2 cells
+// wide. PLAIN: prefer band 1 and band 2 of very different widths (a stepped
+// cave, not a shifted tube).
+bool PickVerticalProfile(const std::set<int>& top, const std::set<int>& bottom,
+                         bool hot, int v, VProfile& pick) {
+    auto list = VerticalProfiles(top, bottom, hot);
+    if (list.empty()) return false;
+    auto key = [&](const VProfile& p) {
+        const int w1 = p[1] - p[0] + 1, w2 = p[3] - p[2] + 1;
+        if (hot) return (p[1] >= 9 ? 100 : 0) + std::abs(w1 - 2) * 10
+                        + (9 - p[2] > 0 ? 0 : 0) - std::min(w2, 6);
+        return -std::abs(w1 - w2) * 10 - std::abs(p[0] - p[2]);
+    };
+    std::stable_sort(list.begin(), list.end(),
+                     [&](const VProfile& a, const VProfile& b) {
+                         return key(a) < key(b);
+                     });
+    std::vector<VProfile> best;
+    for (const VProfile& p : list) {
+        bool dup = false;
+        for (const VProfile& q : best)
+            dup = dup || ((q[1] - q[0]) == (p[1] - p[0]) && q[0] == p[0]);
+        if (!dup) best.push_back(p);
+        if ((int)best.size() == kProfVariants) break;
+    }
+    pick = best[(size_t)(v % (int)best.size())];
+    return true;
+}
 
 ModelData MakeShapeModel(int modelId, int mask) {
     ModelData model;
@@ -782,13 +971,19 @@ ModelData MakeShapeModel(int modelId, int mask) {
         // Hot ceiling cells 1..7; cells 8/9 stay the N shaft, cell 0 is the
         // H exit. The floor is open water: crossing low on the raft is the
         // only safe route (row 1 is lethal wall).
-        for (int x = 1; x <= 7; ++x) {
+        // RAFT RUN-OUT (user 2026-11-10): the water has a thin ledge at cell 0, so a
+        // player leaving the raft at the water's edge flies up from cell 1 only. The hot
+        // ceiling starts at cell 3: cells 1 and 2 are two free columns above the raft's
+        // reach on each side (the inertia needs them to stop before the hot wall).
+        for (int x = 3; x <= ((mask & SHAPE_N) ? 7 : kRoomWidth - 1); ++x) {
             model.tiles[1 * kRoomWidth + x] = (int)TileType::SOLID_WALL;
         }
         model.mid_band_type = 1;
-        if (mask & SHAPE_2GAP) {
+        if ((mask & SHAPE_2GAP) && (mask & SHAPE_N)) {
             // The 2-gap ceiling above must drop INTO the channel, not onto a
-            // hot cell: open the same two cells in the hot row.
+            // hot cell: open the same two cells in the hot row. (Without a
+            // ceiling opening they would be two dead-end shafts out of the
+            // water: level 14 room 9.)
             model.tiles[1 * kRoomWidth + kGapA] = (int)TileType::AIR;
             model.tiles[1 * kRoomWidth + kGapB] = (int)TileType::AIR;
         }
@@ -893,12 +1088,16 @@ ModelData MakeShapeModel(int modelId, int mask) {
             // corridor cell (the door column).
             hi = lo;
         }
-        if (hi >= lo) {
+        if (mask & SHAPE_CHANNEL) {
+            // The hot ceiling stays: band 1 opens only at the shaft cells (and
+            // the side aperture, cell 0). The player crosses LOW, in band 2.
+            for (int c : nCells) model.tiles[1 * kRoomWidth + c] = (int)TileType::AIR;
+        } else if (hi >= lo) {
             for (int x = lo; x <= hi; ++x) {
                 model.tiles[1 * kRoomWidth + x] = (int)TileType::AIR;
             }
         }
-        if (mask & SHAPE_H) {
+        if ((mask & SHAPE_H) && !(mask & SHAPE_CHANNEL)) {
             const int near = (hi >= lo) ? lo : 0;
             for (int x = 0; x <= near; ++x) {
                 model.tiles[1 * kRoomWidth + x] = (int)TileType::AIR;
@@ -930,6 +1129,13 @@ ModelData MakeShapeModel(int modelId, int mask) {
                 model.tiles[base + kGapB] = (int)TileType::AIR;
             }
         }
+    }
+    if (mask & SHAPE_WIDE_N) {
+        for (int x = 2; x < kRoomWidth; ++x) model.tiles[x] = (int)TileType::AIR;
+    }
+    if (mask & SHAPE_WIDE_S) {
+        for (int x = 2; x < kRoomWidth; ++x)
+            model.tiles[(kGenRows - 1) * kRoomWidth + x] = (int)TileType::AIR;
     }
     // --- NO DEAD AIR POCKETS (user rule 2026-10-21) -----------------------
     // A band-1 air cell that cannot be reached from any band-0/2 opening (or
@@ -1061,8 +1267,14 @@ ModelData MakeShapeModel(int modelId, int mask) {
         for (int x = 0; x < kRoomWidth; ++x) {
             model.tiles[0 * kRoomWidth + x] = three[0 * kRoomWidth + x];
             model.tiles[1 * kRoomWidth + x] = three[1 * kRoomWidth + x];
-            const bool route = (x == routeA || x == routeB)
-                    && three[1 * kRoomWidth + x] == (int)TileType::AIR;
+            // CHANNEL: band 2 is the open LOW CHANNEL under the hot ceiling, from
+            // the side aperture to the other side. The N=4 rewrite made band 2
+            // route-only, which sealed the side entry of every channel room
+            // with no ceiling shaft (level 12 room 6, level 14 room 9: the
+            // player entered at band 1, cell 0 and could go nowhere).
+            const bool route = ((x == routeA || x == routeB)
+                    && three[1 * kRoomWidth + x] == (int)TileType::AIR)
+                    || (mask & SHAPE_CHANNEL);
             if (bandArt) {
                 // The lower chamber: open, with the archetype's third row as
                 // its ledges. Cells 0/1/7 stay SOLID on purpose — the outer
@@ -1081,7 +1293,8 @@ ModelData MakeShapeModel(int modelId, int mask) {
                 // a water room (level 1's goal is a plain shape), and the gate
                 // in convert now refuses any model where his body cell is
                 // solid. Two cells because his 8-px sprite straddles them.
-                const bool minerNiche = (x == kMinerCell || x == kMinerCell + 1);
+                const bool minerNiche = (mask & SHAPE_MINER)
+                        && (x == kMinerCell || x == kMinerCell + 1);
                 const bool pillar = (x == 0 || x == 1 || x == 7);
                 const bool archWall = kArch[arch][2][x] == '#';
                 model.tiles[2 * kRoomWidth + x] = (route || minerNiche
@@ -1091,7 +1304,8 @@ ModelData MakeShapeModel(int modelId, int mask) {
                 // Water rooms take this path (bandArt is off for them), so the
                 // miner niche has to be carved here.
                 model.tiles[2 * kRoomWidth + x] = (route
-                        || x == kMinerCell || x == kMinerCell + 1)
+                        || ((mask & SHAPE_MINER)
+                            && (x == kMinerCell || x == kMinerCell + 1)))
                         ? (int)TileType::AIR : (int)TileType::SOLID_WALL;
             }
             model.tiles[3 * kRoomWidth + x] = three[2 * kRoomWidth + x];
@@ -1105,6 +1319,78 @@ ModelData MakeShapeModel(int modelId, int mask) {
             }
         }
         model.height = 4;
+    }
+    if (mask & SHAPE_PROFILE) {
+        std::set<int> top, bottom;
+        for (int x = 0; x < kRoomWidth; ++x) {
+            if (model.tiles[x] == (int)TileType::AIR) top.insert(x);
+            if (model.tiles[3 * kRoomWidth + x] == (int)TileType::AIR)
+                bottom.insert(x);
+        }
+        VProfile pr;
+        if (PickVerticalProfile(top, bottom, (mask & SHAPE_VHOT) != 0,
+                                (mask >> kProfShift) & 3, pr)) {
+            for (int x = 0; x < kRoomWidth; ++x) {
+                model.tiles[1 * kRoomWidth + x] = (x >= pr[0] && x <= pr[1])
+                        ? (int)TileType::AIR : (int)TileType::SOLID_WALL;
+                model.tiles[2 * kRoomWidth + x] = (x >= pr[2] && x <= pr[3])
+                        ? (int)TileType::AIR : (int)TileType::SOLID_WALL;
+            }
+            model.mid_band_type = (mask & SHAPE_VHOT) ? 1 : 0;
+        }
+    }
+    // HOT WALLS NEED RUN-OUT (user 2026-11-10, level 14 room 9): a player who enters a
+    // hot band from the side arrives with inertia and cannot stop within one tile, so
+    // the first two cells of the hot row at the side aperture stay open.
+    if ((mask & SHAPE_H) && model.height == 4 && model.mid_band_type == 1
+            && model.tiles[1 * kRoomWidth + 0] == (int)TileType::AIR) {
+        model.tiles[1 * kRoomWidth + 1] = (int)TileType::AIR;
+    }
+    // THE SIDE LINK LIVES IN BAND 1 ONLY (user report 2026-11-17, level 32: "a
+    // horizontal link with a different number of rows for the gap, the player
+    // gets stuck inside a wall"). The room exit fires at the screen edge in ANY
+    // open band and never tests the neighbour, so every room must open the SAME
+    // bands at cell 0. The channel's low band 2 ran edge to edge (cell 0
+    // included), so a player walking out at band 2 landed in the band-1-only
+    // neighbour's wall. Band 2 keeps cell 0 solid: the room is entered at band
+    // 1 and dropped into the channel from cells 1/2 (the hot ceiling starts at
+    // cell 3).
+    if ((mask & SHAPE_H) && model.height == 4)
+        model.tiles[2 * kRoomWidth + 0] = (int)TileType::SOLID_WALL;
+    // SEALED AIR (user 2026-11-10: enemies inside holes the player never
+    // reaches): air that no opening of the room connects to is decoration at
+    // best and an unfightable enemy cage at worst. Wall it up - except the
+    // goal room's miner niche, which the rescue needs.
+    if (model.height == 4) {
+        bool seen[4][kRoomWidth] = {};
+        std::vector<std::pair<int, int>> st;
+        auto seed = [&](int y, int x) {
+            if (model.tiles[y * kRoomWidth + x] == (int)TileType::AIR
+                    && !seen[y][x]) {
+                seen[y][x] = true;
+                st.push_back({y, x});
+            }
+        };
+        for (int x = 0; x < kRoomWidth; ++x) { seed(0, x); seed(3, x); }
+        for (int y = 0; y < 4; ++y) seed(y, 0);          // side aperture
+        while (!st.empty()) {
+            const auto [y, x] = st.back();
+            st.pop_back();
+            static const int dy[4] = {1, -1, 0, 0}, dx[4] = {0, 0, 1, -1};
+            for (int k = 0; k < 4; ++k) {
+                const int ny = y + dy[k], nx = x + dx[k];
+                if (ny >= 0 && ny < 4 && nx >= 0 && nx < kRoomWidth)
+                    seed(ny, nx);
+            }
+        }
+        for (int y = 0; y < 4; ++y)
+            for (int x = 0; x < kRoomWidth; ++x) {
+                const bool niche = (mask & SHAPE_MINER) && y == 2
+                        && (x == kMinerCell || x == kMinerCell + 1);
+                if (model.tiles[y * kRoomWidth + x] == (int)TileType::AIR
+                        && !seen[y][x] && !niche)
+                    model.tiles[y * kRoomWidth + x] = (int)TileType::SOLID_WALL;
+            }
     }
     return model;
 }
@@ -1135,7 +1421,11 @@ std::vector<GridPos> LevelLayoutSalt(int level, int rooms, unsigned salt,
                                      bool* waterLeaf) {
     const int n = rooms < 2 ? 2 : rooms;
     const int maxTouch = level < 6 ? 1 : (level < 15 ? 2 : 3);
-    bool used[kGridH][kGridW] = {};
+    // Levels 1-20 keep the 5x5 lattice (their layouts must not move); 21-32 get 7x7 so up
+    // to 32 rooms fit (positions are 4-bit).
+    const int kGridW = level > 20 ? 7 : 5;
+    const int kGridH = kGridW;
+    bool used[7][7] = {};
     std::vector<GridPos> walk;
     walk.reserve(n);
     used[0][0] = true;                  // the start room (top-left)
@@ -1233,15 +1523,41 @@ std::vector<GridPos> LevelLayoutSalt(int level, int rooms, unsigned salt,
     return walk;
 }
 
-// First salt whose goal has nothing below it (salt 0 = the old layout).
+bool HasRoomAt(const std::vector<GridPos>& walk, int x, int y);
+
+// Rooms (not the start, not the goal) with a vertical link and NO side link: the only rooms that
+// can be hot (user rule 2026-11-16: a hot room has no side exit).
+int VerticalOnlyRooms(const std::vector<GridPos>& walk) {
+    int n = 0;
+    for (int i = 1; i + 1 < (int)walk.size(); ++i) {
+        const GridPos& p = walk[i];
+        const bool v = HasRoomAt(walk, p.x, p.y - 1) || HasRoomAt(walk, p.x, p.y + 1);
+        const bool h = HasRoomAt(walk, p.x - 1, p.y) || HasRoomAt(walk, p.x + 1, p.y);
+        if (v && !h) ++n;
+    }
+    return n;
+}
+
+// First salt whose goal has nothing below it (salt 0 = the old layout) AND that offers a vertical-only
+// room (from level 5, for the hot role). When no salt offers one, the one with the most (and a valid goal)
+// wins.
 std::vector<GridPos> LevelLayout(int level, int rooms) {
-    std::vector<GridPos> walk;
+    // ONE vertical-only room from level 5 (a hot role needs it). Asking for one per hot role (up to 3)
+    // swapped 14+ layouts for longer winding ones and level 19 needed a second power cell it could not
+    // place; one keeps salt 0 (the old layout) for every level that already has such a room.
+    const int hotWant = level >= 5 ? 1 : 0;
+    std::vector<GridPos> walk, best;
+    int bestPure = -1;
     for (unsigned salt = 0; salt < 200; ++salt) {
         bool ok = true;
         walk = LevelLayoutSalt(level, rooms, salt, &ok);
-        if (ok || level < 4) break;
+        if (level < 4) break;
+        if (!ok) continue;
+        const int pure = VerticalOnlyRooms(walk);
+        if (pure >= hotWant) return walk;
+        if (pure > bestPure) { bestPure = pure; best = walk; }
     }
-    return walk;
+    return best.empty() ? walk : best;
 }
 
 bool HasRoomAt(const std::vector<GridPos>& walk, int x, int y) {
@@ -1312,7 +1628,7 @@ struct LevelPlan {
 
 LevelPlan PlanFor(int level) {
     LevelPlan p;
-    p.hot = level >= 3;
+    p.hot = level >= 5;       // user rule 2026-11-10: hot walls only from level 5
     p.water = level >= 4;
     // Locked doors are DISABLED (user report 2026-10-21: level 13 could not
     // be completed). The door is an M1 column stripe, so it may only sit on a
@@ -1359,8 +1675,9 @@ Role RoleForRoom(int roomIndex, int roomCount, const LevelPlan& p) {
 // Exit mask a room's SHAPE must carry (see the layout notes above).
 int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
                   const GridPos& pos, int roomIndex, Role role,
-                  bool twogap) {
+                  bool twogap, bool goal = false) {
     int mask = 0;
+    if (goal) mask |= SHAPE_MINER;
     if (twogap) mask |= SHAPE_2GAP;
     if (HasRoomAt(walk, pos.x, pos.y - 1)) mask |= SHAPE_N;
     if (HasRoomAt(walk, pos.x, pos.y + 1)) mask |= SHAPE_S;
@@ -1372,7 +1689,9 @@ int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
     // room 5: the walk-index parity used before disagreed across links the walk
     // does not follow, leaving a hole in a ceiling with nothing above it). In a
     // vertical stack the links alternate wide/narrow, so top != bottom still.
-    if (levelNumber >= 6) {
+    // User rule 2026-11-10: from EVERY level (it used to start at level 6), so
+    // no through room has the same gap at the top and at the bottom.
+    {
         if ((mask & SHAPE_N) && (pos.y - 1) % 2 == 0) mask |= SHAPE_N1;
         if ((mask & SHAPE_S) && pos.y % 2 == 0) mask |= SHAPE_S1;
     }
@@ -1395,10 +1714,6 @@ int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
         if (role == Role::WaterGoal) mask |= SHAPE_WATER;
     }
     return mask;
-}
-
-int Lift(int value) {                 // a lighter wall colour for the row-1 band
-    return value + 40 > 255 ? 255 : value + 40;
 }
 
 // One room's objects. The editor's caps are the contract: <= 2 objects per
@@ -1444,6 +1759,23 @@ bool CellAir(const ModelData& m, int band, int cell) {
     return cell >= 0 && cell < kRoomWidth
         && m.tiles[band * kRoomWidth + cell] == 0;
 }
+
+// Length of the horizontal air run through `cell` of `band` on the MIRRORED
+// 20-column row (cell c and 19-c are the same air). A bat in a 1- or 2-cell
+// notch can never be met by a player flying the room (user report 2026-11-11,
+// level 3 room 2: a bat inside a one-cell pocket of the shaft wall).
+int AirRun(const ModelData& m, int band, int cell) {
+    auto air = [&](int f) {          // f = 0..19 on the full row
+        const int c = f < kRoomWidth ? f : 2 * kRoomWidth - 1 - f;
+        return CellAir(m, band, c);
+    };
+    if (!air(cell)) return 0;
+    int lo = cell, hi = cell;
+    while (lo > 0 && air(lo - 1)) --lo;
+    while (hi < 2 * kRoomWidth - 1 && air(hi + 1)) ++hi;
+    return hi - lo + 1;
+}
+constexpr int kMinEnemyRun = 4;      // a moving creature needs room to move
 
 // Nearest AIR cell of `band` to `prefer` (search outward), or -1 if the band is
 // fully solid.
@@ -1541,7 +1873,7 @@ int NearestAirClear(const ModelData& m, int band, int prefer) {
         for (int c = 0; c < kRoomWidth; ++c) if (CellAir(m, h - 1, c)) gaps.push_back(c);
     }
     auto clear = [&](int c) {
-        if (!CellAir(m, band, c)) return false;
+        if (!CellAir(m, band, c) || AirRun(m, band, c) < kMinEnemyRun) return false;
         for (int g : gaps) if (std::abs(g - c) <= 1) return false;
         return true;
     };
@@ -1627,27 +1959,41 @@ int LampCell(const ModelData& m, int band, int prefer) {
 // models (the door is a room patch).
 // Returns an empty string when the room is fine, else a short description.
 std::string RoomConnectivityProblem(const ModelData& m) {
-    auto air = [&](int band, int x) { return CellAir(m, band, x); };
-    // Height-aware (N=4): the south edge is the LAST band and the pads add a
-    // band in the middle, so a generated 4-row model is checked as it ships.
+    // No geometric assumptions (user 2026-11-10): flood the real 20-column
+    // mirrored map. Every side the model opens (top row, bottom row, the
+    // side aperture at cell 0 / mirrored cell 19) must reach another opened
+    // side through air. Gated (phase / crunch) cells are air to CellAir.
     const int bands = (m.width > 0)
         ? (int)m.tiles.size() / m.width : 0;
     if (bands < 3) return "";
     const int last = bands - 1;
-    std::vector<std::pair<int, int>> ins, outs;
-    for (int x = 0; x < kRoomWidth; ++x) {
-        if (air(0, x)) ins.push_back({0, x});
-        if (air(last, x)) outs.push_back({last, x});
+    const int W = kRoomWidth * 2;
+    auto air = [&](int b, int f) {
+        return CellAir(m, b, f < kRoomWidth ? f : W - 1 - f);
+    };
+    struct Side { const char* name; std::vector<std::pair<int, int>> cells; };
+    std::vector<Side> sides(4);
+    sides[0].name = "top";    sides[1].name = "bottom";
+    sides[2].name = "left";   sides[3].name = "right";
+    for (int f = 0; f < W; ++f) {
+        if (air(0, f)) sides[0].cells.push_back({0, f});
+        if (air(last, f)) sides[1].cells.push_back({last, f});
     }
-    if (air(1, 0)) {
-        ins.push_back({1, 0});
-        outs.push_back({1, 0});
+    for (int b = 1; b <= 2 && b < last; ++b) {
+        if (air(b, 0)) sides[2].cells.push_back({b, 0});
+        if (air(b, W - 1)) sides[3].cells.push_back({b, W - 1});
     }
-    if (ins.empty() || outs.empty()) return "";   // sentinel / dead end
-    for (const auto& start : ins) {
-        bool seen[8][hero::kRoomWidth] = {};
-        std::vector<std::pair<int, int>> stack{start};
-        seen[start.first][start.second] = true;
+    int live = 0;
+    for (const Side& s : sides) live += s.cells.empty() ? 0 : 1;
+    if (live < 2) return "";                       // sentinel / dead end
+    for (size_t i = 0; i < sides.size(); ++i) {
+        if (sides[i].cells.empty()) continue;
+        std::vector<std::vector<char>> seen(bands, std::vector<char>(W, 0));
+        std::vector<std::pair<int, int>> stack;
+        for (const auto& c : sides[i].cells) {
+            seen[c.first][c.second] = 1;
+            stack.push_back(c);
+        }
         while (!stack.empty()) {
             auto [y, x] = stack.back();
             stack.pop_back();
@@ -1655,23 +2001,129 @@ std::string RoomConnectivityProblem(const ModelData& m) {
             static const int dx[4] = {0, 0, 1, -1};
             for (int k = 0; k < 4; ++k) {
                 const int ny = y + dy[k], nx = x + dx[k];
-                if (ny < 0 || ny >= bands || nx < 0
-                        || nx >= kRoomWidth) continue;
-                if (seen[ny][nx] || !CellAir(m, ny, nx)) continue;
-                seen[ny][nx] = true;
+                if (ny < 0 || ny >= bands || nx < 0 || nx >= W) continue;
+                if (seen[ny][nx] || !air(ny, nx)) continue;
+                seen[ny][nx] = 1;
                 stack.push_back({ny, nx});
             }
         }
         bool reaches = false;
-        for (const auto& goal : outs) {
-            if (seen[goal.first][goal.second]) { reaches = true; break; }
+        for (size_t j = 0; j < sides.size() && !reaches; ++j) {
+            if (j == i) continue;
+            for (const auto& c : sides[j].cells) {
+                if (seen[c.first][c.second]) { reaches = true; break; }
+            }
         }
         if (!reaches) {
-            return "entry cell (" + std::to_string(start.first) + ","
-                 + std::to_string(start.second) + ") reaches no exit";
+            return std::string("the ") + sides[i].name
+                 + " opening reaches no other opening";
         }
     }
     return "";
+}
+
+
+// --- REAL room check on the placed stage (user 2026-11-10: "the generator should
+// always check if the room can be passed through, not make geometrical
+// assumptions"). Floods the 20-column mirrored map of a PLACED room from the
+// sides its neighbours actually use; returns the cells the player can reach and
+// whether every used side reaches another used side.
+struct RoomFlood {
+    int bands = 0;
+    std::vector<std::vector<char>> reach;   // [band][0..19] reachable from any live side
+    std::string problem;                    // empty = every live side crosses
+};
+
+RoomFlood FloodRoom(const LevelData& lvl, const RoomData& room,
+                    const ModelData& m) {
+    RoomFlood out;
+    const int W = kRoomWidth * 2;
+    out.bands = m.width > 0 ? (int)m.tiles.size() / m.width : 0;
+    const int nb = out.bands;
+    out.reach.assign(nb, std::vector<char>(W, 0));
+    if (nb < 3) return out;
+    auto has = [&](int dx, int dy) {
+        for (const RoomData& o : lvl.rooms) {
+            if (o.room_x == room.room_x + dx && o.room_y == room.room_y + dy)
+                return true;
+        }
+        return false;
+    };
+    auto air = [&](int b, int f) {
+        return CellAir(m, b, f < kRoomWidth ? f : W - 1 - f);
+    };
+    std::vector<std::vector<std::pair<int, int>>> sides(4);
+    if (has(-1, 0)) for (int b = 1; b <= 2; ++b) sides[0].push_back({b, 0});
+    if (has(1, 0))  for (int b = 1; b <= 2; ++b) sides[1].push_back({b, W - 1});
+    if (has(0, -1)) for (int f = 0; f < W; ++f) sides[2].push_back({0, f});
+    if (has(0, 1))  for (int f = 0; f < W; ++f) sides[3].push_back({nb - 1, f});
+    static const char* const names[4] = {"west", "east", "north", "south"};
+    int live = 0;
+    for (auto& s : sides) live += s.empty() ? 0 : 1;
+    // A room with no neighbour at all (single-room level): every opening counts.
+    if (live == 0) {
+        for (int f = 0; f < W; ++f) {
+            sides[2].push_back({0, f});
+            sides[3].push_back({nb - 1, f});
+        }
+    }
+    auto flood = [&](const std::vector<std::pair<int, int>>& from) {
+        std::vector<std::vector<char>> seen(nb, std::vector<char>(W, 0));
+        std::vector<std::pair<int, int>> st;
+        for (auto& c : from) {
+            if (air(c.first, c.second) && !seen[c.first][c.second]) {
+                seen[c.first][c.second] = 1;
+                st.push_back(c);
+            }
+        }
+        while (!st.empty()) {
+            auto [y, x] = st.back();
+            st.pop_back();
+            static const int dy[4] = {1, -1, 0, 0};
+            static const int dx[4] = {0, 0, 1, -1};
+            for (int k = 0; k < 4; ++k) {
+                const int ny = y + dy[k], nx = x + dx[k];
+                if (ny < 0 || ny >= nb || nx < 0 || nx >= W) continue;
+                if (seen[ny][nx] || !air(ny, nx)) continue;
+                seen[ny][nx] = 1;
+                st.push_back({ny, nx});
+            }
+        }
+        return seen;
+    };
+    for (int i = 0; i < 4; ++i) {
+        if (sides[i].empty()) continue;
+        const auto seen = flood(sides[i]);
+        for (int b = 0; b < nb; ++b)
+            for (int f = 0; f < W; ++f)
+                if (seen[b][f]) out.reach[b][f] = 1;
+        if (live >= 2 && out.problem.empty()) {
+            bool ok = false;
+            for (int j = 0; j < 4 && !ok; ++j) {
+                if (j == i) continue;
+                for (auto& c : sides[j])
+                    if (seen[c.first][c.second]) { ok = true; break; }
+            }
+            if (!ok) {
+                out.problem = std::string("the ") + names[i]
+                            + " entry reaches no other exit";
+            }
+        }
+    }
+    return out;
+}
+
+// The cell the player squeezes through in a hot room: the profile / archetype's
+// band-1 gap (the cell of the open run nearest the shaft), else the legacy table.
+int HotGapCell(const ModelData& m, int arch) {
+    if (arch >= 8 && arch <= 14) return kArchHotGapX[arch - 8] / 2;
+    int best = -1;
+    for (int c = 1; c < kRoomWidth; ++c) {
+        if (m.tiles[1 * kRoomWidth + c] == 0) {
+            if (best < 0 || std::abs(c - 6) < std::abs(best - 6)) best = c;
+        }
+    }
+    return best < 0 ? 5 : best;
 }
 
 void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
@@ -1706,7 +2158,6 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
             // From level 2 one bat guards the APPROACH corridor (cell 8),
             // which also keeps the 2-room levels distinct (L1 is clean).
             int cell = NearestAirClear(shape, 1, 8);
-            if (cell < 0) cell = NearestAir(shape, 1, 8);
             if (cell >= 0) {
                 AddEnemy(room, EnemyType::BAT, (float)(cell * 2),
                          kBatRow,
@@ -1758,8 +2209,7 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         // CENTRE (row 1), so the guards go on the OPEN cells of bands 0/2
         // near that gap — never inside the band-0/2 walls (user report
         // 2026-10-21: a bat inside the wall at level 3 room 2).
-        const int hidx = (arch >= 8 && arch <= 14) ? arch - 8 : 0;
-        const int gapCell = kArchHotGapX[hidx] / 2;
+        const int gapCell = HotGapCell(shape, arch);
         int bcell = NearestAirClear(shape, 0, gapCell);
         if (bcell < 0) bcell = NearestAir(shape, 0, gapCell);
         if (bcell >= 0) {
@@ -1786,7 +2236,6 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
     // kernel's job (one sprite), not a reason to starve the rooms.
     if (roomIndex % 2 == 1 || roomIndex >= 8) {
         int cell = NearestAirClear(shape, 1, 8);
-        if (cell < 0) cell = NearestAir(shape, 1, 8);
         if (cell >= 0) {
             AddEnemy(room, EnemyType::BAT, (float)(cell * 2),
                      kBatRow,
@@ -1834,6 +2283,274 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
     }
 }
 
+
+bool ProtoRoomHot(const ModelData& m) { return m.mid_band_type == 1; }
+
+const ModelData* ShapeOf(const std::vector<ModelData>& models, int id) {
+    for (const ModelData& m : models) if (m.id == id) return &m;
+    return nullptr;
+}
+
+// ---- LOCKED DOORS + the KEY (level 15+) ------------------------------------
+// User rule 2026-11-13: doors and keys start at level 15. The old Gate role put
+// the door on the VERTICAL corridor, which an M1 column strip cannot gate (it spans every
+// band, so the descent through that column stayed open or blocked wrongly: level 13
+// could not be finished, 2026-10-21). The door now sits in a HORIZONTAL doorway: a
+// room the walk crosses sideways (link in on one side, out on the other) at a column
+// whose bands 0, 2 and 3 are wall and whose band 1 is air — the strip fills exactly that
+// gap and every other band hides it behind rock. The key goes in an EARLIER room of the
+// walk, so it is always reachable first (KeyHeld survives room changes; one key opens
+// every door of the level, each door is destroyed on touch).
+int DoorColumn(const ModelData& m) {
+    if (m.height < 4) return -1;
+    for (int d = 0; d < kRoomWidth; ++d) {
+        for (int sgn : {1, -1}) {
+            const int c = 4 + sgn * d;
+            if (c < 1 || c > 8) continue;
+            if (m.tiles[1 * kRoomWidth + c] == 0
+                    && m.tiles[0 * kRoomWidth + c] != 0
+                    && m.tiles[2 * kRoomWidth + c] != 0
+                    && m.tiles[3 * kRoomWidth + c] != 0) return c;
+        }
+    }
+    return -1;
+}
+
+// ---- GIANT MOTHS (every level) and SNAKES (level 4+) -----------------------
+// User rule 2026-11-13: "all elements should be used": moths from level 1, snakes
+// from level 4, at least one of each in EVERY level from there, more as the
+// levels grow. Both go in AFTER the extra miners and power cells (those need a
+// free slot first); when a level has no free slot a bat is swapped for one.
+//
+// MOTH: patrols 32 px (8 columns) to one side, so the spot needs 8 free columns
+// on the side it faces (LevelData.hpp MothForcedDirIn is the same scan).
+int MothDirAt(const ModelData& m, float y, int col) {
+    const int top = (int)std::lround(y * 12.0f);
+    const int bandPx = 144 / std::max(1, m.height);
+    const int half = m.width * 2, cols = m.width * 4;
+    const int b0 = std::max(0, std::min(143, top - 6)) / bandPx;
+    const int b1 = std::max(0, std::min(143, top + 13 + 6)) / bandPx;
+    auto wallAt = [&](int c) {
+        if (c < 0 || c > cols - 1) return true;
+        const int cell = (c < half ? c : cols - 1 - c) >> 1;
+        for (int b = b0; b <= b1 && b < m.height; ++b)
+            if (TileIsWall(m.tiles[b * m.width + cell])) return true;
+        return false;
+    };
+    bool right = false, left = false;
+    for (int k = 1; k <= 8; ++k) {
+        if (wallAt(col + 1 + k)) right = true;
+        if (wallAt(col - k)) left = true;
+    }
+    if (!right) return 1;
+    if (!left) return -1;
+    return 0;                          // walled in on both sides: no moth here
+}
+
+// The room can take a moth/snake: not the start room, no crunch/phase feature
+// (the band owns the slot), not hot (no middle-band objects), no locked door.
+bool CreatureRoomOk(const RoomData& room, const ModelData& m, int index) {
+    if (index == 0 || !room.feature_cells.empty() || ProtoRoomHot(m)) return false;
+    for (const auto& p : room.asym_patches)
+        if (p.size() >= 3 && p[2] == (int)TileType::LOCKED_DOOR) return false;
+    return true;
+}
+
+// convert_level's rule: ONE object per band (int(y) / units-per-band), the miner included.
+bool BandUsed(const RoomData& r, const ModelData& m, int band, float minerY) {
+    const int u = std::max(1, BandUnits(m));
+    for (const EnemyData& e : r.enemies) if ((int)e.y / u == band) return true;
+    for (const LampData& l : r.lamps) if ((int)l.y / u == band) return true;
+    return minerY >= 0.0f && (int)minerY / u == band;
+}
+
+// A free spot for a moth in band 1 (else the floor band): air cell 2..7 whose
+// moth box is clear and that keeps >= 3 display columns from every other object.
+// Returns the cell (dir in *dir, band in *band) or -1.
+int MothSpot(const RoomData& room, const ModelData& m, int* dir, int* band, float minerY) {
+    for (const int b : {1, FloorBand(m)}) {
+        const float y = BandY(m, b);
+        if (BandUsed(room, m, b, minerY)) continue;
+        for (int d = 0; d < kRoomWidth; ++d) {
+            for (int sgn : {1, -1}) {
+                const int c = 5 + sgn * d;
+                if (c < 2 || c > 7 || !CellAir(m, b, c)) continue;
+                if (AirRun(m, b, c) < kMinEnemyRun) continue;
+                const int f = MothDirAt(m, y, c * 2);
+                if (f == 0) continue;
+                bool clash = false;
+                for (const EnemyData& e : room.enemies)
+                    if (std::abs((int)std::lround(e.x) - c * 2) < 3) clash = true;
+                for (const LampData& l : room.lamps)
+                    if (std::abs((int)std::lround(l.x) - c * 2) < 3) clash = true;
+                if (clash) continue;
+                *dir = f;
+                *band = b;
+                return c;
+            }
+        }
+    }
+    return -1;
+}
+
+// A free spot for a snake: a WALL cell 0..8 of band 1 (else the floor band, then
+// band 2) with AIR on one side. The snake is placed ONE COLUMN INSIDE the wall
+// (the wall column next to the open side) and faces the open side (user
+// 2026-11-13). Returns the x column (dir in *dir, band in *band) or -1.
+// The snake must sit where the player has a reason to go (user rule 2026-11-16, level 4
+// room 2: a snake in a dead-end hole nobody enters): `onPath(band, aircell)` is true when
+// the route passes that band within a few cells of the snake's mouth, or a pickup (key,
+// power cell, extra miner) lies in the same band right there. Empty = no restriction.
+using PathTest = std::function<bool(int band, int airCell)>;
+
+int SnakeSpot(const RoomData& room, const ModelData& m, int* dir, int* band, float minerY,
+              const PathTest& onPath = nullptr) {
+    for (const int b : {1, FloorBand(m), 2}) {
+        const float y = BandY(m, b);
+        if (BandUsed(room, m, b, minerY)) continue;
+        for (int d = 0; d < kRoomWidth; ++d) {
+            for (int sgn : {1, -1}) {
+                const int c = 5 + sgn * d;
+                if (c < 0 || c > 8 || CellAir(m, b, c)) continue;
+                const bool airR = CellAir(m, b, c + 1);
+                const bool airL = c > 0 && CellAir(m, b, c - 1);
+                if (!airR && !airL) continue;
+                const int dr = airR ? 1 : -1;
+                if (onPath && !onPath(b, c + dr)) {
+                    if (std::getenv("SAVIOR_SNAKE_DEBUG")) std::fprintf(stderr, "snake: room x%d y%d band %d cell %d off the route\n", room.room_x, room.room_y, b, c);
+                    continue;
+                }
+                const int x = dr > 0 ? 2 * c + 1 : 2 * c;   // wall column beside the air
+                bool clash = false;
+                for (const EnemyData& e : room.enemies)
+                    if (std::abs((int)std::lround(e.x) - x) < 3) clash = true;
+                for (const LampData& l : room.lamps)
+                    if (std::abs((int)std::lround(l.x) - x) < 3) clash = true;   // convert: one GRP1, >= 3 display columns apart
+                if (clash) continue;
+                *dir = dr;
+                *band = b;
+                return x;
+            }
+        }
+    }
+    return -1;
+}
+
+// Enemy kinds the stage audit counts (moth, bat, snake, spider, tentacle) and how many a level needs.
+int NeedEnemyKinds(int l) { return l >= 12 ? 4 : l >= 8 ? 3 : l >= 4 ? 2 : 0; }
+int DistinctEnemyKinds(const LevelData& lv) {
+    std::set<int> kinds;
+    for (const RoomData& r : lv.rooms)
+        for (const EnemyData& e : r.enemies)
+            if (e.type == (int)EnemyType::GIANT_MOTH || e.type == (int)EnemyType::BAT || e.type == (int)EnemyType::SNAKE
+                || e.type == (int)EnemyType::SPIDER || e.type == (int)EnemyType::TENTACLE) kinds.insert(e.type);
+    return (int)kinds.size();
+}
+
+int CountType(const LevelData& lv, EnemyType t) {
+    int n = 0;
+    for (const RoomData& r : lv.rooms)
+        for (const EnemyData& e : r.enemies) n += e.type == (int)t;
+    return n;
+}
+
+// Returns <0 when a quota cannot be met.
+int PlaceMothsAndSnakes(LevelData& lv, const std::vector<ModelData>& models, int l,
+                        const std::set<std::tuple<int, int, int>>& route = {}) {
+    const int n = (int)lv.rooms.size();
+    const int mothWant = 1 + (l - 1) / 6;                     // 1..4
+    const int snakeWant = l >= 4 ? 1 + (l - 4) / 6 : 0;       // 1..3
+    int rc = 0;
+    for (int kind = 0; kind < 2; ++kind) {            // 0 = moth, 1 = snake
+        const int want = kind == 0 ? mothWant : snakeWant;
+        const EnemyType type = kind == 0 ? EnemyType::GIANT_MOTH : EnemyType::SNAKE;
+        for (int radius : {3}) {
+        // pass A: a free slot; pass B: swap a bat; pass C: swap a spider
+        for (int pass = 0; pass < 3 && CountType(lv, type) < want; ++pass) {
+            for (int k = 0; k < n && CountType(lv, type) < want; ++k) {
+                const int i = 1 + (k + l * 3) % std::max(1, n - 1);
+                if (i >= n) continue;
+                RoomData& room = lv.rooms[i];
+                const ModelData* m = ShapeOf(models, room.model_id);
+                if (!m || !CreatureRoomOk(room, *m, i)) continue;
+                // Frame budget (2026-11-14, test_frame_all_rooms): a moth walk AND a snake patrol in a room that
+                // also carries two async strips (M1 + ball overlay tests every collision walk) leave no
+                // overscan slack - the laser-kill frame wobbles. Never both creatures in a two-strip room.
+                if (room.asym_patches.size() >= 2) {
+                    bool other = false;
+                    for (const EnemyData& e : room.enemies)
+                        if (e.type == (int)(kind == 0 ? EnemyType::SNAKE : EnemyType::GIANT_MOTH)) other = true;
+                    if (other) continue;
+                }
+                // snakes only where the route passes (or a pickup waits): see SnakeSpot
+                PathTest path;
+                if (kind == 1 && !route.empty()) {
+                    path = [&, i, radius](int band, int airCell) {
+                        // user rule 2026-11-16 (level 6 room 6): the player must pass NEAR it - a route
+                        // node of the same band within 3 cells of the snake's mouth (a fall through the
+                        // room touches it, the miner's own band counts: the miner is a route node)
+                        // the miner's own room: the player ends there, so the whole room is on his way
+                        const int reach = (i == lv.miner_room) ? 3 * radius : radius;
+                        for (const int col : {airCell, 2 * kRoomWidth - 1 - airCell})
+                            for (int d = -reach; d <= reach; ++d)
+                                if (route.count({i, band, col + d})) return true;
+                        for (const EnemyData& e : room.enemies) {
+                            if (e.type != (int)EnemyType::KEY && e.type != (int)EnemyType::POWER_CELL
+                                && e.type != (int)EnemyType::EXTRA_MINER) continue;
+                            if ((int)e.y / std::max(1, BandUnits(*m)) != band) continue;
+                            const int col = (int)std::lround(e.x) / 2;
+                            if (std::abs(col - airCell) <= 4 || std::abs(col - (19 - airCell)) <= 4) return true;
+                        }
+                        return false;
+                    };
+                }
+                if (pass == 0) {
+                    if (ObjectCount(room) + (lv.miner_room == i ? 1 : 0) >= 2) continue;
+                } else {
+                    const int victim = pass == 1 ? (int)EnemyType::BAT : (int)EnemyType::SPIDER;
+                    // user 2026-11-16: a snake may take any bat or spider; only the level that INTRODUCES
+                    // the victim (bat 2, spider 5) keeps its last one (the stage audit wants it there)
+                    if (CountType(lv, (EnemyType)victim) < 2) {
+                        if (l <= (pass == 1 ? 2 : 5)) continue;
+                        // later levels: taking the LAST bat / spider must leave the level its enemy
+                        // variety (the stage audit wants 4 types from level 12; with fewer hot rooms,
+                        // which each carried a bat and a spider, level 31 lost its last bat to a moth)
+                        if (DistinctEnemyKinds(lv) - 1 + (CountType(lv, type) == 0 ? 1 : 0) < NeedEnemyKinds(l)) continue;
+                    }
+                    int vi = -1;
+                    for (size_t q = 0; q < room.enemies.size(); ++q)
+                        if (room.enemies[q].type == victim) vi = (int)q;
+                    if (vi < 0) continue;
+                    EnemyData saved = room.enemies[vi];
+                    room.enemies.erase(room.enemies.begin() + vi);
+                    int dir = 1, band = 1;
+                    const int spot = kind == 0 ? MothSpot(room, *m, &dir, &band, lv.miner_room == i ? lv.miner_y : -1.0f)
+                                               : SnakeSpot(room, *m, &dir, &band, lv.miner_room == i ? lv.miner_y : -1.0f, path);
+                    if (spot < 0) { room.enemies.insert(room.enemies.begin() + vi, saved); continue; }
+                    if (kind == 0) AddEnemy(room, type, (float)(spot * 2), BandY(*m, band), 1.0f + 0.25f * (l % 4), 13.0f, dir);
+                    else AddEnemy(room, type, (float)spot, BandY(*m, band), 1.0f, 0.0f, dir);
+                    continue;
+                }
+                int dir = 1, band = 1;
+                const int spot = kind == 0 ? MothSpot(room, *m, &dir, &band, lv.miner_room == i ? lv.miner_y : -1.0f)
+                                           : SnakeSpot(room, *m, &dir, &band, lv.miner_room == i ? lv.miner_y : -1.0f, path);
+                if (spot < 0) continue;
+                if (kind == 0) AddEnemy(room, type, (float)(spot * 2), BandY(*m, band), 1.0f + 0.25f * (l % 4), 13.0f, dir);
+                else AddEnemy(room, type, (float)spot, BandY(*m, band), 1.0f, 0.0f, dir);
+            }
+        }
+        }
+        // The quota is best effort (the small hot levels have no free slot); the level
+        // that INTRODUCES the creature must have one (moth: 1, snake: 4).
+        if (CountType(lv, type) < want) {
+            if (CountType(lv, type) == 0 && l == (kind == 0 ? 1 : 4)) rc = -1;
+            if (std::getenv("SAVIOR_GEN_DEBUG"))
+                std::fprintf(stderr, "L%d: %s %d/%d\n", l, kind == 0 ? "moth" : "snake",
+                             CountType(lv, type), want);
+        }
+    }
+    return rc;
+}
 
 // ---- stage REACHABILITY (user report 2026-10-25: "level 8 looks impossible") --
 // The playfield is MIRRORED, so a room is two chambers (the left half and its
@@ -2222,6 +2939,262 @@ ReachResult AnalyseReach(const LevelData& lv,
     return out;
 }
 
+// ---- LOCKED DOORS + the KEY, placed with the real reach analysis -----------
+// A door is a sideways doorway (see DoorColumn). To judge it the level is analysed twice:
+// with the door as a WALL (no key yet) and normally. The door must make a difference when
+// one exists (the miner needs more bombs / is cut off without it), and the key goes
+// in a cell the player reaches with every door CLOSED, so the key is always found first.
+// The door's patch record for the doorway cell `c` (model cell, left half): the M1 (left) strip
+// when the room's M1 side is free, else the ball (right) strip, whose full column 10+p is
+// the mirror of model cell 9-p. A room carries at most one strip per side.
+bool DoorPatchFor(const RoomData& r, int c, std::vector<int>* out) {
+    (void)r;        // a ball-side door mixes with an M1 plug in convert (single M1 x): never used
+    *out = {1, c, (int)TileType::LOCKED_DOOR, 1};
+    return true;
+}
+
+// The room's M1 (left) PILLARS make way for the door (they are ledges, not the level's route).
+void DropM1Pillars(RoomData& r) {
+    std::vector<std::vector<int>> keep;
+    for (const auto& pt : r.asym_patches)
+        if (!((int)pt.size() >= 4 && pt[3] == 1 && pt[2] == (int)TileType::SOLID_WALL)) keep.push_back(pt);
+    r.asym_patches = keep;
+}
+
+// A room whose M1 strip is the dead-side PLUG (col 0, side 1: the room has an opening with no
+// neighbour behind it) cannot also carry a door: convert allows one M1 column per room.
+bool HasM1Plug(const RoomData& r) {
+    for (const auto& pt : r.asym_patches)
+        if ((int)pt.size() >= 4 && pt[3] == 1 && pt[1] == 0) return true;
+    return false;
+}
+
+LevelData DoorsAsWalls(const LevelData& lv) {
+    LevelData t = lv;
+    for (RoomData& r : t.rooms)
+        for (auto& pt : r.asym_patches)
+            if ((int)pt.size() >= 3 && pt[2] == (int)TileType::LOCKED_DOOR)
+                pt[2] = (int)TileType::SOLID_WALL;
+    return t;
+}
+
+bool HasPatch(const RoomData& r, int tile) {
+    for (const auto& pt : r.asym_patches)
+        if ((int)pt.size() >= 3 && pt[2] == tile) return true;
+    return false;
+}
+
+// The scan order of the rooms: i = (k * step + l) % n visits EVERY room only when gcd(step, n) = 1
+// (step 7 with 28 rooms visited four rooms, so level 28 never found a door room; step 3 with 18
+// rooms visited six). Every level uses the first coprime step.
+int ScanStep(int step, int n, int level) {
+    (void)level;
+    auto gcd = [](int a, int b) { while (b) { const int t = a % b; a = b; b = t; } return a; };
+    while (gcd(step, n) != 1) ++step;
+    return step;
+}
+
+// Returns the number of doors placed (<0 when the level got none or no key host).
+int PlaceDoorsAndKeyN(LevelData& lv, const std::vector<ModelData>& models, int l, int want) {
+    if (l < 15) return 0;
+    const int n = (int)lv.rooms.size();
+    std::set<std::pair<int, int>> at;
+    for (const RoomData& r : lv.rooms) at.insert({r.room_x, r.room_y});
+    const int base = AnalyseReach(lv, models).bombs;
+    std::vector<int> gating, loose;
+    int rej[8] = {0};
+    for (int k = 0; k < n; ++k) {
+        const int i = (k * ScanStep(7, n, l) + l) % n;
+        RoomData& r = lv.rooms[i];
+        const ModelData* m = ShapeOf(models, r.model_id);
+        if (i == 0 || !m || m->height < 4 || ProtoRoomHot(*m)) { ++rej[0]; continue; }
+        if (!r.feature_cells.empty() || r.bottom_band || HasPatch(r, (int)TileType::LOCKED_DOOR) || HasM1Plug(r)) { ++rej[1]; continue; }
+        // convert: a door room has at most ONE enemy, no key / power cell / extra miner, no lamp, no miner
+        // (surplus lamps / bats / spiders are trimmed when the door is placed)
+        if (lv.miner_room == i) { ++rej[2]; continue; }
+        bool pickup = false;
+        for (const EnemyData& e : r.enemies)
+            if (e.type == (int)EnemyType::KEY || e.type == (int)EnemyType::POWER_CELL || e.type == 15) pickup = true;
+        if (pickup) { ++rej[3]; continue; }
+        if (!at.count({r.room_x - 1, r.room_y}) && !at.count({r.room_x + 1, r.room_y})) { ++rej[4]; continue; }
+        const int c = DoorColumn(*m);
+        if (c < 0) { ++rej[5]; continue; }
+        std::vector<int> door;
+        if (!DoorPatchFor(r, c, &door)) { ++rej[6]; continue; }
+        const auto savedPatches = r.asym_patches;
+        DropM1Pillars(r);
+        r.asym_patches.push_back(door);
+        const int closed = AnalyseReach(DoorsAsWalls(lv), models).bombs;
+        r.asym_patches = savedPatches;
+        (closed != base ? gating : loose).push_back(i);
+    }
+    std::vector<int> doors;
+    for (const std::vector<int>* pool : {&gating, &loose}) {
+        for (int i : *pool) {
+            if ((int)doors.size() >= want) break;
+            bool near = false;
+            for (int d : doors) if (std::abs(d - i) < 2) near = true;
+            if (!near) doors.push_back(i);
+        }
+    }
+    // Fallback (big levels fill their rooms with pillars): an M1 PILLAR already sits in a
+    // doorway column (band 1 open, every other band wall), so it can be swapped for the door
+    // with no new geometry. Levels that found a normal door room never come here.
+    const LevelData beforeSwap = lv;
+    std::set<int> swappedRooms;
+    if (doors.empty()) {
+        for (int k = 0; k < n && (int)doors.size() < want; ++k) {
+            const int i = (k * ScanStep(7, n, l) + l) % n;
+            RoomData& r = lv.rooms[i];
+            const ModelData* m = ShapeOf(models, r.model_id);
+            if (i == 0 || !m || m->height < 4 || ProtoRoomHot(*m) || !r.feature_cells.empty()
+                    || r.bottom_band || lv.miner_room == i) continue;
+            if (!at.count({r.room_x - 1, r.room_y}) && !at.count({r.room_x + 1, r.room_y})) continue;
+            bool pickup = false;
+            for (const EnemyData& e : r.enemies)
+                if (e.type == (int)EnemyType::KEY || e.type == (int)EnemyType::POWER_CELL || e.type == 15) pickup = true;
+            if (pickup) continue;
+            for (auto& pt : r.asym_patches) {
+                if ((int)pt.size() < 4 || pt[2] != (int)TileType::SOLID_WALL || pt[3] != 1) continue;
+                const int c = pt[1];
+                if (c < 1 || c > 8 || m->tiles[1 * kRoomWidth + c] != 0 || m->tiles[0 * kRoomWidth + c] == 0
+                        || m->tiles[2 * kRoomWidth + c] == 0 || m->tiles[3 * kRoomWidth + c] == 0) continue;
+                bool near = false;
+                for (int d : doors) if (std::abs(d - i) < 2) near = true;
+                if (near) continue;
+                pt[2] = (int)TileType::LOCKED_DOOR;
+                r.lamps.clear();
+                {   // a door room: one enemy at most, outside bands 1 / 2
+                    const int u = std::max(1, BandUnits(*m));
+                    std::vector<EnemyData> keep;
+                    for (const EnemyData& e : r.enemies)
+                        if ((int)e.y / u != 1 && (int)e.y / u != 2 && keep.empty()) keep.push_back(e);
+                    r.enemies = keep;
+                }
+                doors.push_back(i);
+                break;
+            }
+        }
+        for (int d : doors) swappedRooms.insert(d);
+        if (!doors.empty() && AnalyseReach(lv, models).bombs < 0) {   // a door only REMOVES a bomb
+            lv = beforeSwap; doors.clear(); swappedRooms.clear();
+        }
+    }
+    if (doors.empty()) {
+        if (std::getenv("SAVIOR_GEN_DEBUG")) std::fprintf(stderr, "L%d: no door room (gating %zu loose %zu) rejects start/hot %d feat/patch/water %d miner %d pickup %d noside %d nodoorway %d patchside %d\n", l, gating.size(), loose.size(), rej[0], rej[1], rej[2], rej[3], rej[4], rej[5], rej[6]);
+        return -1;
+    }
+    const LevelData before = swappedRooms.empty() ? lv : beforeSwap;   // restored when the key finds no host
+    for (int i : doors) {
+        RoomData& r = lv.rooms[i];
+        if (swappedRooms.count(i)) continue;       // the pillar already became the door
+        r.lamps.clear();                           // a door room: <= 1 enemy, no lamp
+        {   // the door is in band 1: its one enemy keeps to the outer bands (never band 1 / 2)
+            const int u = std::max(1, BandUnits(*ShapeOf(models, r.model_id)));
+            std::vector<EnemyData> keep;
+            for (const EnemyData& e : r.enemies)
+                if ((int)e.y / u != 1 && (int)e.y / u != 2 && keep.empty()) keep.push_back(e);
+            r.enemies = keep;
+        }
+        std::vector<int> door;
+        DoorPatchFor(r, DoorColumn(*ShapeOf(models, r.model_id)), &door);
+        DropM1Pillars(r);
+        r.asym_patches.push_back(door);
+    }
+    // the miner must stay reachable with the doors open (a door only ever REMOVES a bomb)
+    const int after = AnalyseReach(lv, models).bombs;
+    if (base >= 0 && (after < 0 || after > base)) {   // (base < 0: this level's repair is not ours to judge)
+        if (std::getenv("SAVIOR_GEN_DEBUG")) std::fprintf(stderr, "L%d: doors change the bomb count (base %d, after %d, doors %zu)\n", l, base, after, doors.size());
+        lv = before;
+        return -1;
+    }
+    const ReachResult closed = AnalyseReach(DoorsAsWalls(lv), models);
+    // pass A (j < 2n): a room with a free slot; pass B (j >= 2n): swap out one creature of a kind
+    // the level has twice, so a crowded level still gets its key
+    for (int j = 0; j < 3 * n; ++j) {
+        const bool swapPass = j >= 2 * n;
+        const int jj = ((j % n) * ScanStep(3, n, l) + l) % n;
+        if (jj == 0) continue;                // the start room is the clean spawn (test_generator: no objects there) - never a key host
+        RoomData& r = lv.rooms[jj];
+        const ModelData* m = ShapeOf(models, r.model_id);
+        if (!m || !r.feature_cells.empty() || HasPatch(r, (int)TileType::LOCKED_DOOR)) continue;
+        if (ProtoRoomHot(*m)) continue;                        // no objects in a hot middle band
+        EnemyData victim;
+        int victimAt = -1;
+        if (ObjectCount(r) + (lv.miner_room == jj ? 1 : 0) >= 2) {
+            if (!swapPass) continue;
+            for (size_t q = 0; q < r.enemies.size() && victimAt < 0; ++q) {
+                const int t = r.enemies[q].type;
+                if ((t == (int)EnemyType::BAT || t == (int)EnemyType::SPIDER || t == (int)EnemyType::SNAKE
+                        || t == (int)EnemyType::GIANT_MOTH) && CountType(lv, (EnemyType)t) >= 2)
+                    victimAt = (int)q;
+            }
+            if (victimAt < 0) continue;
+            victim = r.enemies[victimAt];
+            r.enemies.erase(r.enemies.begin() + victimAt);
+        } else if (swapPass) {
+            continue;
+        }
+        const size_t keyBefore = r.enemies.size();
+        if (std::getenv("SAVIOR_GEN_DEBUG") && l == 18)
+            std::fprintf(stderr, "  key try room %d pass %s objs %d\n", jj + 1, swapPass ? "swap" : "free", (int)ObjectCount(r));
+        // never band 0 (the arrival band); a cell with GROUND under it first (the key rests
+        // there), any air cell of bands 1/2/floor only when the room has none
+        for (int pass = 0; pass < 2; ++pass)
+        for (const int b : {1, 2, FloorBand(*m)}) {
+            if (pass == 0 && b == FloorBand(*m)) continue;
+            const float y = BandY(*m, b);
+            if (BandUsed(r, *m, b, lv.miner_room == jj ? lv.miner_y : -1.0f)) continue;
+            int c = -1;
+            for (int d = 0; d < kRoomWidth && c < 0; ++d)
+                for (int sgn : {1, -1}) {
+                    const int q = 5 + sgn * d;
+                    if (q < 1 || q > 8 || !CellAir(*m, b, q)) continue;
+                    if (pass == 0 && (b + 1 >= m->height || CellAir(*m, b + 1, q))) continue;
+                    c = q;
+                    break;
+                }
+            if (c < 0 || !closed.reach.count({jj, b, c})) continue;
+            bool clash = false;
+            for (const EnemyData& e : r.enemies)
+                if (std::abs((int)std::lround(e.x) - c * 2) < 3) clash = true;
+            for (const LampData& lp : r.lamps)
+                if (std::abs((int)std::lround(lp.x) - c * 2) < 3) clash = true;
+            if (clash) continue;
+            AddEnemy(r, EnemyType::KEY, (float)(c * 2), y, 1.0f, 0.0f);
+            return (int)doors.size();
+        }
+        if (victimAt >= 0 && r.enemies.size() == keyBefore) r.enemies.insert(r.enemies.begin() + victimAt, victim);
+    }
+    if (std::getenv("SAVIOR_GEN_DEBUG")) {
+        std::set<int> rr;
+        for (const auto& t : closed.reach) rr.insert(std::get<0>(t));
+        std::string rs;
+        for (int q : rr) rs += " " + std::to_string(q + 1);
+        std::string ds;
+        for (int d : doors) ds += " " + std::to_string(d + 1);
+        std::fprintf(stderr, "L%d: no key host; doors in rooms%s; rooms reachable with the doors closed:%s\n", l, ds.c_str(), rs.c_str());
+    }
+    lv = before;                                          // no host: ship no locked level
+    return -1;
+}
+
+// Two doors from level 18 (three from 26); when the key finds no host with that many (every extra door
+// closes more of the level before the key), fewer doors are tried, never fewer than one.
+int PlaceDoorsAndKey(LevelData& lv, const std::vector<ModelData>& models, int l) {
+    if (l < 15) return 0;
+    const int want = l >= 26 ? 3 : l >= 18 ? 2 : 1;
+    const int fewest = l >= 21 ? 2 : 1;      // levels 21+ always carry at least two doors (user 2026-11-13)
+    for (int w = want; w >= fewest; --w) {
+        const LevelData saved = lv;
+        const int r = PlaceDoorsAndKeyN(lv, models, l, w);
+        if (r >= 0) return r;
+        lv = saved;
+    }
+    return -1;
+}
+
+
 
 // EXTRA MINERS (user request 2026-10-26: up to three to rescue, the level ends
 // once all are taken). Ramp: levels 7-13 carry one extra miner, 14-20 two; the
@@ -2233,6 +3206,21 @@ ReachResult AnalyseReach(const LevelData& lv,
 // per parity). Rooms are spread along the route (1/3 and 2/3 of the order the
 // search first visits them). Returns the miners placed (0 = no host room: the
 // level keeps only its own miner; tools/test_generator.py counts the shortfalls).
+// Which way a room's extra miner faces: toward the entrance side (the side with
+// a neighbouring room); both sides or none (vertical rooms): toward the centre.
+// dir 1 = right, -1 = left (record b7 = faces left).
+int MinerFaceDir(const LevelData& lv, int roomIdx, int dcol) {
+    const RoomData& r = lv.rooms[roomIdx];
+    bool nl = false, nr = false;
+    for (const RoomData& o : lv.rooms) {
+        if (o.room_y != r.room_y) continue;
+        if (o.room_x == r.room_x - 1) nl = true;
+        if (o.room_x == r.room_x + 1) nr = true;
+    }
+    if (nl != nr) return nl ? -1 : 1;
+    return dcol < 18 ? 1 : -1;
+}
+
 int PlaceExtraMiners(LevelData& lv, const std::vector<ModelData>& models,
                      int levelNumber) {
     const int want = levelNumber >= 14 ? 2 : (levelNumber >= 7 ? 1 : 0);
@@ -2349,8 +3337,10 @@ int PlaceExtraMiners(LevelData& lv, const std::vector<ModelData>& models,
         const Spot& sp = hosts[hi].sp;
         RoomData& room = lv.rooms[sp.room];
         if (sp.evict >= 0) room.enemies.erase(room.enemies.begin() + sp.evict);
+        // He faces the room's entrance side (user 2026-11-11): the side that
+        // has a neighbour room; with both or neither, toward the room centre.
         AddEnemy(room, EnemyType::EXTRA_MINER, (float)sp.col, ExtraMinerY(),
-                 0.0f, 0.0f);
+                 0.0f, 0.0f, MinerFaceDir(lv, sp.room, sp.col));
         ++placed;
     }
     return placed;
@@ -2363,9 +3353,17 @@ int PlaceExtraMiners(LevelData& lv, const std::vector<ModelData>& models,
 // plan keeps every stretch between refills under kCellBudget, aiming for
 // kCellLead after the previous one. Returns the cells placed, or -1 when no
 // eligible route cell exists for a stretch (test_generator then fails loudly).
-int PlanPowerCells(LevelData& lv, const std::vector<ModelData>& models) {
+static int PlanPowerCellsAt(LevelData& lv, const std::vector<ModelData>& models, int level, int frac20) {
     const ReachResult rr = AnalyseReach(lv, models);
-    if (rr.route.empty() || rr.route.back().cost <= kCellBudget) return 0;
+    if (rr.route.empty()) return 0;
+    // Levels 21+ (user 2026-11-13: "2+ power cells per level"): the budget shrinks with the route so the
+    // level always carries at least two cells (four is the cap: one latch bit per room index mod 4).
+    int budget = kCellBudget;
+    if (level >= 21) {
+        budget = std::clamp(rr.route.back().cost * frac20 / 20, 10 * 60, kCellBudget);   // two cells, a third at most (4 latch bits)
+    }
+    const int lead = std::max(budget - 10 * 60, budget / 2);
+    if (rr.route.back().cost <= budget) return 0;
     auto modelOf = [&](int id) -> const ModelData* {
         for (const auto& m : models) {
             if (m.id == id) return &m;
@@ -2459,22 +3457,27 @@ int PlanPowerCells(LevelData& lv, const std::vector<ModelData>& models) {
     int placed = 0;
     int last = 0;
     const int total = rr.route.back().cost;
-    while (total - last > kCellBudget) {
+    while (total - last > budget) {
         int pick = -1, pickEvict = -1, ev = -1, pickBand = 0, pickCol = 0;
         // Preference: a free host in the lead window, then a free host anywhere
         // that leaves 10 s of slack, then the same two windows with eviction.
-        for (int pass = 0; pass < 4 && pick < 0; ++pass) {
-            // pass 0/2: the lead window; 1/3: as late as the budget allows
-            const int limit = last + ((pass & 1) ? kCellBudget - 10 * 60 : kCellLead);
+        for (int pass = 0; pass < 6 && pick < 0; ++pass) {
+            // passes 0-3: the lead window (free host, then with eviction); 4/5: as late as the budget allows
+            const int limit = last + (pass < 4 ? lead : budget);
+            const bool evict = pass == 2 || pass == 3 || pass == 5;
             for (size_t k = 0; k < rr.route.size(); ++k) {
                 if (rr.route[k].cost <= last) continue;
                 if (rr.route[k].cost > limit) break;
-                if (eligible(k, pass >= 2, ev)) {
+                if (eligible(k, evict, ev)) {
                     pick = (int)k; pickEvict = ev; pickBand = cBand; pickCol = cCol;
                 }
             }
         }
         if (pick < 0) {
+            if (std::getenv("SAVIOR_GEN_DEBUG")) {
+                std::fprintf(stderr, "cells: level %d no host: last=%d total=%d budget=%d bits=%zu placed=%d\n",
+                             level, last, total, budget, bits.size(), placed);
+            }
             return -1;
         }
         const auto& nd = rr.route[pick];
@@ -2483,11 +3486,80 @@ int PlanPowerCells(LevelData& lv, const std::vector<ModelData>& models) {
         if (pickEvict >= 0) room.enemies.erase(room.enemies.begin() + pickEvict);
         AddEnemy(room, EnemyType::POWER_CELL, (float)(pickCol * 2),
                  BandY(*m, pickBand), 0.0f, 0.0f);
+        if (std::getenv("SAVIOR_GEN_DEBUG")) {
+            std::fprintf(stderr, "cell: level %d room %d band %d col %d at cost %d of %d (budget %d)\n",
+                         level, nd.room, pickBand, pickCol, nd.cost, total, budget);
+        }
         bits.insert(nd.room & 3);
         last = nd.cost;
         ++placed;
     }
     return placed;
+}
+
+// Levels 21+ carry at least two cells (user 2026-11-13). The budget is a fraction of the route; when the
+// first fraction finds no host for some stretch, a longer budget (fewer cells) is tried, but the level must end
+// with two or more cells.
+// LAMPS belong on the player's path (user rule 2026-11-16, level 4 room 3: the lamp hung
+// away from the route). The lamp goes to ONE SIDE (pseudo-random per level and room) of the
+// gap the player enters the room through: the left or right edge cell of the air run he
+// arrives in, which has a real wall beside it. A 1-tile gap (or a run with no wall
+// beside its edges, such as a whole open band) keeps the lamp where the room builder put it.
+void RelocateLamps(LevelData& lv, const std::vector<ModelData>& models, int level, const ReachResult& rr) {
+    for (int i = 0; i < (int)lv.rooms.size(); ++i) {
+        RoomData& room = lv.rooms[i];
+        if (room.lamps.size() != 1) continue;
+        const ModelData* m = ShapeOf(models, room.model_id);
+        if (!m || m->width != kRoomWidth) continue;
+        int eb = -1, ec = -1;                       // the arrival node of the route
+        for (size_t k = 1; k < rr.route.size(); ++k)
+            if (rr.route[k].room == i && rr.route[k - 1].room != i) {
+                eb = rr.route[k].band; ec = rr.route[k].col; break;
+            }
+        if (eb < 0 || eb >= (int)m->tiles.size() / m->width) continue;
+        auto air = [&](int b, int f) {              // the mirrored 20-column map
+            return f >= 0 && f < 2 * kRoomWidth && CellAir(*m, b, f < kRoomWidth ? f : 2 * kRoomWidth - 1 - f);
+        };
+        if (!air(eb, ec)) continue;
+        int lo = ec, hi = ec;
+        while (air(eb, lo - 1)) --lo;
+        while (air(eb, hi + 1)) ++hi;
+        if (hi - lo + 1 < 2) continue;              // a 1-tile gap: keep the lamp
+        // lamps live in the LEFT half (model cells 0-9, the mirror draws the other side): a gap that
+        // straddles the centre seam only offers its left edge
+        std::vector<int> edges;
+        if (lo > 0 && !air(eb, lo - 1) && lo < kRoomWidth) edges.push_back(lo);
+        if (hi < 2 * kRoomWidth - 1 && !air(eb, hi + 1) && hi < kRoomWidth) edges.push_back(hi);
+        if (edges.empty()) continue;
+        const int col = edges[((level * 7 + i * 13 + 5) >> 1) % edges.size()];
+        const float x = (float)(col * 2);
+        const int u = std::max(1, BandUnits(*m));
+        bool clash = false;
+        for (const EnemyData& e : room.enemies)
+            if (((int)e.y / u == eb) || std::abs((int)std::lround(e.x) - (int)x) < 3) clash = true;
+        if (clash) continue;
+        room.lamps[0].x = x;
+        room.lamps[0].y = BandY(*m, eb);
+    }
+}
+
+int PlanPowerCells(LevelData& lv, const std::vector<ModelData>& models, int level) {
+    if (level < 21) return PlanPowerCellsAt(lv, models, level, 0);
+    auto cellsIn = [](const LevelData& d) {
+        int n = 0;
+        for (const RoomData& r : d.rooms)
+            for (const EnemyData& e : r.enemies)
+                if (e.type == (int)EnemyType::POWER_CELL) ++n;
+        return n;
+    };
+    const LevelData saved = lv;
+    for (int frac : {9, 10, 11, 12}) {
+        lv = saved;
+        const int r = PlanPowerCellsAt(lv, models, level, frac);
+        if (r >= 0 && cellsIn(lv) >= 2) return r;
+    }
+    lv = saved;
+    return -1;
 }
 
 // Moves the room's spider (same band) to the nearest column where the level is
@@ -2605,26 +3677,18 @@ std::vector<std::string> DataSerializer::StageConnectionProblems(
             if (const RoomData* east = findRoom(room.room_x + 1, room.room_y)) {
                 const ModelData* b = findModel(east->model_id);
                 if (!b) continue;
+                // EXACT match (user report 2026-11-17, level 32): the exit
+                // fires at the screen edge in ANY open band and never tests
+                // the neighbour, so a band open on one side only lands the
+                // player inside the wall of the room he enters.
                 const std::vector<int> sa = sideBands(*a), sb = sideBands(*b);
-                bool shared = false;
-                for (int x : sa) {
-                    for (int y : sb) {
-                        if (x == y) shared = true;
-                    }
-                }
-                if (!sa.empty() && !sb.empty() && !shared) {
+                if (sa != sb) {
                     out.push_back(
                         "level " + std::to_string(level_n) + ": rooms "
                         + std::to_string(room.room_id) + " and "
                         + std::to_string(east->room_id)
                         + " are side by side but open in different bands "
                         "(landing inside a wall)");
-                } else if (sa.empty() != sb.empty()) {
-                    out.push_back(
-                        "level " + std::to_string(level_n) + ": rooms "
-                        + std::to_string(room.room_id) + " and "
-                        + std::to_string(east->room_id)
-                        + " are side by side but only one has a side opening");
                 }
             }
             // NO OPENING WITHOUT A NEIGHBOUR (user rule 2026-10-24): the
@@ -2672,20 +3736,22 @@ std::vector<std::string> DataSerializer::StageConnectionProblems(
                 const ModelData* b = findModel(south->model_id);
                 if (!b || b->width <= 0) continue;
                 if ((int)b->tiles.size() / b->width < 1) continue;
-                bool shared = false, any = false;
-                for (int x = 0; x < kRoomWidth; ++x) {
-                    const bool up = CellAir(*a, bands - 1, x);
-                    const bool dn = CellAir(*b, 0, x);
-                    any = any || up || dn;
-                    shared = shared || (up && dn);
+                // EXACT match: the player keeps his X through the link in both
+                // directions (a water room's open floor is no exit).
+                bool differ = false;
+                if (!room.bottom_band) {
+                    for (int x = 0; x < kRoomWidth; ++x) {
+                        differ = differ || (CellAir(*a, bands - 1, x)
+                                            != CellAir(*b, 0, x));
+                    }
                 }
-                if (any && !shared) {
+                if (differ) {
                     out.push_back(
                         "level " + std::to_string(level_n) + ": rooms "
                         + std::to_string(room.room_id) + " (above) and "
                         + std::to_string(south->room_id)
-                        + " (below) share no open column (landing inside a "
-                        "wall)");
+                        + " (below) open different columns (landing inside "
+                        "a wall)");
                 }
             }
         }
@@ -2712,6 +3778,112 @@ struct StageRepair {
 StageRepair* g_stageRepair = nullptr;
 }  // namespace
 
+std::function<void(int, int)> DataSerializer::progress;
+namespace { int g_pass = 0; }
+
+// ---- STAGE AUDIT: NOTHING may be unused (user rule 2026-11-13) --------------
+// The generator audits its own stage and refuses to finish when an element is unused
+// or starts at the wrong level. All the usage rules live HERE (tools/test_generator.py
+// repeats them as the independent guard):
+//   * every element below must appear in the stage, and its FIRST level may not be
+//     later than the one in the table;
+//   * the elements the user dated (moth 1, snake 4, door 15, key 15) must start EXACTLY
+//     there (not earlier);
+//   * creature variety per level: >= 2 enemy types from level 4, >= 3 from level 8,
+//     >= 4 from level 12 (spider, bat, snake, tentacle, giant moth).
+struct ElementRule { const char* name; int level; bool exact; };
+
+void AuditStage(const std::vector<LevelData>& levels,
+                const std::vector<ModelData>& models,
+                std::vector<std::string>& problems) {
+    static const ElementRule rules[] = {
+        {"giant moth", 1, true},  {"bat", 2, false},       {"snake", 4, true},
+        {"lamp", 4, false},       {"water room", 4, false}, {"spider", 5, false},
+        {"hot band", 5, false},   {"phase wall", 6, false}, {"tentacle", 7, false},
+        {"extra miner", 7, false}, {"solid pillar", 7, false}, {"power cell", 9, false},
+        {"raft", 11, false},      {"hcrunch", 14, false},  {"locked door", 15, true},
+        {"key", 15, true},
+    };
+    constexpr int kN = (int)(sizeof(rules) / sizeof(rules[0]));
+    int first[kN];
+    for (int& f : first) f = 0;
+    int total[kN], nLevels[kN], lastLevel[kN];
+    for (int i = 0; i < kN; ++i) { total[i] = 0; nLevels[i] = 0; lastLevel[i] = 0; }
+    std::vector<int> typesPerLevel;
+    auto note = [&](int idx, int level) {
+        if (!first[idx]) first[idx] = level;
+        ++total[idx];
+        if (lastLevel[idx] != level) { lastLevel[idx] = level; ++nLevels[idx]; }
+    };
+    for (int l = 1; l <= (int)levels.size(); ++l) {
+        const LevelData& lv = levels[l - 1];
+        std::set<int> kinds;
+        for (const RoomData& r : lv.rooms) {
+            const ModelData* m = ShapeOf(models, r.model_id);
+            for (const EnemyData& e : r.enemies) {
+                switch (e.type) {
+                    case (int)EnemyType::GIANT_MOTH: note(0, l); kinds.insert(e.type); break;
+                    case (int)EnemyType::BAT: note(1, l); kinds.insert(e.type); break;
+                    case (int)EnemyType::SNAKE: note(2, l); kinds.insert(e.type); break;
+                    case (int)EnemyType::SPIDER: note(5, l); kinds.insert(e.type); break;
+                    case (int)EnemyType::TENTACLE: note(8, l); kinds.insert(e.type); break;
+                    case (int)EnemyType::RAFT: note(12, l); break;
+                    case (int)EnemyType::POWER_CELL: note(11, l); break;
+                    case (int)EnemyType::KEY: note(15, l); break;
+                    case 15: note(9, l); break;
+                    default: break;
+                }
+            }
+            if (!r.lamps.empty()) note(3, l);
+            if (r.bottom_band) note(4, l);
+            if (m && m->mid_band_type == 1) note(6, l);
+            for (const auto& f : r.feature_cells) {
+                if ((int)f.size() < 3) continue;
+                if (f[2] == (int)TileType::PHASE) note(7, l);
+                if (f[2] == (int)TileType::HCRUNCH) note(13, l);
+            }
+            for (const auto& pt : r.asym_patches) {
+                if ((int)pt.size() < 3) continue;
+                if (pt[2] == (int)TileType::SOLID_WALL) note(10, l);
+                if (pt[2] == (int)TileType::LOCKED_DOOR) note(14, l);
+            }
+        }
+        typesPerLevel.push_back((int)kinds.size());
+        const int need = l >= 12 ? 4 : l >= 8 ? 3 : l >= 4 ? 2 : 0;
+        if ((int)kinds.size() < need) {
+            problems.push_back("level " + std::to_string(l) + " has only "
+                               + std::to_string(kinds.size()) + " enemy types (needs "
+                               + std::to_string(need) + ")");
+        }
+    }
+    // The usage table: what the stage really contains, printed on every generation.
+    std::fprintf(stdout, "\nSTAGE AUDIT (generator): element usage\n"
+                         "  %-14s %6s %9s %8s %s\n", "element", "total", "must be", "first", "levels using it");
+    for (int i = 0; i < kN; ++i) {
+        std::fprintf(stdout, "  %-14s %6d %6s%2d %8d %d of %d   %s\n", rules[i].name, total[i],
+                     rules[i].exact ? "from" : "from", rules[i].level, first[i], nLevels[i],
+                     (int)levels.size(),
+                     !first[i] ? "UNUSED" : first[i] > rules[i].level ? "STARTS TOO LATE"
+                     : (rules[i].exact && first[i] < rules[i].level) ? "STARTS TOO EARLY" : "ok");
+    }
+    std::fprintf(stdout, "  enemy types per level:");
+    for (int t : typesPerLevel) std::fprintf(stdout, " %d", t);
+    std::fprintf(stdout, "   (>=2 from L4, >=3 from L8, >=4 from L12)\n");
+    for (int i = 0; i < kN; ++i) {
+        if (!first[i]) {
+            problems.push_back(std::string("audit: ") + rules[i].name + " is UNUSED in the stage");
+        } else if (first[i] > rules[i].level) {
+            problems.push_back(std::string("audit: ") + rules[i].name + " first appears in level "
+                               + std::to_string(first[i]) + ", must be from level "
+                               + std::to_string(rules[i].level));
+        } else if (rules[i].exact && first[i] < rules[i].level) {
+            problems.push_back(std::string("audit: ") + rules[i].name + " appears already in level "
+                               + std::to_string(first[i]) + ", must START at level "
+                               + std::to_string(rules[i].level));
+        }
+    }
+}
+
 void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                                        std::vector<ModelData>& models) {
     if (!g_stageRepair) {
@@ -2735,6 +3907,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             rep.problems.clear();
             levels.clear();
             models.clear();
+            g_pass = pass + 1;
+            if (progress) progress(g_pass, 0);
             Build20LevelStage(levels, models);
             if (rep.next.empty() && rep.nextChan.empty()
                     && rep.nextNoPatch.empty()
@@ -2748,6 +3922,11 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             for (const auto& q : rep.nextNoSpider)
                 grew = rep.noSpider.insert(q).second || grew;
             if (!grew) break;
+        }
+        AuditStage(levels, models, rep.problems);
+        if (!rep.problems.empty() && std::getenv("SAVIOR_GEN_FORCE")) {   // debugging aid: keep the stage
+            for (const auto& pr : rep.problems) std::fprintf(stderr, "FORCED past: %s\n", pr.c_str());
+            return;
         }
         if (!rep.problems.empty()) {
             std::string all;
@@ -2774,7 +3953,16 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
     auto buildLibrary = [&](bool withExtras, int variety) {
         used.clear();
         for (int l = 1; l <= kStageLevels; ++l) {
-            walks[l - 1] = LevelLayout(l, l < 2 ? 2 : l);
+            {   // experiment knob: SAVIOR_GEN_ROOMS_CAP caps the room count of levels 21+
+                // Room count: level N has N rooms up to 23, then 23 (measured 2026-11-15, exact window packing; 24 does not pack): the room tables of the
+                // 32 levels live in two room banks whose data windows hold ~4.0 KB in total, and the tables do not
+                // pack past 23 rooms per level (24 does not fit even with an exact packer; see docs/agents/banks.md). The extra levels grow in
+                // doors, keys, power cells and enemy mix instead.
+                int rooms = l < 2 ? 2 : std::min(l, 23);
+                if (l > 20 && std::getenv("SAVIOR_GEN_ROOMS_CAP"))
+                    rooms = std::min(rooms, std::atoi(std::getenv("SAVIOR_GEN_ROOMS_CAP")));
+                walks[l - 1] = LevelLayout(l, rooms);
+            }
             const LevelPlan plan = PlanFor(l);
             const int count = (int)walks[l - 1].size();
             masks[l - 1].clear();
@@ -2799,7 +3987,10 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             }
             auto canHost = [&](int i, Role r) {
                 if (i <= 0 || i >= count - 1) return false;
-                if (r == Role::Hot) return (bool)vroom[i];
+                // user rule 2026-11-16: a hot room has NO side exit. The side aisle (and the
+                // corridor span) is cut through band 1, which erased the hot walls of 120 of the
+                // 130 hot rooms (HotSplit kept 1.0 of 7 hot cells, 23 rooms had none).
+                if (r == Role::Hot) return vroom[i] && !hroom[i];
                 // PHASE (user rule 2026-10-27): a horizontal obstacle only —
                 // the player walks/flies across it left<->right, so the room
                 // needs a SIDE link. Corridors, L, T and + rooms all qualify
@@ -2904,11 +4095,13 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                         }
                         if (n > variety) n = variety;
                         arch = pool[l % n];
-                    } else if (i == 0 && l >= 8) {
+                    } else if (i == 0 && l >= 8 && !hroom[0]) {
                         // The START room drops the player in at cell 4, so its
                         // band 1 MUST keep that column open: arch 14 is
                         // HotDrop, the only start archetype with the drop
-                        // column carved.
+                        // column carved. Only when the start room has NO side
+                        // exit (a hot room has none, 2026-11-16); otherwise it
+                        // stays plain (SHAPE_START opens the drop column).
                         arch = 14;
                     } else if (role == Role::Normal && i > 0
                                && i < count - 1) {
@@ -2921,9 +4114,32 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 }
                 if (repair.flat.count({l, i})) arch = 0;   // reach repair
                 const int mask = RoomShapeMask(l, walks[l - 1], walks[l - 1][i],
-                                               i, role, plan.twogap)
+                                               i, role, plan.twogap,
+                                               i == count - 1)
                                  | (arch << kArchShift);
                 masks[l - 1].push_back(mask);
+            }
+            // WIDE links (user rule 2026-11-10): both rooms of a vertical link
+            // between two ordinary rooms take the wide cavern opening, on every
+            // other link of a stack (rows alternate), so no through room has the
+            // same width at the top and at the bottom.
+            for (int i = 0; i < count; ++i) {
+                const GridPos& pi = walks[l - 1][i];
+                if ((pi.y + l) % 2 != 0) continue;
+                for (int j = 0; j < count; ++j) {
+                    const GridPos& pj = walks[l - 1][j];
+                    if (pj.x != pi.x || pj.y != pi.y + 1) continue;
+                    auto plain = [&](int k) {
+                        return (roles[l - 1][k] == Role::Normal
+                                || roles[l - 1][k] == Role::Hot)
+                            && !(masks[l - 1][k] & (SHAPE_CHANNEL | SHAPE_WATER));
+                    };
+                    if (!plain(i) || !plain(j)) continue;
+                    if (!(masks[l - 1][i] & SHAPE_S)
+                            || !(masks[l - 1][j] & SHAPE_N)) continue;
+                    masks[l - 1][i] |= SHAPE_WIDE_S;
+                    masks[l - 1][j] |= SHAPE_WIDE_N;
+                }
             }
             for (const int m : masks[l - 1]) used.insert(m);
         }
@@ -3165,6 +4381,49 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         for (int m : live) used.insert(m);   // the post-pass masks themselves
     }
 
+    // --- VERTICAL PROFILES (user rules 2026-11-10) --------------------------
+    // After the pairing and crunch passes fixed every room's ceiling and floor,
+    // a plain through room (N and S, no side exit, not the start / a hazard
+    // corridor) swaps its archetype for a PROFILE (see VerticalProfiles). A hot
+    // room becomes a hot BARRIER: its band-1 walls stay hot but the gap differs
+    // from the ones above and below. A room with no valid profile keeps its
+    // archetype (a hot one is then demoted to a plain room: no tunnel in red).
+    for (int l = 1; l <= kStageLevels; ++l) {
+        for (int i = 0; i < (int)walks[l - 1].size(); ++i) {
+            int& m = masks[l - 1][i];
+            const Role role = roles[l - 1][i];
+            if (role != Role::Normal && role != Role::Hot) continue;
+            if (i == 0 || i + 1 == (int)walks[l - 1].size()) continue;
+            if ((m & (SHAPE_N | SHAPE_S)) != (SHAPE_N | SHAPE_S)) continue;
+            if (m & (SHAPE_H | SHAPE_START | SHAPE_GATE | SHAPE_WATER
+                     | SHAPE_CHANNEL)) continue;
+            if (repair.flat.count({l, i}) && role != Role::Hot) continue;
+            const int base = m & ~(kArchMask << kArchShift);
+            const ModelData plain = MakeShapeModel(0, base);
+            std::set<int> top, bottom;
+            for (int x = 0; x < kRoomWidth; ++x) {
+                if (plain.tiles[x] == (int)TileType::AIR) top.insert(x);
+                if (plain.tiles[3 * kRoomWidth + x] == (int)TileType::AIR)
+                    bottom.insert(x);
+            }
+            const bool hot = role == Role::Hot;
+            VProfile probe;
+            const int v = (l + i) % kProfVariants;
+            if (PickVerticalProfile(top, bottom, hot, v, probe)) {
+                m = base | SHAPE_PROFILE | (hot ? SHAPE_VHOT : 0)
+                    | (v << kProfShift);
+            } else if (hot) {
+                m = base;                       // no tunnel painted red
+                roles[l - 1][i] = Role::Normal;
+            }
+        }
+    }
+    {
+        std::set<int> live;
+        for (const auto& row : masks) for (int m : row) live.insert(m);
+        used = live;
+    }
+
     // 2. The shape library: model ids ARE the ascending masks (deterministic).
     models.clear();
     std::map<int, int> shapeId;
@@ -3188,15 +4447,16 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
     }
 
     for (int l = 1; l <= kStageLevels; ++l) {
+        if (progress) progress(g_pass, l);
         LevelData level;
         level.level_id = l;
         level.name = "Level " + std::to_string(l);
         level.wall_r = kLevelPalettes[l - 1][0];
         level.wall_g = kLevelPalettes[l - 1][1];
         level.wall_b = kLevelPalettes[l - 1][2];
-        level.wall2_r = Lift(level.wall_r);
-        level.wall2_g = Lift(level.wall_g);
-        level.wall2_b = Lift(level.wall_b);
+        level.wall2_r = kLevelPalettes2[l - 1][0];
+        level.wall2_g = kLevelPalettes2[l - 1][1];
+        level.wall2_b = kLevelPalettes2[l - 1][2];
         level.start_room = 0;                 // convert: 0 is the kernel constant
         const int roomCount = (int)walks[l - 1].size();
         level.miner_room = roomCount - 1;     // the goal is the last room
@@ -3204,19 +4464,32 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         // User rule 2026-10-21: if the walk enters the goal room from a SIDE,
         // the miner waits on the OPPOSITE side (on the entry side the room is
         // trivial). Vertical entry keeps the left-positioned miner.
+        // The side comes from the goal room's REAL neighbours on the grid (the
+        // walk order is not adjacency: level 7's goal is entered from its left
+        // neighbour, not from the room listed before it). The miner faces the
+        // entrance (miner_dir 1 = right, -1 = left).
+        level.miner_dir = 1;
         if (roomCount >= 2) {
             const GridPos& goalPos = walks[l - 1][roomCount - 1];
-            const GridPos& prevPos = walks[l - 1][roomCount - 2];
-            if (prevPos.x != goalPos.x) {
-                level.miner_x = (prevPos.x < goalPos.x) ? kMinerFarX
-                                                        : kMinerX;
+            const bool nl = HasRoomAt(walks[l - 1], goalPos.x - 1, goalPos.y);
+            const bool nr = HasRoomAt(walks[l - 1], goalPos.x + 1, goalPos.y);
+            if (nl != nr) {
+                level.miner_x = nl ? kMinerFarX : kMinerX;   // far from the entry
+                level.miner_dir = nl ? -1 : 1;               // facing the entry
+            } else if (nl && nr) {
+                const GridPos& prevPos = walks[l - 1][roomCount - 2];
+                if (prevPos.x != goalPos.x) {
+                    level.miner_x = (prevPos.x < goalPos.x) ? kMinerFarX
+                                                            : kMinerX;
+                    level.miner_dir = (prevPos.x < goalPos.x) ? -1 : 1;
+                }
             }
         }
+        if (level.miner_x > 8.0f && level.miner_dir > 0) level.miner_dir = -1;
         // Miner Y = the goal rock top - 12 px: 84 px (7 rows) on a 3-band room,
         // 96 px (8 rows) on a 4-band one (the floor band sits 36 px lower).
         // Every water-goal shape is a non-gate shape, so it is 4-row.
         level.miner_y = 8.0f;
-        level.miner_dir = 1;
         const LevelPlan plan = PlanFor(l);
         for (int i = 0; i < roomCount; ++i) {
             RoomData room;
@@ -3260,8 +4533,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             if (roles[l - 1][i] == Role::Hot && l > 10 && i != 0
                     && !repair.noPatch.count({l, i})) {
                 const ModelData& sm = models[shapeId[masks[l - 1][i]]];
-                const int hidx = ((masks[l - 1][i] >> kArchShift) & kArchMask) - 8;
-                const int gapCell = kArchHotGapX[hidx] / 2;
+                const int gapCell = HotGapCell(
+                    sm, (masks[l - 1][i] >> kArchShift) & kArchMask);
                 for (int c = gapCell; c <= gapCell + 1; ++c) {
                     if (c < 1 || c > 7) continue;
                     if (sm.tiles[1 * kRoomWidth + c] == 0
@@ -3637,6 +4910,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                         for (int sign : {1, -1}) {
                             const int cand = col + sign * d;
                             if (!airAt(nb, cand) || dangerous(nb, cand)
+                                    || (e.type == (int)EnemyType::BAT
+                                        && AirRun(sm, nb, cand / 2) < kMinEnemyRun)
                                     || NearExitGap(sm, cand / 2)) {   // never on a vertical opening
                                 continue;
                             }
@@ -3725,6 +5000,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                     if (band == 1 && sm.mid_band_type == 1) continue;
                     for (int dcol = colLo; dcol <= colHi && !fixed; ++dcol) {
                         if (!airAt(band, dcol)) continue;
+                        if (room.enemies[b].type == (int)EnemyType::BAT
+                                && AirRun(sm, band, dcol / 2) < kMinEnemyRun) continue;
                         if ((dcol & 1) && room.enemies[b].type == (int)EnemyType::SPIDER)
                             continue;   // whole cells only
                         if (clashes(band, dcol, b, -1)) continue;
@@ -3858,6 +5135,127 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             }
         }
     };
+    // REAL per-room validation of the placed stage (flood on the mirrored map,
+    // sides from the actual neighbours): a room that cannot be crossed is
+    // flattened (or its channel demoted) and the stage rebuilt; an object in air
+    // the player never reaches is moved to the nearest reachable cell of its
+    // band, or dropped when the band has none.
+    for (int l = 1; l <= kStageLevels; ++l) {
+        LevelData& lv = levels[l - 1];
+        bool queuedRoom = false;
+        for (int ri = 0; ri < (int)lv.rooms.size(); ++ri) {
+            RoomData& room = lv.rooms[ri];
+            const ModelData* sm = nullptr;
+            for (const ModelData& m : models) {
+                if (m.id == room.model_id) { sm = &m; break; }
+            }
+            if (!sm) continue;
+            const RoomFlood fl = FloodRoom(lv, room, *sm);
+            if (fl.bands < 3) continue;
+            if (!fl.problem.empty()) {
+                const int arch = (masks[l - 1][ri] >> kArchShift) & kArchMask;
+                if (arch != 0 && roles[l - 1][ri] != Role::Hot
+                        && !repair.flat.count({l, ri})) {
+                    repair.next.push_back({l, ri});
+                } else if ((masks[l - 1][ri] & SHAPE_CHANNEL)
+                        && !repair.chanOff.count(
+                               {l, room.room_x, room.room_y})) {
+                    repair.nextChan.push_back({l, room.room_x, room.room_y});
+                } else {
+                    repair.problems.push_back(
+                        "level " + std::to_string(l) + " room "
+                        + std::to_string(ri + 1) + ": " + fl.problem);
+                }
+                queuedRoom = true;
+                continue;
+            }
+            const int units = BandUnits(*sm);
+            auto cellOf = [&](float x) {
+                int c = (int)x / 2;
+                if (c < 0) c = 0;
+                if (c > 2 * kRoomWidth - 1) c = 2 * kRoomWidth - 1;
+                return c;
+            };
+            auto reachable = [&](int b, int f) {
+                return b >= 0 && b < fl.bands && fl.reach[b][f];
+            };
+            auto relocate = [&](float& x, float y, bool& drop) {
+                const int b = (int)y / units;
+                const int f = cellOf(x);
+                if (reachable(b, f)) return;
+                int best = -1;
+                for (int d = 0; d < 2 * kRoomWidth && best < 0; ++d) {
+                    for (int s = 0; s < 2; ++s) {
+                        const int g = f + (s ? d : -d);
+                        if (g >= 0 && g < kRoomWidth && reachable(b, g)) {
+                            best = g;
+                            break;
+                        }
+                    }
+                }
+                if (best < 0) drop = true;
+                else x = (float)(best * 2);
+            };
+            for (size_t e = room.enemies.size(); e-- > 0;) {
+                bool drop = false;
+                relocate(room.enemies[e].x, room.enemies[e].y, drop);
+                if (drop) room.enemies.erase(room.enemies.begin() + e);
+            }
+            for (size_t k = room.lamps.size(); k-- > 0;) {
+                bool drop = false;
+                relocate(room.lamps[k].x, room.lamps[k].y, drop);
+                if (drop) room.lamps.erase(room.lamps.begin() + k);
+            }
+        }
+        if (queuedRoom) continue;
+        // Density rule (from level 5 a level needs a room with two objects):
+        // the object separation and the wide caverns can strip every pair, so
+        // CHECK the level and, when it has none, give one single-object room a
+        // bat on another band - on a cell the player really reaches.
+        if (l >= 5) {
+            auto objs = [](const RoomData& r) {
+                return (int)(r.enemies.size() + r.lamps.size());
+            };
+            bool have = false;
+            for (const RoomData& r : lv.rooms) have = have || objs(r) >= 2;
+            for (int ri = 1; !have && ri + 1 < (int)lv.rooms.size(); ++ri) {
+                RoomData& room = lv.rooms[ri];
+                if (objs(room) != 1) continue;
+                bool door = false;
+                for (const auto& p : room.asym_patches)
+                    door = door || (p.size() >= 3 && p[2] == 9);
+                if (door || roles[l - 1][ri] == Role::Gate
+                        || roles[l - 1][ri] == Role::Phase) continue;
+                const ModelData* sm = nullptr;
+                for (const ModelData& m : models) {
+                    if (m.id == room.model_id) { sm = &m; break; }
+                }
+                if (!sm) continue;
+                const RoomFlood fl = FloodRoom(lv, room, *sm);
+                if (fl.bands < 3) continue;
+                const int units = BandUnits(*sm);
+                const int firstCol = room.enemies.empty()
+                    ? (int)room.lamps[0].x : (int)room.enemies[0].x;
+                const int firstBand = (int)(room.enemies.empty()
+                    ? room.lamps[0].y : room.enemies[0].y) / units;
+                for (int b = 1; b < fl.bands && !have; ++b) {
+                    if (b == firstBand || (b == 1 && sm->mid_band_type == 1))
+                        continue;
+                    for (int cell = 0; cell < kRoomWidth && !have; ++cell) {
+                        const int x2 = cell * 2;
+                        if (!fl.reach[b][cell] || std::abs(x2 - firstCol) < 6
+                                || NearExitGap(*sm, cell)
+                                || !CellAir(*sm, b, cell)
+                                || AirRun(*sm, b, cell) < kMinEnemyRun) continue;
+                        AddEnemy(room, EnemyType::BAT, (float)x2,
+                                 BandY(*sm, b),
+                                 1.25f + 0.25f * (l % 4), 13.0f);
+                        have = true;
+                    }
+                }
+            }
+        }
+    }
     for (int l = 1; l <= kStageLevels; ++l) {
         // A spider the route has to pass: slide it to a clear column first
         // (content stays), remove it only when no column works.
@@ -3953,10 +5351,37 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
     }
     // Power cells go in LAST: the route they sit on is the finished level's.
     for (int l = 1; l <= kStageLevels; ++l) {
-        if (PlanPowerCells(levels[l - 1], models) < 0) {
+        if (PlanPowerCells(levels[l - 1], models, l) < 0) {
             repair.problems.push_back(
                 "level " + std::to_string(l) + ": the route is longer than the "
                 "timer but no room can host a power cell");
+        }
+    }
+    // Doors + the key (level 15+) take their slots before the moths and snakes.
+    for (int l = 15; l <= kStageLevels; ++l) {
+        if (PlaceDoorsAndKey(levels[l - 1], models, l) < 0) {
+            repair.problems.push_back(
+                "level " + std::to_string(l) + ": no sideways room can host a "
+                "locked door with its key placed earlier");
+        }
+    }
+    // Moths (every level) and snakes (level 4+) go in after the cells and miners.
+    for (int l = 1; l <= kStageLevels; ++l) {
+        // one route analysis per level feeds both the lamps and the snakes (the pass is slow)
+        const ReachResult routeRr = AnalyseReach(levels[l - 1], models);
+        RelocateLamps(levels[l - 1], models, l, routeRr);
+        std::set<std::tuple<int, int, int>> routeSet;
+        for (const auto& nd : routeRr.route)
+            routeSet.insert({nd.room, nd.band, nd.col});
+        // the route ends where the player ENTERS the miner's room: from there he falls (or walks) on
+        // to the miner, so the entry column counts in every band of that room
+        for (const auto& nd : routeRr.route)
+            if (nd.room == levels[l - 1].miner_room)
+                for (int b = 0; b < 4; ++b) routeSet.insert({nd.room, b, nd.col});
+        if (PlaceMothsAndSnakes(levels[l - 1], models, l, routeSet) < 0) {
+            repair.problems.push_back(
+                "level " + std::to_string(l) + ": no room can host its giant "
+                "moth / snake");
         }
     }
 }

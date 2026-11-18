@@ -28,7 +28,7 @@ from test_cell_map import Mem, parse_labels  # noqa: E402
 from py65.devices.mpu6502 import MPU  # noqa: E402
 
 FROZEN = ROOT / "tests" / "frozen"
-L1 = parse_labels(FROZEN / "bank1.lst", {"MenuMain"})
+L1 = parse_labels(FROZEN / "bank2.lst", {"MenuMain"})
 L0 = parse_labels(FROZEN / "bank0.lst",
                   {"PlayerLives", "PlayerBombs", "LevelStartRoom", "LineCount",
                    "BombX", "Level", "TickCounter", "BarLevel"})
@@ -66,7 +66,7 @@ def run_band(lives, key):
     r[Z["BombX"]] = 0
     r[Z["Level"]] = 0
     r[Z["TickCounter"]] = 30
-    mem.bank = 1
+    mem.bank = 2
     mpu = MPU(memory=mem)
     mpu.pc, mpu.sp, mpu.a, mpu.x, mpu.y = L1["MenuMain"], 0xFD, 0, 0, 0
     for _ in range(200000):

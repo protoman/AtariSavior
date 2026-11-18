@@ -1,7 +1,7 @@
 #!/home/iuri/python3/bin/python3
 """Unit check for UpdateLaserSound (bank1 ch0 "zoom") — no framework.
 
-Loads the routine straight out of bank1.bin and runs it on a stubbed 6502
+Loads the routine straight out of bank2.bin and runs it on a stubbed 6502
 until its `jmp $FBF8` lands on ReturnPad, then asserts the three gates:
 
   1. released  — LaserState b7 clear  -> no AUDV0 write (stays silent)
@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT
-BANK1 = (SRC / 'bank1.bin').read_bytes()
+BANK1 = (SRC / 'bank2.bin').read_bytes()
 
 AUDC0, AUDF0, AUDV0 = 0x15, 0x17, 0x19
 BOMBSND, LASERSTATE, ENEMYRAMP = 0xF1, 0xC0, 0xC2
@@ -27,10 +27,10 @@ FREQ_TABLE = [4, 7, 10, 12, 14, 12, 10, 7]
 
 
 def label(name: str) -> int:
-    lst = (SRC / 'bank1.lst').read_text(errors='replace')
+    lst = (SRC / 'bank2.lst').read_text(errors='replace')
     m = re.search(rf'^\s*\d+\s+([0-9a-f]{{4}})\s+{name}\s*$', lst, re.M)
     if not m:
-        sys.exit(f'test_laser_sound: label {name} not in bank1.lst')
+        sys.exit(f'test_laser_sound: label {name} not in bank2.lst')
     return int(m.group(1), 16)
 
 

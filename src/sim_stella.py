@@ -9,7 +9,7 @@
 # STA WSYNC (cycle 0 of new scanline)
 # STA HMOVE (cycles 0..2 of that scanline)
 # Does HMOVE need to be strobed IMMEDIATELY after WSYNC? YES, within cycle 0..3!
-# In kernel.asm:
+# In bank0.asm:
 #   sta WSYNC
 #   sta HMOVE
 # This takes 3 cycles, so HMOVE is strobed on cycle 3. That is right in HBLANK.

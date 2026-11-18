@@ -19,6 +19,7 @@
 #pragma once
 
 #include "LevelData.hpp"
+#include <functional>
 #include <string>
 
 namespace hero {
@@ -69,6 +70,10 @@ public:
     // writes a stage path on its own).
     static void Build20LevelStage(std::vector<LevelData>& levels,
                                   std::vector<ModelData>& models);
+    // Optional progress hook for the GUI (called on the building thread):
+    // (repair pass, level 0..20). The generator retries until every level is
+    // finishable, so the pass count is open-ended; the level is the bar.
+    static std::function<void(int pass, int level)> progress;
     // Stage-level LINK check (user rule 2026-10-24): every pair of ADJACENT
     // rooms (same row, x and x+1; same column, y and y+1) must share its
     // opening, because the runtime exit fires when the player reaches the

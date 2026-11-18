@@ -234,6 +234,8 @@ def main() -> int:
             seen_stage = True
         elif g.score() == 5000:
             seen_high = True
+        if seen_stage and seen_high:
+            break           # stay under the 5 s attract-mode idle (300 frames), or the demo starts
     assert seen_stage and seen_high, (
         f"title must alternate stage 7 / high score 5000 (stage {seen_stage}, "
         f"high {seen_high})")
@@ -287,22 +289,23 @@ def main() -> int:
     g.mpu.sp = 0xFD
     g.ram[0x7F], g.ram[0x7E] = 0x01, 0x00        # a harmless return address
     g.until(lambda: g.title_shown() and g.bank == 0, 120, "the restart at the title")
-    assert g.record() == make_record(0, 0, 3, 0, 1900), (
+    assert g.record() == make_record(0, 1, 3, 0, 1900), (
         f"game over must erase the save and keep the high score: {g.record().hex()}")
-    # (the title shows the stage number in the score window: 1)
-    assert g.ram[LEVEL] == 0 and g.ram[LIVES] == 3 and g.score() == 1, (
-        "game over must restart the run at the title on stage 1 with 3 lives")
+    # (game over keeps the level just played, user 2026-11-11; the title shows the stage number
+    #  in the score window: level 1 = stage 2)
+    assert g.ram[LEVEL] == 1 and g.ram[LIVES] == 3 and g.score() == 2, (
+        "game over must restart the run at the title on the stage played with 3 lives")
 
     # ---- F. the last stage cleared ends the run the same way ------------------
-    g = Game(chip_mem=make_record(1, 19, 4, 90000, 90000))
+    g = Game(chip_mem=make_record(1, 31, 4, 90000, 90000))
     boot(g)
-    assert g.ram[LEVEL] == 19
+    assert g.ram[LEVEL] == 31
     start_game(g)
     assert g.ram[LIVES] == 4 and g.score() == 90000
     g.run(6)
     stage_pickup(g, bar=60, bombs=2, lives=4)
     g.until(lambda: g.ram[DROPT] == 0xFE, 60, "the last tally to arm")
-    finish_tally(g, 20)
+    finish_tally(g, 32)
     g.until(lambda: g.title_shown() and g.bank == 0, 120, "the restart after the last stage")
     won = g.record()
     assert won[2] == 0, f"the run is over: no save may remain: {won.hex()}"

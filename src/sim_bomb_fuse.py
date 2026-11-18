@@ -57,13 +57,13 @@ class Mem:
         if a == 0x0282: return self.swchb
         if a == 0x0284: return 0          # INTIM: expired -> waits pass
         if a == 0x000C: return self.inpt4 # INPT4
-        if 0x1FF4 <= a <= 0x1FF7 or a == 0x1FF9: return 0
+        if 0x1FF4 <= a <= 0x1FFB: return 0
         if a <= 0x003F or 0x0100 <= a <= 0x017F:
             return self.tia[a & 0x3F]
         return 0
     def __setitem__(self, a, v):
         a &= 0xFFFF; v &= 0xFF
-        if 0x1FF4 <= a <= 0x1FF7 or a == 0x1FF9:
+        if 0x1FF4 <= a <= 0x1FFB:
             self.bank = a - 0x1FF4        # F6 hotspot
             return
         if a >= 0xF000:
@@ -114,7 +114,7 @@ B2_IDX_DEAD = _LBL['EnemyDeadMask'] & 0x7F
 # that reads 3 (TENTACLE). The room's authored records are the user's stage
 # (AGENTS) and this sim must not depend on them. UE_Tentacle takes its X from
 # EnemyRamX and chases the player, so the fake record's other fields are unused.
-_B2 = (Path(__file__).with_name('bank2.bin')).read_bytes()
+_B2 = (Path(__file__).with_name('bank6.bin')).read_bytes()
 TENT_REC = next(0xF000 + i for i, v in enumerate(_B2) if i >= 0x100 and v == 3)
 PC_STARTFRAME = _LBL['StartFrame']
 LOADLEVEL     = _LBL['LoadLevel']

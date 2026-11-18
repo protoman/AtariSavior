@@ -29,14 +29,14 @@ BANKS = [bytearray(open(FROZEN / f"bank{i}.bin", "rb").read()) for i in range(8)
 
 for _name in ("M0Shape",):   # level 1 room 0 = model 0 (C5: shape)
                                    # L1R2 block was removed with it)
-    for _l in (FROZEN / "bank3.lst").read_text(errors="replace").splitlines():
+    for _l in (FROZEN / "bank4.lst").read_text(errors="replace").splitlines():
         _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+" + _name + r"\s*$", _l)
         if _m:
             _a = int(_m.group(1), 16) - 0xF000
-            BANKS[3][_a] = 0      # hot count (C4: block starts with it)
+            BANKS[4][_a] = 0      # hot count (C4: block starts with it)
             break
     else:
-        sys.exit(f"{_name} label missing in bank3.lst")
+        sys.exit(f"{_name} label missing in bank4.lst")
 
 
 def lst_labels(path):
@@ -49,9 +49,10 @@ def lst_labels(path):
 
 
 L0 = lst_labels(FROZEN / "bank0.lst")
-L1 = lst_labels(FROZEN / "bank1.lst")
-L2 = lst_labels(FROZEN / "bank2.lst")
-L3 = lst_labels(FROZEN / "bank3.lst")   # C7: shape blocks + extras
+L1 = lst_labels(FROZEN / "bank3.lst")   # BombMarkWalls: gameplay bank
+L2 = lst_labels(FROZEN / "bank6.lst")
+L3 = lst_labels(FROZEN / "bank5.lst")   # C7: extras
+L7 = lst_labels(FROZEN / "bank4.lst")   # 2026-11-10: shape blocks + row pool
 PC_STARTFRAME = L0["StartFrame"]
 PC_BMW = L1["BombMarkWalls"]
 
@@ -155,12 +156,12 @@ def shape_pf(model):
     A shape block is `hot count | 5 B/record | 3 row indices`; the loader
     (bank2 B3RoomBlocks) expands the indices through RowPoolPF0/1/2 into
     PF0Buf, so this reads the SAME bytes via the label addresses."""
-    at = L3[f"M{model}Rows"] - 0xF000
-    idx = BANKS[3][at:at + 3]
+    at = L7[f"M{model}Rows"] - 0xF000
+    idx = BANKS[4][at:at + 3]
     out = bytearray()
     for col in ("RowPoolPF0", "RowPoolPF1", "RowPoolPF2"):
-        base = L3[col] - 0xF000
-        out += bytes(BANKS[3][base + i] for i in idx)
+        base = L7[col] - 0xF000
+        out += bytes(BANKS[4][base + i] for i in idx)
     return bytes(out)
 
 
@@ -169,8 +170,8 @@ def load_room(room):
     pf9, a_rr = shape_pf(model), L3["RoomNoStream"]   # C11: no stream in a shape
     # C5: the meta pair comes from the room's extras record (level 1 room 0 =
     # model 0 is the async room, ordinal 1 -> +1/+2). C4: no rect cache.
-    mem.ram[I_PF0LO] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
-    mem.ram[I_PF0HI] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
+    mem.ram[I_PF0LO] = BANKS[5][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
+    mem.ram[I_PF0HI] = BANKS[5][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     for i, dst in enumerate((0xC3, 0xC6, 0xC9)):
@@ -210,7 +211,7 @@ def drop_bomb(tag, bombx, roomx, y=70):
     while bmw is None and frame < limit:
         pin(y)
         step()
-        if mem.bank == 1 and mpu.pc == PC_BMW:
+        if mem.bank == 3 and mpu.pc == PC_BMW:
             bmw = frame
     if bmw is None:
         watch = False

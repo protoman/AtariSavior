@@ -31,9 +31,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-KERNEL = (ROOT / "kernel.asm").read_text(encoding="utf-8")
-BANK1 = (ROOT / "bank1.asm").read_text(encoding="utf-8")
-BANK2 = (ROOT / "bank2.asm").read_text(encoding="utf-8")
+KERNEL = (ROOT / "bank0.asm").read_text(encoding="utf-8")
+BANK1 = (ROOT / "bank3.asm").read_text(encoding="utf-8")
+BANK2 = (ROOT / "bank6.asm").read_text(encoding="utf-8")
 
 MASK_SPEC = [0x10, 0x20, 0x40, 0x80,
              0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01,
@@ -45,7 +45,11 @@ OFF_SPEC = [0, 0, 0, 0, 4, 4, 4, 4, 4, 4, 4, 4, 8, 8, 8, 8, 8, 8, 8, 8]
 def phm_block() -> str:
     m = re.search(r"^PlayerHitsMap:.*?^EnemyOffTable", KERNEL, re.S | re.M)
     assert m, "PlayerHitsMap block not found"
-    return m.group(0)
+    # the cell walk body lives in the bank0 hole since 2026-11-16 (column-major, 2-row aware)
+    w = re.search(r"^PhmWalk:.*?^\.pwClear:\s*\n\s*jmp\s+OverlayTramp", KERNEL, re.S | re.M)
+    assert w, "PhmWalk block not found"
+    assert re.search(r"jmp\s+PhmWalk", m.group(0)), "PHM must hand the box to PhmWalk"
+    return m.group(0) + "\n" + w.group(0)
 
 
 def moth_block() -> str:
@@ -77,17 +81,17 @@ def parse_tables(text: str, tag: str) -> None:
 def main() -> None:
     # --- PHM: cell walk contract ------------------------------------------
     blk = phm_block()
-    assert re.search(r"adc\s+ColOff,X", blk), \
+    assert re.search(r"lda\s+ColOff,X", blk), \
         "PHM must index ColOff (cell group offset)"
     assert re.search(r"lda\s+PF0Buf,Y", blk), \
         "PHM must read the PF render buffer"
     assert re.search(r"and\s+ColMask,X", blk), \
         "PHM must mask the cell bit with ColMask"
-    assert re.search(r"bne\s+\.CWHit\s*;[^\n]*solid", blk), \
-        "solid cell must branch to .CWHit"
-    assert re.search(r"^\.CWHit:\s*\n\s*jmp\s+HotOverlapFlag", blk, re.M), \
+    assert re.search(r"bne\s+\.pwHit", blk), \
+        "solid cell must branch to .pwHit"
+    assert re.search(r"^\.pwHit:\s*\n\s*jmp\s+HotOverlapFlag", blk, re.M), \
         "hit must tail-jmp HotOverlapFlag (C=1 contract)"
-    assert re.search(r"^\.CWNoHit:", blk, re.M) \
+    assert re.search(r"^\.pwClear:", blk, re.M) \
         and re.search(r"jmp\s+OverlayTramp", blk), \
         "miss exit must tail-jmp OverlayTramp (Phase 4 asym gate; the tramp " \
         "returns clc/rts for sym and bank2 PHMOverlay for asym)"
@@ -136,7 +140,7 @@ def main() -> None:
     assert not re.search(r"^\.MwStage3:", mblk, re.M), \
         "moth .MwStage3 label must be gone (S3.2)"
     assert "lda #RcW2" not in mblk, "moth window jump must be gone (S3.2)"
-    assert re.search(r"adc\s+ColOff,X", mblk) \
+    assert re.search(r"lda\s+ColOff,X", mblk) \
         and re.search(r"lda\s+PF0Buf,Y", mblk) \
         and re.search(r"and\s+ColMask,X", mblk), \
         "moth walk must index the cell map (ColOff/ColMask/PF0Buf, 4.1)"
