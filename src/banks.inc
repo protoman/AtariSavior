@@ -1,6 +1,6 @@
 ; ==============================================================================
-; NEW ROM bank selectors by ROLE (docs/agents/banks.md, Layout v3). BKI_x = the physical bank of role x.
-; The new ROM is built from newrom/ (tools/build_newrom.sh); this file shadows src/banks.inc there.
+; Bank selectors by ROLE (docs/agents/banks.md, Layout v3). BKI_x = the physical bank of role x.
+; Every bank file includes this, so a role can move between banks by changing one line here.
 ; ==============================================================================
 BKI_GENERAL   = 0       ; main loop, input, physics, collision, sound, the fold pads
 BKI_CAVE      = 1       ; the generated gameplay cave kernel (+ its prologue)
