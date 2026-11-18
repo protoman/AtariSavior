@@ -43,6 +43,13 @@ Everything that was planned for 1.1.1:
   every link of the stage statically and by flying every crossing.
 - Frame budget: all 484 rooms of the 32 levels keep the fixed frame length (the laser hit test
   scans the enemy list once, the moth only walks with 18 overscan units left).
+- **PAL frame is 312 lines again.** Since the NTSC overscan grew from 45 to 48 units the PAL
+  picture ran one line short (311 lines, a constant). The PAL overscan is 72 units now (132 units
+  are exactly 312 lines), and the release also simulates the heaviest room on the PAL60 and PAL
+  builds.
+- **No band or wall colour looks like a door.** The locked door's stripe is bright yellow, and
+  some levels used the same yellow for their band (or a near-yellow wall). The generator never
+  picks a yellow-family colour for a wall or a band now, and `test_generator.py` fails on one.
 
 ## 1.1.0
 
