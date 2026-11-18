@@ -4,6 +4,8 @@ Strategic Aerial Vehicle Infiltration Operations Rescue
 Nome personagem: Eorley Savior.
 
 
+- power cell should be put on ground (saw one up in the air)
+- levels 21-30 should have multiple doors and poder cells with multiple paths.
 
 #########################################################################################################################################################################
 Ideas:
