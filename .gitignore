@@ -26,3 +26,25 @@ src/generated/level_0[0-9][0-9]_*.asm
 # Not part of the project
 src/hero/screenshots/
 src/spelunkman*.zip
+
+# HERO analysis, investigation notes and screenshot tools: kept locally, not in the repo
+src/docs/agents/hero_reference.md
+src/docs/bank0_simplification_investigation.md
+src/docs/claude_investigation.log
+src/docs/claude_investigation.md
+src/docs/frame_timing_investigation.md
+src/docs/hero_asymmetric_rooms.md
+src/docs/hero_async.md
+src/docs/hero_death_points.md
+src/docs/hero_flicker.md
+src/docs/hero_flicker_plan.md
+src/docs/level_bank_investigation.md
+src/docs/sprite_bug_investigation.md
+src/plans/hero_cycle_ledger.md
+src/plans/hero_kernel_plan.md
+src/plans/hero_style_kernel_plan.md
+src/plans/hero_style_kernel_progress.md
+src/tools/analyze_screenshot.py
+src/tools/hero_rooms_to_ascii.py
+src/tools/probe_hero_overlay.py
+src/tools/screenshot_to_ascii.py
