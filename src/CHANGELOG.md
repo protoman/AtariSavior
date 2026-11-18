@@ -3,9 +3,17 @@
 Release versions live in `VERSION` (build.sh stamps them into the ROM, the manual
 cover prints them, `tools/release.py` names the artifacts from them).
 
-## 1.1.1
+## 1.2.0
 
-**Fixes: async walls were walk-through, miners, bats, Select, game over**
+**Rebuilt ROM structure, 32 levels (1.1.1 was never released: its fixes ship here)**
+
+- **The ROM is rebuilt** (layout v3): code first, then the room models, then the levels, with
+  the boot stub in every bank, bank selectors by role, and the level data split over two room
+  banks (A: levels 1-24, B: levels 25-32).
+- **32 levels, 484 rooms** (was 20), all inside the frame budget; the generator ramps rooms,
+  creatures, miners and speed up to level 32.
+
+Everything that was planned for 1.1.1:
 
 - **Pillars, async walls and doors are solid again.** The 1.1.0 cave kernel reused `$8F` as
   scratch, which zeroed the packed collision byte bank3 stages there for the HUD to copy, so
